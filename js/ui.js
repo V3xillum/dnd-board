@@ -243,7 +243,36 @@ function getHpChangeFromEvents(events) {
   return events?.find((e) => e.type === 'hp-change') ?? null;
 }
 
+function hasDeathInEvents(events) {
+  return events?.some((e) => e.type === 'death') ?? false;
+}
+
+function getDeathFromEvents(events) {
+  return events?.find((e) => e.type === 'death') ?? null;
+}
+
+function setEventResultClass(success, events) {
+  if (hasDeathInEvents(events)) {
+    els.eventResult.className = 'event-card__result event-card__result--death';
+    return;
+  }
+  els.eventResult.className = `event-card__result event-card__result--${success ? 'success' : 'fail'}`;
+}
+
 function buildResultHpHtml(events, player) {
+  const deathEv = getDeathFromEvents(events);
+  if (deathEv) {
+    const bonusNote =
+      deathEv.movementBonus > 0 ? ` · +${deathEv.movementBonus} beweging (catch-up)` : '';
+    return `
+      <div class="result-death">
+        <span class="result-death__icon" aria-hidden="true">💀</span>
+        <p class="result-death__title">Je bent uitgevallen!</p>
+        <p class="result-death__detail">Terug naar start · ${deathEv.hp} / ${player?.maxHp ?? deathEv.hp} HP${bonusNote}</p>
+      </div>
+    `;
+  }
+
   const hpEv = getHpChangeFromEvents(events);
   if (!hpEv || !player) return '';
 
@@ -966,7 +995,7 @@ function handleAmbushSubmit() {
   activeAmbush.submitted = true;
 
   const effectiveDc = getEffectiveDc(player, config.dc);
-  const isNat1 = !nat20 && (nat1 || roll === 1);
+  const isNat1 = !nat20 && nat1;
   const success = !isNat1 && (nat20 || (roll !== null && roll >= effectiveDc));
   const rollLabel = nat20
     ? (roll != null ? `${roll} — Kritiek succes!` : 'Kritiek succes!')
@@ -1003,14 +1032,16 @@ function handleAmbushSubmit() {
     ? `Ambusher verliest 1 HP — nog ${result.ambushHp} / ${result.ambushMaxHp}`
     : 'Geen schade aan de ambusher · jij verliest 1 HP';
 
-  if (result.ambushEnded) {
+  if (hasDeathInEvents(result.events)) {
+    effectText = 'Uitgevallen — terug naar start';
+  } else if (result.ambushEnded) {
     effectText = success
       ? 'De put is opgeheven — je mag weer dobbelstenen op dit vak!'
       : 'Je valt uit — de put is voorbij · terug naar start';
   }
 
   els.eventResult.classList.remove('hidden');
-  els.eventResult.className = `event-card__result event-card__result--${success ? 'success' : 'fail'}`;
+  setEventResultClass(success, result.events);
   const hpHtml = buildResultHpHtml(result.events, game.currentPlayer);
 
   els.eventResult.innerHTML = `
@@ -1051,7 +1082,7 @@ function handleBossSubmit() {
   activeBoss.submitted = true;
 
   const effectiveDc = getEffectiveDc(player, config.dc);
-  const isNat1 = !nat20 && (nat1 || roll === 1);
+  const isNat1 = !nat20 && nat1;
   const success = !isNat1 && (nat20 || (roll !== null && roll >= effectiveDc));
   const rollLabel = nat20
     ? (roll != null ? `${roll} — Kritiek succes!` : 'Kritiek succes!')
@@ -1095,10 +1126,14 @@ function handleBossSubmit() {
     effectText += ` · terug naar vak ${result.retreatedTo} — loop opnieuw naar 62/63 om aan te vallen`;
   }
 
+  if (hasDeathInEvents(result.events)) {
+    effectText = 'Uitgevallen — terug naar start';
+  }
+
   const bossHpHtml = buildResultHpHtml(result.events, game.currentPlayer);
 
   els.eventResult.classList.remove('hidden');
-  els.eventResult.className = `event-card__result event-card__result--${success ? 'success' : 'fail'}`;
+  setEventResultClass(success, result.events);
   els.eventResult.innerHTML = `
     <div class="result-roll">🎲 ${rollLabel}</div>
     <div class="result-vs">vs DC ${dcDisplay}</div>
@@ -1208,7 +1243,9 @@ function endEventTurn(onComplete) {
   onComplete?.();
 }
 
-function formatEventMoveResult(result) {
+function formatEventMoveResult(result, events) {
+  if (hasDeathInEvents(events)) return 'Uitgevallen — je begint opnieuw op het startvak.';
+
   if (result.nat1) return 'Kritiek mislukking! Beurt voorbij.';
 
   if (result.passTurn) return 'Mislukt — beurt voorbij.';
@@ -1278,7 +1315,7 @@ function handleEventSubmit() {
   activeEvent.submitted = true;
 
   const effectiveDc = getEffectiveDc(player, config.dc);
-  const isNat1 = !nat20 && (nat1 || roll === 1);
+  const isNat1 = !nat20 && nat1;
   const success = !isNat1 && (nat20 || (roll !== null && roll >= effectiveDc));
   const rollLabel = nat20
     ? (roll != null ? `${roll} — Kritiek succes!` : 'Kritiek succes!')
@@ -1305,13 +1342,13 @@ function handleEventSubmit() {
   els.eventCheck.classList.add('is-hidden');
   showEventOutcomeInHeader(success, config);
   els.eventResult.classList.remove('hidden');
-  els.eventResult.className = `event-card__result event-card__result--${success ? 'success' : 'fail'}`;
+  setEventResultClass(success, result.events);
   const hpHtml = buildResultHpHtml(result.events, game.currentPlayer);
 
   els.eventResult.innerHTML = `
     <div class="result-roll">🎲 ${rollLabel}</div>
     <div class="result-vs">vs DC ${dcDisplay}</div>
-    <p class="result-effect">${formatEventMoveResult(result)}</p>
+    <p class="result-effect">${formatEventMoveResult(result, result.events)}</p>
     ${hpHtml}
   `;
 

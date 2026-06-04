@@ -1507,6 +1507,23 @@ input.event-card__roll-value[type=number]:focus {
   font-size: 1rem;
   line-height: 1;
 }
+.event-card__result .result-hp__max-note {
+  flex: 1 1 100%;
+  font-size: 0.88rem;
+  font-weight: 600;
+  font-style: italic;
+  color: #6b5a20;
+  text-transform: none;
+  letter-spacing: normal;
+  line-height: 1.35;
+}
+.event-card__result--success .result-hp__max-note {
+  color: #4a6b35;
+}
+.event-card__result .result-hp--maxed {
+  flex-direction: column;
+  gap: 0.4rem;
+}
 
 .check-badge {
   display: flex;

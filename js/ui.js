@@ -277,12 +277,21 @@ function buildResultHpHtml(events, player) {
   if (!hpEv || !player) return '';
 
   const delta = hpEv.delta;
-  const sign = delta > 0 ? '+' : '−';
-  const deltaClass = delta < 0 ? 'result-hp__delta--loss' : 'result-hp__delta--gain';
+  const atMaxHp = player.hp >= player.maxHp;
+  const healBlocked = delta === 0 && atMaxHp;
+
+  let deltaHtml = '';
+  if (healBlocked) {
+    deltaHtml = '<span class="result-hp__max-note">Jij mazzelaar — je zit al op max HP!</span>';
+  } else if (delta !== 0) {
+    const sign = delta > 0 ? '+' : '−';
+    const deltaClass = delta < 0 ? 'result-hp__delta--loss' : 'result-hp__delta--gain';
+    deltaHtml = `<span class="result-hp__delta ${deltaClass}">${sign}${Math.abs(delta)} HP</span>`;
+  }
 
   return `
-    <p class="result-hp">
-      <span class="result-hp__delta ${deltaClass}">${sign}${Math.abs(delta)} HP</span>
+    <p class="result-hp${healBlocked ? ' result-hp--maxed' : ''}">
+      ${deltaHtml}
       <span class="result-hp__now">Nu <strong>${player.hp}</strong> / ${player.maxHp}</span>
       <span class="result-hp__hearts" aria-hidden="true">${formatPlayerHp(player)}</span>
     </p>

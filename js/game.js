@@ -10,6 +10,7 @@ function isOnBossArena(position) {
 }
 const BOARD_SIZE = 9;
 const DEFAULT_HP = 3;
+const DEFAULT_MAX_HP = 5;
 
 /** Geslaagde event-check: basisstappen + overshoot (alleen tunen in code) */
 const BASE_SUCCESS_STEPS = 1;
@@ -301,7 +302,7 @@ class Game {
       color,
       position: 0,
       hp: DEFAULT_HP,
-      maxHp: DEFAULT_HP,
+      maxHp: DEFAULT_MAX_HP,
       movementBonus: 0,
       dcStreak: 0,
       nextDcMod: 0,
@@ -709,6 +710,10 @@ class Game {
         playerHp: player.hp,
         spaceNum,
       });
+      if (nat20) {
+        events.push({ type: 'nat20', player: player.name });
+        events.push(...this.mutateHp(player, 1));
+      }
     } else {
       events.push(...this.mutateHp(player, -1));
     }
@@ -809,6 +814,10 @@ class Game {
         player: player.name,
         bossName: config.name,
       });
+      if (nat20) {
+        events.push({ type: 'nat20', player: player.name });
+        events.push(...this.mutateHp(player, 1));
+      }
     } else {
       events.push(...this.mutateHp(player, -1));
     }
@@ -1034,3 +1043,4 @@ window.calcEventSuccessSteps = calcEventSuccessSteps;
 window.BASE_SUCCESS_STEPS = BASE_SUCCESS_STEPS;
 window.OVERSHOOT_DIVISOR = OVERSHOOT_DIVISOR;
 window.DEFAULT_HP = DEFAULT_HP;
+window.DEFAULT_MAX_HP = DEFAULT_MAX_HP;

@@ -45,6 +45,9 @@ const els = {
   combatRailPitsSection: document.getElementById('combat-rail-pits-section'),
   ambushPitsList: document.getElementById('ambush-pits-list'),
   eventCard: document.querySelector('#event-modal .event-card'),
+  eventTurnBanner: document.getElementById('event-turn-banner'),
+  eventTurnName: document.getElementById('event-turn-name'),
+  eventTurnDot: document.getElementById('event-turn-dot'),
   rulesModal: document.getElementById('rules-modal'),
   rulesOpenBtn: document.getElementById('rules-open-btn'),
   rulesCloseBtn: document.getElementById('rules-close-btn'),
@@ -427,7 +430,8 @@ function updateCombatRail() {
         .map((pit) => {
           const { config, hp, maxHp, playerIds, spaceNum } = pit;
           const pct = maxHp > 0 ? Math.round((hp / maxHp) * 100) : 0;
-          const yourTurn = cp != null && playerIds.includes(cp.id);
+          const yourTurn =
+            cp != null && game.getPlayerPit(cp)?.spaceNum === spaceNum;
           const playersHtml = renderCombatPlayerChips(playerIds);
 
           return `
@@ -737,6 +741,21 @@ function removeAmbushModalExtras() {
   els.eventCard?.style.removeProperty('--ambush-fighter-color');
 }
 
+function updateEventModalTurnPlayer() {
+  const player = game.currentPlayer;
+  if (!els.eventTurnBanner) return;
+
+  if (!player) {
+    els.eventTurnBanner.classList.add('hidden');
+    return;
+  }
+
+  els.eventTurnBanner.classList.remove('hidden');
+  if (els.eventTurnName) els.eventTurnName.textContent = player.name;
+  if (els.eventTurnDot) els.eventTurnDot.style.backgroundColor = player.color;
+  els.eventCard?.style.setProperty('--turn-player-color', player.color);
+}
+
 function resetEventHeader(config) {
   els.eventTitle.textContent = config.name;
   els.eventTitle.className = 'event-card__title';
@@ -753,6 +772,7 @@ function showEventOutcomeInHeader(success, config) {
 
 function populateEventModal(config, spaceNum) {
   const player = game.currentPlayer;
+  updateEventModalTurnPlayer();
 
   removeCombatHpBars();
   removeAmbushModalExtras();
@@ -795,6 +815,8 @@ function populateBossModal() {
   const config = game.bossConfig;
   const player = game.currentPlayer;
   if (!config) return;
+
+  updateEventModalTurnPlayer();
 
   removeAmbushModalExtras();
   els.eventCard?.classList.remove('event-card--ambush');
@@ -894,6 +916,8 @@ function populateAmbushModal() {
   const pit = game.getCurrentPlayerPit();
   const player = game.currentPlayer;
   if (!pit || !player) return;
+
+  updateEventModalTurnPlayer();
 
   const { config } = pit;
 
@@ -1004,7 +1028,7 @@ function handleAmbushSubmit() {
   activeAmbush.submitted = true;
 
   const effectiveDc = getEffectiveDc(player, config.dc);
-  const isNat1 = !nat20 && nat1;
+  const isNat1 = !nat20 && (nat1 || roll === 1);
   const success = !isNat1 && (nat20 || (roll !== null && roll >= effectiveDc));
   const rollLabel = nat20
     ? (roll != null ? `${roll} — Kritiek succes!` : 'Kritiek succes!')
@@ -1039,7 +1063,9 @@ function handleAmbushSubmit() {
 
   let effectText = success
     ? `Ambusher verliest 1 HP — nog ${result.ambushHp} / ${result.ambushMaxHp}`
-    : 'Geen schade aan de ambusher · jij verliest 1 HP';
+    : result.nat1
+      ? 'Mislukt + kritieke mislukking — jij verliest 2 HP'
+      : 'Geen schade aan de ambusher · jij verliest 1 HP';
 
   if (hasDeathInEvents(result.events)) {
     effectText = 'Uitgevallen — terug naar start';
@@ -1091,7 +1117,7 @@ function handleBossSubmit() {
   activeBoss.submitted = true;
 
   const effectiveDc = getEffectiveDc(player, config.dc);
-  const isNat1 = !nat20 && nat1;
+  const isNat1 = !nat20 && (nat1 || roll === 1);
   const success = !isNat1 && (nat20 || (roll !== null && roll >= effectiveDc));
   const rollLabel = nat20
     ? (roll != null ? `${roll} — Kritiek succes!` : 'Kritiek succes!')
@@ -1125,7 +1151,9 @@ function handleBossSubmit() {
 
   let effectText = success
     ? `De eindbaas verliest 1 schade — nog ${game.bossHp} / ${game.bossMaxHp}`
-    : 'Geen schade aan de baas · jij verliest 1 HP';
+    : result.nat1
+      ? 'Mislukt + kritieke mislukking — jij verliest 2 HP'
+      : 'Geen schade aan de baas · jij verliest 1 HP';
 
   if (result.winner) {
     effectText += ' · De schat is vrij!';

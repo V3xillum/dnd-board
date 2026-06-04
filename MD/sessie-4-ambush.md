@@ -20,7 +20,7 @@ State: `game.ambushPits[spaceNum]` = `{ config, hp, maxHp, playerIds[] }`.
 | Landing terwijl put op dat vak nog actief (`hp > 0`) | Speler voegt zich toe (`ambush-join`), **zelfde** vijand + HP |
 | Iemand staat al op het vak | `syncColocatedPlayersInPit()` — iedereen op dat vak in `playerIds` |
 | Vijand op 0 HP | `clearPitAt(spaceNum)` — **iedereen** in `playerIds` vrij |
-| Speler 0 HP in put | Death-flow (sessie 1); speler uit `playerIds`, put blijft voor anderen |
+| Speler 0 HP in put | Death-flow (sessie 1); speler uit `playerIds` (via vaknummer put, niet `player.position`); put blijft alleen als er nog anderen in zitten, anders `clearPitAt` |
 | Later opnieuw landen op zelfde vak (na kill) | **Nieuwe** put met weer `pickRandomAmbush()` |
 
 Het bord toont per ambush-vak een tegel uit `AMBUSH_POOL` (bij generatie). De **actieve vijand in de put** komt uit `pickRandomAmbush()` bij een **nieuwe** put — die kan afwijken van de tegelkleur/naam op het bord.
@@ -37,7 +37,7 @@ Het bord toont per ambush-vak een tegel uit `AMBUSH_POOL` (bij generatie). De **
 | | Gedrag |
 |---|--------|
 | **Nat 20** | Gegarandeerd slagen → ambusher −1 HP. Geen +1 HP speler, geen movement. |
-| **Nat 1** | Mis → speler −1 HP. Geen `skipNextTurn`, geen extra straf. |
+| **Nat 1** | Mislukt (−1 HP speler) **plus** kritieke mislukking (−1 HP extra, `nat1`-event). Totaal −2 HP. Geen `skipNextTurn`. Checkbox of worp totaal = 1. |
 
 Geen DC-streak-updates in `resolveAmbushRoll` (zoals boss).
 

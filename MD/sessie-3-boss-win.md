@@ -19,7 +19,7 @@ Een eindbaas blokkeert de overwinning. Alle spelers moeten samen de boss verslaa
 ### Tijdens de fight
 - **Gedeelde boss-HP:** succesvolle aanval → `bossHp -= 1`; mislukt → −1 HP speler via `mutateHp()`.
 - Check: D20-totaal vs `getEffectiveDc(player, bossConfig.dc)` (zelfde modifiers als events; geen DC-streak-updates in `resolveBoss`).
-- Nat 20 / Nat 1 checkboxes in de boss-modal werken (geen beweging/overshoot).
+- Nat 20 / Nat 1 checkboxes in de boss-modal werken (geen beweging/overshoot). **Nat 1:** −1 HP (mislukt) + −1 HP (kritiek), geen beurt overslaan.
 - **Eén aanval per beurt:** na succes of falen → beurt voorbij, speler naar **vak 56** (kamp), tenzij:
   - uitval door HP (death → start), of
   - dezelfde speler wint direct op 63 na de laatste hit (`winner.id === player.id` → geen retreat).

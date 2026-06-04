@@ -193,10 +193,15 @@ class Game {
     return this.getPlayerPit(this.currentPlayer);
   }
 
-  removePlayerFromPit(player) {
-    const pit = this.getPitAt(player.position);
+  /** @param {number} [spaceNum] Vak van de put (nodig na death: speler staat dan al op start). */
+  removePlayerFromPit(player, spaceNum) {
+    const pitSpace = spaceNum ?? player.position;
+    const pit = this.getPitAt(pitSpace);
     if (!pit) return;
     pit.playerIds = pit.playerIds.filter((id) => id !== player.id);
+    if (pit.playerIds.length === 0) {
+      this.clearPitAt(pitSpace);
+    }
   }
 
   clearPitAt(spaceNum) {
@@ -221,7 +226,7 @@ class Game {
   joinOrStartPit(player, spaceNum) {
     let pit = this.getPitAt(spaceNum);
 
-    if (pit && pit.hp > 0) {
+    if (pit && pit.hp > 0 && pit.playerIds.length > 0) {
       const wasNew = !pit.playerIds.includes(player.id);
       if (wasNew) pit.playerIds.push(player.id);
       this.syncColocatedPlayersInPit(spaceNum);
@@ -308,6 +313,15 @@ class Game {
       nextDcMod: 0,
       skipNextTurn: false,
     });
+  }
+
+  /** Mislukte gevechts-check: −1 HP; bij Nat 1 nog eens −1 HP + `nat1`-event. */
+  applyCombatCheckFail(player, events, isNat1) {
+    events.push(...this.mutateHp(player, -1));
+    if (isNat1) {
+      events.push({ type: 'nat1', player: player.name });
+      events.push(...this.mutateHp(player, -1));
+    }
   }
 
   /**
@@ -678,7 +692,7 @@ class Game {
     player.nextDcMod = 0;
 
     const effectiveDc = getEffectiveDc(player, config.dc);
-    const isNat1 = !nat20 && nat1;
+    const isNat1 = !nat20 && (nat1 || roll === 1);
     const success = !isNat1 && (nat20 || (roll != null && roll >= effectiveDc));
 
     const events = [{
@@ -715,7 +729,7 @@ class Game {
         events.push(...this.mutateHp(player, 1));
       }
     } else {
-      events.push(...this.mutateHp(player, -1));
+      this.applyCombatCheckFail(player, events, isNat1);
     }
 
     const d20Event = events.find((e) => e.type === 'ambush-d20');
@@ -739,14 +753,15 @@ class Game {
       });
       this.clearPitAt(spaceNum);
     } else if (died) {
-      this.removePlayerFromPit(player);
+      this.removePlayerFromPit(player, spaceNum);
+      const pitContinues = (this.getPitAt(spaceNum)?.playerIds.length ?? 0) > 0;
       events.push({
         type: 'ambush-end',
         success: false,
         ambushName: config.name,
         player: player.name,
         spaceNum,
-        pitContinues: pit.playerIds.length > 0,
+        pitContinues,
       });
     }
 
@@ -785,7 +800,7 @@ class Game {
     player.nextDcMod = 0;
 
     const effectiveDc = getEffectiveDc(player, config.dc);
-    const isNat1 = !nat20 && nat1;
+    const isNat1 = !nat20 && (nat1 || roll === 1);
     const success = !isNat1 && (nat20 || (roll != null && roll >= effectiveDc));
 
     const events = [{
@@ -819,7 +834,7 @@ class Game {
         events.push(...this.mutateHp(player, 1));
       }
     } else {
-      events.push(...this.mutateHp(player, -1));
+      this.applyCombatCheckFail(player, events, isNat1);
     }
 
     if (this.bossHp <= 0) {

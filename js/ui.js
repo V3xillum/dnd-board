@@ -45,7 +45,34 @@ const els = {
   combatRailPitsSection: document.getElementById('combat-rail-pits-section'),
   ambushPitsList: document.getElementById('ambush-pits-list'),
   eventCard: document.querySelector('#event-modal .event-card'),
+  rulesModal: document.getElementById('rules-modal'),
+  rulesOpenBtn: document.getElementById('rules-open-btn'),
+  rulesCloseBtn: document.getElementById('rules-close-btn'),
+  rulesCloseBottom: document.getElementById('rules-close-bottom'),
+  legendRulesLink: document.getElementById('legend-rules-link'),
 };
+
+function syncModalScrollLock() {
+  const open =
+    !els.eventModal.classList.contains('hidden') ||
+    !els.pathModal.classList.contains('hidden') ||
+    !els.winModal.classList.contains('hidden') ||
+    (els.rulesModal && !els.rulesModal.classList.contains('hidden'));
+  document.body.classList.toggle('modal-open', open);
+}
+
+function showRulesModal() {
+  if (!els.rulesModal) return;
+  els.rulesModal.classList.remove('hidden');
+  syncModalScrollLock();
+  els.rulesCloseBtn?.focus();
+}
+
+function closeRulesModal() {
+  if (!els.rulesModal) return;
+  els.rulesModal.classList.add('hidden');
+  syncModalScrollLock();
+}
 
 function parseDiceRoll(value, min, max = null) {
   const roll = parseInt(value, 10);
@@ -212,6 +239,27 @@ function formatPlayerHp(player) {
   return filled + empty;
 }
 
+function getHpChangeFromEvents(events) {
+  return events?.find((e) => e.type === 'hp-change') ?? null;
+}
+
+function buildResultHpHtml(events, player) {
+  const hpEv = getHpChangeFromEvents(events);
+  if (!hpEv || !player) return '';
+
+  const delta = hpEv.delta;
+  const sign = delta > 0 ? '+' : '−';
+  const deltaClass = delta < 0 ? 'result-hp__delta--loss' : 'result-hp__delta--gain';
+
+  return `
+    <p class="result-hp">
+      <span class="result-hp__delta ${deltaClass}">${sign}${Math.abs(delta)} HP</span>
+      <span class="result-hp__now">Nu <strong>${player.hp}</strong> / ${player.maxHp}</span>
+      <span class="result-hp__hearts" aria-hidden="true">${formatPlayerHp(player)}</span>
+    </p>
+  `;
+}
+
 function formatPlayerMovementHint(player) {
   const bonus = player.movementBonus ?? 0;
   return bonus > 0 ? ` · +${bonus} beweging` : '';
@@ -294,7 +342,6 @@ function renderBossCombatCard() {
       <p class="combat-card__hp-label">Nog ${bossHp} / ${bossMaxHp} schade te lijden</p>
       <span class="combat-card__fighters-label">Gezelschap</span>
       <div class="combat-card__players">${playersHtml}</div>
-      <p class="combat-card__hint">🎯 = op de drempel (62/63) · na aanval terug naar kamp (56)</p>
       ${yourTurn ? '<p class="combat-card__turn">⚔️ Jij bent aan de beurt — aanvallen!</p>' : ''}
     </article>
   `;
@@ -487,14 +534,8 @@ function describeEvents(events) {
         if (ev.name) addLog(`Landt op: ${ev.icon} ${ev.name}`, 'special');
         break;
       case 'd20': {
-        let dcLabel = String(ev.effectiveDc ?? ev.dc);
-        if (ev.dcBonus || ev.dcMod) {
-          const bits = [`basis ${ev.dc}`];
-          if (ev.dcBonus) bits.push(`+${ev.dcBonus}`);
-          if (ev.dcMod) bits.push(`${ev.dcMod > 0 ? '+' : ''}${ev.dcMod}`);
-          dcLabel = `${ev.effectiveDc} (${bits.join(', ')})`;
-        }
-        const nat = ev.nat20 ? ' · Nat 20!' : ev.nat1 ? ' · Nat 1!' : '';
+        const dcLabel = String(ev.effectiveDc ?? ev.dc);
+        const nat = ev.nat20 ? ' · Kritiek succes!' : ev.nat1 ? ' · Kritiek mislukking!' : '';
         addLog(
           `${ev.ability} check: ${ev.roll ?? '—'} vs DC ${dcLabel} — ${ev.success ? 'Geslaagd!' : 'Mislukt!'}${nat}`,
           ev.success ? 'success' : 'fail',
@@ -502,16 +543,13 @@ function describeEvents(events) {
         break;
       }
       case 'nat20':
-        addLog(`${ev.player}: Nat 20! +1 HP · dubbele basisstap bij beweging`, 'success');
+        addLog(`${ev.player}: Nat 20!`, 'success');
         break;
       case 'nat1':
-        addLog(`${ev.player}: Nat 1! −1 HP · beurt voorbij · volgende beurt overslaan`, 'fail');
+        addLog(`${ev.player}: Nat 1!`, 'fail');
         break;
       case 'event-steps':
-        addLog(
-          `${ev.player}: ${ev.total} vakje(s) (${ev.base} basis + ${ev.extra} overshoot, roll ${ev.overshootRoll} vs DC ${ev.effectiveDc})`,
-          'success',
-        );
+        addLog(`${ev.player}: ${ev.total} vakje(s) vooruit`, 'success');
         break;
       case 'path':
         addLog(`${ev.player}: ${ev.icon} ${ev.name} — rustig pad`, 'special');
@@ -559,7 +597,7 @@ function describeEvents(events) {
         );
         break;
       case 'boss-d20': {
-        const nat = ev.nat20 ? ' · Nat 20!' : ev.nat1 ? ' · Nat 1!' : '';
+        const nat = ev.nat20 ? ' · Kritiek succes!' : ev.nat1 ? ' · Kritiek mislukking!' : '';
         addLog(
           `⚔️ vs ${ev.bossName}: ${ev.ability} ${ev.roll ?? '—'} vs DC ${ev.effectiveDc} — ${ev.success ? 'Raak!' : 'Mis!'}${nat}`,
           ev.success ? 'success' : 'fail',
@@ -600,7 +638,7 @@ function describeEvents(events) {
         );
         break;
       case 'ambush-d20': {
-        const nat = ev.nat20 ? ' · Nat 20!' : ev.nat1 ? ' · Nat 1!' : '';
+        const nat = ev.nat20 ? ' · Kritiek succes!' : ev.nat1 ? ' · Kritiek mislukking!' : '';
         addLog(
           `Ambush ${ev.ambushName}: ${ev.ability} ${ev.roll ?? '—'} vs DC ${ev.effectiveDc} — ${ev.success ? 'succes' : 'faal'} — ambusher ${ev.ambushHp} HP, speler ${ev.playerHp} HP${nat}`,
           ev.success ? 'success' : 'fail',
@@ -636,13 +674,7 @@ function describeEvents(events) {
 }
 
 function formatDcDisplay(baseDc, player) {
-  const bonus = getDcBonus(player);
-  const mod = getDcModifier(player);
-  const effective = getEffectiveDc(player, baseDc);
-  const parts = [`basis ${baseDc}`];
-  if (bonus) parts.push(`+${bonus} streak`);
-  if (mod) parts.push(`${mod > 0 ? '+' : ''}${mod}`);
-  return parts.length > 1 ? `${effective} (${parts.join(', ')})` : String(effective);
+  return String(getEffectiveDc(player, baseDc));
 }
 
 function formatPlayerDcHint(player) {
@@ -687,8 +719,6 @@ function populateEventModal(config, spaceNum) {
   removeCombatHpBars();
   removeAmbushModalExtras();
   els.eventCard?.classList.remove('event-card--ambush');
-  restoreEventNatLabels();
-
   els.eventIcon.textContent = config.icon || '🎲';
   els.eventSpace.textContent = `Vak ${spaceNum ?? '?'}`;
   resetEventHeader(config);
@@ -698,10 +728,7 @@ function populateEventModal(config, spaceNum) {
 
   els.eventDiceInput.min = '1';
   els.eventDiceInput.removeAttribute('max');
-  els.eventDiceInput.placeholder = 'totaal';
-  els.eventRollArea.querySelector('.event-card__roll-hint').textContent =
-    'Vul je totale worp in (D20 + modifiers, geen maximum)';
-
+  els.eventDiceInput.placeholder = '—';
   els.eventDiceInput.value = '';
   els.eventNat20.checked = false;
   els.eventNat20.disabled = false;
@@ -712,31 +739,18 @@ function populateEventModal(config, spaceNum) {
   els.eventClose.disabled = true;
   els.eventClose.textContent = 'Doorgaan op avontuur';
   els.eventSubmit.disabled = false;
-  els.eventSubmit.textContent = 'Bevestig worp';
+  els.eventSubmit.textContent = 'Bevestigen';
   els.eventDiceInput.disabled = false;
 }
 
 function closeEventModal() {
   els.eventModal.classList.add('hidden');
-  if (els.pathModal.classList.contains('hidden') && els.winModal.classList.contains('hidden')) {
-    document.body.classList.remove('modal-open');
-  }
+  syncModalScrollLock();
   activeEvent = null;
   activeBoss = null;
   activeAmbush = null;
   els.eventCard?.classList.remove('event-card--ambush');
   removeAmbushModalExtras();
-}
-
-function restoreEventNatLabels() {
-  const nat20Label = els.eventNat20.parentElement?.querySelector('span');
-  if (nat20Label) {
-    nat20Label.textContent = 'Nat 20 — gegarandeerd slagen · dubbele basisstap · +1 HP';
-  }
-  const nat1Label = els.eventNat1.parentElement?.querySelector('span');
-  if (nat1Label) {
-    nat1Label.textContent = 'Nat 1 — geen beweging · −1 HP · beurt voorbij · volgende beurt overslaan';
-  }
 }
 
 function populateBossModal() {
@@ -746,7 +760,6 @@ function populateBossModal() {
 
   removeAmbushModalExtras();
   els.eventCard?.classList.remove('event-card--ambush');
-  restoreEventNatLabels();
 
   els.eventIcon.textContent = config.icon || '🛡️';
   els.eventSpace.textContent = 'Eindbaas';
@@ -760,10 +773,7 @@ function populateBossModal() {
 
   els.eventDiceInput.min = '1';
   els.eventDiceInput.removeAttribute('max');
-  els.eventDiceInput.placeholder = 'totaal';
-  els.eventRollArea.querySelector('.event-card__roll-hint').textContent =
-    'Val de eindbaas aan — vul je totale worp in (D20 + modifiers)';
-
+  els.eventDiceInput.placeholder = '—';
   els.eventNat20.checked = false;
   els.eventNat20.disabled = false;
   els.eventNat1.checked = false;
@@ -867,19 +877,7 @@ function populateAmbushModal() {
 
   els.eventDiceInput.min = '1';
   els.eventDiceInput.removeAttribute('max');
-  els.eventDiceInput.placeholder = 'totaal';
-  els.eventRollArea.querySelector('.event-card__roll-hint').textContent =
-    'Vecht om vrij te komen — vul je totale worp in (D20 + modifiers)';
-
-  const nat20Label = els.eventNat20.parentElement?.querySelector('span');
-  if (nat20Label) {
-    nat20Label.textContent = 'Nat 20 — gegarandeerd slagen · ambusher −1 HP';
-  }
-  const nat1Label = els.eventNat1.parentElement?.querySelector('span');
-  if (nat1Label) {
-    nat1Label.textContent = 'Nat 1 — mis · −1 HP (geen extra straf in de put)';
-  }
-
+  els.eventDiceInput.placeholder = '—';
   els.eventNat20.checked = false;
   els.eventNat20.disabled = false;
   els.eventNat1.checked = false;
@@ -908,7 +906,7 @@ function showAmbushModal(onComplete) {
   activeEvent = null;
 
   els.eventModal.classList.remove('hidden');
-  document.body.classList.add('modal-open');
+  syncModalScrollLock();
   populateAmbushModal();
   updateAmbushPanel();
 
@@ -926,7 +924,7 @@ function showBossModal(onComplete) {
   activeAmbush = null;
 
   els.eventModal.classList.remove('hidden');
-  document.body.classList.add('modal-open');
+  syncModalScrollLock();
   populateBossModal();
   updateBossPanel();
 
@@ -961,7 +959,7 @@ function handleAmbushSubmit() {
     els.eventResult.classList.remove('hidden');
     els.eventResult.className = 'event-card__result event-card__result--fail';
     els.eventResult.innerHTML =
-      '<strong>Ongeldige worp</strong><p>Vul een geheel getal ≥ 1 in, of vink Nat 1 / Nat 20 aan.</p>';
+      '<strong>Ongeldige worp</strong><p>Vul een worp in, of kies Kritiek succes / Kritiek mislukking.</p>';
     return;
   }
 
@@ -971,9 +969,9 @@ function handleAmbushSubmit() {
   const isNat1 = !nat20 && (nat1 || roll === 1);
   const success = !isNat1 && (nat20 || (roll !== null && roll >= effectiveDc));
   const rollLabel = nat20
-    ? (roll != null ? `${roll} — Nat 20!` : 'Nat 20!')
+    ? (roll != null ? `${roll} — Kritiek succes!` : 'Kritiek succes!')
     : isNat1
-      ? (roll != null ? `${roll} — Nat 1!` : 'Nat 1!')
+      ? (roll != null ? `${roll} — Kritiek mislukking!` : 'Kritiek mislukking!')
       : String(roll ?? '—');
   const dcDisplay = formatDcDisplay(config.dc, player);
 
@@ -1013,10 +1011,13 @@ function handleAmbushSubmit() {
 
   els.eventResult.classList.remove('hidden');
   els.eventResult.className = `event-card__result event-card__result--${success ? 'success' : 'fail'}`;
+  const hpHtml = buildResultHpHtml(result.events, game.currentPlayer);
+
   els.eventResult.innerHTML = `
     <div class="result-roll">🎲 ${rollLabel}</div>
     <div class="result-vs">vs DC ${dcDisplay}</div>
     <p class="result-effect">${effectText}</p>
+    ${hpHtml}
   `;
 
   finishAmbushFight(onComplete);
@@ -1025,7 +1026,6 @@ function handleAmbushSubmit() {
 
 /** Sluit put-modal van vorige speler; daarna advanceTurn opent zo nodig gevecht voor volgende speler in de put. */
 function finishAmbushFight(onComplete) {
-  restoreEventNatLabels();
   closeEventModal();
   onComplete?.();
 }
@@ -1044,7 +1044,7 @@ function handleBossSubmit() {
     els.eventResult.classList.remove('hidden');
     els.eventResult.className = 'event-card__result event-card__result--fail';
     els.eventResult.innerHTML =
-      '<strong>Ongeldige worp</strong><p>Vul een geheel getal ≥ 1 in, of vink Nat 1 / Nat 20 aan.</p>';
+      '<strong>Ongeldige worp</strong><p>Vul een worp in, of kies Kritiek succes / Kritiek mislukking.</p>';
     return;
   }
 
@@ -1054,9 +1054,9 @@ function handleBossSubmit() {
   const isNat1 = !nat20 && (nat1 || roll === 1);
   const success = !isNat1 && (nat20 || (roll !== null && roll >= effectiveDc));
   const rollLabel = nat20
-    ? (roll != null ? `${roll} — Nat 20!` : 'Nat 20!')
+    ? (roll != null ? `${roll} — Kritiek succes!` : 'Kritiek succes!')
     : isNat1
-      ? (roll != null ? `${roll} — Nat 1!` : 'Nat 1!')
+      ? (roll != null ? `${roll} — Kritiek mislukking!` : 'Kritiek mislukking!')
       : String(roll ?? '—');
   const dcDisplay = formatDcDisplay(config.dc, player);
 
@@ -1095,12 +1095,15 @@ function handleBossSubmit() {
     effectText += ` · terug naar vak ${result.retreatedTo} — loop opnieuw naar 62/63 om aan te vallen`;
   }
 
+  const bossHpHtml = buildResultHpHtml(result.events, game.currentPlayer);
+
   els.eventResult.classList.remove('hidden');
   els.eventResult.className = `event-card__result event-card__result--${success ? 'success' : 'fail'}`;
   els.eventResult.innerHTML = `
     <div class="result-roll">🎲 ${rollLabel}</div>
     <div class="result-vs">vs DC ${dcDisplay}</div>
     <p class="result-effect">${effectText}</p>
+    ${bossHpHtml}
   `;
 
   if (result.winner) {
@@ -1123,13 +1126,11 @@ function showPathModal(config, spaceNum, onComplete) {
   els.pathFlavor.textContent = config.flavor;
 
   els.pathModal.classList.remove('hidden');
-  document.body.classList.add('modal-open');
+  syncModalScrollLock();
 
   const onClose = () => {
     els.pathModal.classList.add('hidden');
-    if (els.eventModal.classList.contains('hidden') && els.winModal.classList.contains('hidden')) {
-      document.body.classList.remove('modal-open');
-    }
+    syncModalScrollLock();
     onComplete?.();
   };
 
@@ -1185,7 +1186,7 @@ function showEventModal(config, spaceNum, onComplete) {
   activeAmbush = null;
 
   els.eventModal.classList.remove('hidden');
-  document.body.classList.add('modal-open');
+  syncModalScrollLock();
   populateEventModal(config, spaceNum);
 
   setTimeout(() => els.eventDiceInput.focus(), 100);
@@ -1208,22 +1209,14 @@ function endEventTurn(onComplete) {
 }
 
 function formatEventMoveResult(result) {
-  if (result.nat1) {
-    return 'Nat 1 — geen beweging · −1 HP · beurt voorbij · volgende beurt overslaan';
-  }
+  if (result.nat1) return 'Kritiek mislukking! Beurt voorbij.';
 
-  if (result.passTurn) {
-    return 'Geen beweging · beurt voorbij · DC-streak reset';
-  }
+  if (result.passTurn) return 'Mislukt — beurt voorbij.';
 
   const b = result.moveBreakdown;
-  const roll = result.overshootRoll ?? '—';
-  const dc = result.effectiveDc ?? '—';
-  let text = b
-    ? `${b.total} vakje(s) (${b.base} basis + ${b.extra} overshoot, roll ${roll} vs DC ${dc})`
-    : `${result.moveSteps} vakje(s) vooruit`;
-
-  if (result.nat20) text += ' · Nat 20: dubbele basisstap · +1 HP';
+  const steps = b?.total ?? result.moveSteps ?? 0;
+  let text = `${steps} vakje(s) vooruit`;
+  if (result.nat20) text += ' · Kritiek succes!';
 
   const p = game.currentPlayer;
   const streakBonus = getDcBonus(p);
@@ -1278,7 +1271,7 @@ function handleEventSubmit() {
     els.eventResult.classList.remove('hidden');
     els.eventResult.className = 'event-card__result event-card__result--fail';
     els.eventResult.innerHTML =
-      '<strong>Ongeldige worp</strong><p>Vul een geheel getal ≥ 1 in (totaal met modifiers), of vink Nat 1 / Nat 20 aan.</p>';
+      '<strong>Ongeldige worp</strong><p>Vul een worp in, of kies Kritiek succes / Kritiek mislukking.</p>';
     return;
   }
 
@@ -1288,9 +1281,9 @@ function handleEventSubmit() {
   const isNat1 = !nat20 && (nat1 || roll === 1);
   const success = !isNat1 && (nat20 || (roll !== null && roll >= effectiveDc));
   const rollLabel = nat20
-    ? (roll != null ? `${roll} — Nat 20!` : 'Nat 20!')
+    ? (roll != null ? `${roll} — Kritiek succes!` : 'Kritiek succes!')
     : isNat1
-      ? (roll != null ? `${roll} — Nat 1!` : 'Nat 1!')
+      ? (roll != null ? `${roll} — Kritiek mislukking!` : 'Kritiek mislukking!')
       : String(roll ?? '—');
   const dcDisplay = formatDcDisplay(config.dc, player);
 
@@ -1313,10 +1306,13 @@ function handleEventSubmit() {
   showEventOutcomeInHeader(success, config);
   els.eventResult.classList.remove('hidden');
   els.eventResult.className = `event-card__result event-card__result--${success ? 'success' : 'fail'}`;
+  const hpHtml = buildResultHpHtml(result.events, game.currentPlayer);
+
   els.eventResult.innerHTML = `
     <div class="result-roll">🎲 ${rollLabel}</div>
     <div class="result-vs">vs DC ${dcDisplay}</div>
     <p class="result-effect">${formatEventMoveResult(result)}</p>
+    ${hpHtml}
   `;
 
   if (result.winner) {
@@ -1395,7 +1391,7 @@ els.eventClose.addEventListener('click', () => {
 
 function showWinModal(winner) {
   els.winModal.classList.remove('hidden');
-  document.body.classList.add('modal-open');
+  syncModalScrollLock();
   els.winTitle.textContent = '🏆 Overwinning!';
   els.winText.textContent = `${winner.name} heeft de Draken-schat bereikt en wint het avontuur!`;
 }
@@ -1449,9 +1445,17 @@ els.diceInput.addEventListener('keydown', (e) => {
 els.hpMinusBtn.addEventListener('click', () => adjustCurrentPlayerHp(-1));
 els.hpPlusBtn.addEventListener('click', () => adjustCurrentPlayerHp(1));
 
+els.rulesOpenBtn?.addEventListener('click', showRulesModal);
+els.legendRulesLink?.addEventListener('click', showRulesModal);
+els.rulesCloseBtn?.addEventListener('click', closeRulesModal);
+els.rulesCloseBottom?.addEventListener('click', closeRulesModal);
+els.rulesModal?.addEventListener('click', (e) => {
+  if (e.target === els.rulesModal) closeRulesModal();
+});
+
 els.winClose.addEventListener('click', () => {
   els.winModal.classList.add('hidden');
-  document.body.classList.remove('modal-open');
+  syncModalScrollLock();
   game.reset();
   if (typeof rebuildBoard === 'function') rebuildBoard();
   els.gameLog.innerHTML = '';

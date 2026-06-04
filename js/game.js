@@ -4,6 +4,10 @@ const PATH_SPACES = 62;
 const BOARD_SIZE = 9;
 const DEFAULT_HP = 3;
 
+/** Geslaagde event-check: basisstappen + overshoot (alleen tunen in code) */
+const BASE_SUCCESS_STEPS = 1;
+const OVERSHOOT_DIVISOR = 2;
+
 function isCenterCell(r, c) {
   const start = Math.floor(BOARD_SIZE / 2) - 1;
   return r >= start && r <= start + 2 && c >= start && c <= start + 2;
@@ -72,6 +76,27 @@ function randomSteps1to3() {
   return Math.floor(Math.random() * 3) + 1;
 }
 
+/**
+ * Stappen na geslaagde event-check (vóór movementBonus / finish-bounce).
+ * @param {number|null} roll — totale worp; bij alleen Nat 20-checkbox → 20 voor overshoot
+ */
+function calcEventSuccessSteps(roll, effectiveDc, options = {}) {
+  const { nat20 = false } = options;
+  const overshootRoll = roll ?? (nat20 ? 20 : 0);
+  const base = nat20 ? BASE_SUCCESS_STEPS * 2 : BASE_SUCCESS_STEPS;
+  const overshoot = Math.max(0, overshootRoll - effectiveDc);
+  const extra = Math.floor(overshoot / OVERSHOOT_DIVISOR);
+  const total = base + extra;
+  return {
+    base,
+    extra,
+    overshoot,
+    divisor: OVERSHOOT_DIVISOR,
+    total,
+    overshootRoll,
+  };
+}
+
 function applyMovementBonus(player, steps) {
   if (steps <= 0) return steps;
   return steps + (player.movementBonus ?? 0);
@@ -81,7 +106,7 @@ function getDcBonus(player) {
   return player?.dcStreak ?? 0;
 }
 
-/** Eenmalige modifier op de volgende check (bijv. −2 na Nat 20) */
+/** Eenmalige modifier op de volgende check */
 function getDcModifier(player) {
   return player?.nextDcMod ?? 0;
 }
@@ -106,7 +131,6 @@ class Game {
     this.layout = buildSpiralLayout();
     this.spacePositions = buildSpacePositions(this.layout);
     this.pendingExtraTurn = false;
-    this.skipNextTurn = false;
     this.gameOver = false;
     this.winner = null;
   }
@@ -122,6 +146,7 @@ class Game {
       movementBonus: 0,
       dcStreak: 0,
       nextDcMod: 0,
+      skipNextTurn: false,
     });
   }
 
@@ -355,14 +380,15 @@ class Game {
   }
 
   resolveEvent(roll, config, options = {}) {
-    const { nat20 = false } = options;
+    const { nat20 = false, nat1 = false } = options;
     const player = this.currentPlayer;
     const dcModApplied = player.nextDcMod ?? 0;
     player.nextDcMod = 0;
 
     const dcBonus = getDcBonus(player);
     const effectiveDc = Math.max(1, config.dc + dcBonus + dcModApplied);
-    const success = nat20 || (roll != null && roll >= effectiveDc);
+    const isNat1 = !nat20 && (nat1 || roll === 1);
+    const success = !isNat1 && (nat20 || (roll != null && roll >= effectiveDc));
 
     const events = [{
       type: 'd20',
@@ -375,31 +401,60 @@ class Game {
       ability: config.ability,
       success,
       nat20,
+      nat1: isNat1,
       player: player.name,
     }];
 
+    if (isNat1) {
+      player.dcStreak = 0;
+      events.push({ type: 'dc-streak-reset', player: player.name });
+      events.push({ type: 'nat1', player: player.name });
+      events.push(...this.mutateHp(player, -1));
+      player.skipNextTurn = true;
+      events.push({ type: 'pass-turn', player: player.name });
+      return {
+        events,
+        winner: null,
+        needsEvent: false,
+        needsPath: false,
+        eventConfig: null,
+        pathConfig: null,
+        passTurn: true,
+        moveSteps: 0,
+        moveDirection: null,
+        nat20: false,
+        nat1: true,
+        effectiveDc,
+      };
+    }
+
     if (success) {
-      const steps = randomSteps1to3();
+      const overshootRoll = roll ?? (nat20 ? 20 : 0);
+      const breakdown = calcEventSuccessSteps(roll, effectiveDc, { nat20 });
+      const steps = breakdown.total;
+
+      events.push({
+        type: 'event-steps',
+        ...breakdown,
+        effectiveDc,
+        overshootRoll,
+        player: player.name,
+      });
 
       if (nat20) {
-        player.dcStreak = 0;
-        player.nextDcMod = -2;
-        events.push({
-          type: 'nat20',
-          nextDcMod: -2,
-          player: player.name,
-        });
-      } else {
-        const prevStreak = player.dcStreak;
-        player.dcStreak = prevStreak + 1;
-        events.push({
-          type: 'dc-streak',
-          from: prevStreak,
-          to: player.dcStreak,
-          nextBonus: getDcBonus(player),
-          player: player.name,
-        });
+        events.push({ type: 'nat20', player: player.name });
+        events.push(...this.mutateHp(player, 1));
       }
+
+      const prevStreak = player.dcStreak;
+      player.dcStreak = prevStreak + 1;
+      events.push({
+        type: 'dc-streak',
+        from: prevStreak,
+        to: player.dcStreak,
+        nextBonus: getDcBonus(player),
+        player: player.name,
+      });
 
       const moveResult = this.moveAfterEvent(player, steps, events, true);
       return {
@@ -411,52 +466,68 @@ class Game {
         pathConfig: moveResult.pathConfig,
         passTurn: false,
         moveSteps: steps,
+        moveBreakdown: breakdown,
         moveDirection: 'forward',
         nat20,
+        nat1: false,
+        effectiveDc,
+        overshootRoll,
       };
     }
 
     player.dcStreak = 0;
-    const steps = randomSteps1to3();
     events.push({ type: 'dc-streak-reset', player: player.name });
     events.push({ type: 'pass-turn', player: player.name });
-
-    const moveResult = this.moveAfterEvent(player, -steps, events, false);
     return {
       events,
-      winner: moveResult.winner,
+      winner: null,
       needsEvent: false,
       needsPath: false,
       eventConfig: null,
       pathConfig: null,
       passTurn: true,
-      moveSteps: steps,
-      moveDirection: 'back',
+      moveSteps: 0,
+      moveDirection: null,
+      nat20: false,
+      nat1: false,
+      effectiveDc,
     };
   }
 
+  /**
+   * @returns {{ skippedPlayer: string|null }}
+   */
   nextTurn() {
-    if (this.gameOver) return;
+    if (this.gameOver) return { skippedPlayer: null };
 
     if (this.pendingExtraTurn) {
       this.pendingExtraTurn = false;
-      return;
+      return { skippedPlayer: null };
     }
 
-    if (this.skipNextTurn) {
-      this.skipNextTurn = false;
+    if (this.players.length === 0) return { skippedPlayer: null };
+
+    const n = this.players.length;
+    let skippedPlayer = null;
+
+    for (let i = 0; i < n; i++) {
+      this.currentIndex = (this.currentIndex + 1) % n;
+      const p = this.players[this.currentIndex];
+      if (p.skipNextTurn) {
+        p.skipNextTurn = false;
+        skippedPlayer = p.name;
+        continue;
+      }
+      break;
     }
 
-    if (this.players.length === 0) return;
-
-    this.currentIndex = (this.currentIndex + 1) % this.players.length;
+    return { skippedPlayer };
   }
 
   reset() {
     this.players = [];
     this.currentIndex = 0;
     this.pendingExtraTurn = false;
-    this.skipNextTurn = false;
     this.gameOver = false;
     this.winner = null;
   }
@@ -473,4 +544,7 @@ window.isCenterCell = isCenterCell;
 window.isCenterCovered = isCenterCovered;
 window.getCenterAnchor = getCenterAnchor;
 window.applyMovementBonus = applyMovementBonus;
+window.calcEventSuccessSteps = calcEventSuccessSteps;
+window.BASE_SUCCESS_STEPS = BASE_SUCCESS_STEPS;
+window.OVERSHOOT_DIVISOR = OVERSHOOT_DIVISOR;
 window.DEFAULT_HP = DEFAULT_HP;

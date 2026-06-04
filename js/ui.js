@@ -32,6 +32,7 @@ const els = {
   eventRollArea: document.getElementById('event-roll-area'),
   eventDiceInput: document.getElementById('event-dice-input'),
   eventNat20: document.getElementById('event-nat20'),
+  eventNat1: document.getElementById('event-nat1'),
   eventSubmit: document.getElementById('event-submit'),
   eventResult: document.getElementById('event-result'),
   eventClose: document.getElementById('event-close'),
@@ -318,7 +319,7 @@ function describeEvents(events) {
           if (ev.dcMod) bits.push(`${ev.dcMod > 0 ? '+' : ''}${ev.dcMod}`);
           dcLabel = `${ev.effectiveDc} (${bits.join(', ')})`;
         }
-        const nat = ev.nat20 ? ' · Nat 20!' : '';
+        const nat = ev.nat20 ? ' · Nat 20!' : ev.nat1 ? ' · Nat 1!' : '';
         addLog(
           `${ev.ability} check: ${ev.roll ?? '—'} vs DC ${dcLabel} — ${ev.success ? 'Geslaagd!' : 'Mislukt!'}${nat}`,
           ev.success ? 'success' : 'fail',
@@ -326,7 +327,16 @@ function describeEvents(events) {
         break;
       }
       case 'nat20':
-        addLog(`${ev.player}: Nat 20! DC-streak reset · volgende check ${ev.nextDcMod} DC`, 'success');
+        addLog(`${ev.player}: Nat 20! +1 HP · dubbele basisstap bij beweging`, 'success');
+        break;
+      case 'nat1':
+        addLog(`${ev.player}: Nat 1! −1 HP · beurt voorbij · volgende beurt overslaan`, 'fail');
+        break;
+      case 'event-steps':
+        addLog(
+          `${ev.player}: ${ev.total} vakje(s) (${ev.base} basis + ${ev.extra} overshoot, roll ${ev.overshootRoll} vs DC ${ev.effectiveDc})`,
+          'success',
+        );
         break;
       case 'path':
         addLog(`${ev.player}: ${ev.icon} ${ev.name} — rustig pad`, 'special');
@@ -421,6 +431,8 @@ function populateEventModal(config, spaceNum) {
   els.eventDiceInput.value = '';
   els.eventNat20.checked = false;
   els.eventNat20.disabled = false;
+  els.eventNat1.checked = false;
+  els.eventNat1.disabled = false;
   els.eventResult.className = 'event-card__result hidden';
   els.eventRollArea.classList.remove('is-hidden');
   els.eventClose.disabled = true;
@@ -476,8 +488,7 @@ function continueAfterLand(result, onComplete) {
     const spaceNum = result.events.find((e) => e.type === 'path')?.spaceNum
       ?? game.currentPlayer?.position;
     showPathModal(result.pathConfig, spaceNum, onComplete ?? (() => {
-      game.nextTurn();
-      renderPlayers();
+      advanceTurn();
     }));
     return;
   }
@@ -487,8 +498,7 @@ function continueAfterLand(result, onComplete) {
     return;
   }
 
-  game.nextTurn();
-  renderPlayers();
+  advanceTurn();
 }
 
 function showEventModal(config, spaceNum, onComplete) {
@@ -505,6 +515,7 @@ function finishEventFlow(onClose) {
   els.eventSubmit.disabled = true;
   els.eventDiceInput.disabled = true;
   els.eventNat20.disabled = true;
+  els.eventNat1.disabled = true;
   els.eventClose.disabled = false;
   els.eventClose.textContent = onClose?.chainLabel ?? 'Doorgaan op avontuur';
   activeEvent.onClose = onClose?.handler;
@@ -512,31 +523,46 @@ function finishEventFlow(onClose) {
 }
 
 function endEventTurn(onComplete) {
-  game.nextTurn();
-  renderPlayers();
+  advanceTurn();
   onComplete?.();
 }
 
 function formatEventMoveResult(result) {
-  const steps = result.moveSteps;
-  const dir = result.moveDirection === 'back' ? 'terug' : 'vooruit';
-  let text = `${steps} vakje(s) ${dir}`;
-  if (result.passTurn) {
-    text += ' · beurt voorbij · DC-streak reset';
-  } else {
-    const p = game.currentPlayer;
-    if (result.nat20) {
-      text += ' · DC-streak reset · volgende check −2 DC';
-    } else {
-      const bonus = getDcBonus(p);
-      const mod = getDcModifier(p);
-      if (bonus) text += ` · volgende check +${bonus} DC`;
-      if (mod) text += ` · volgende check ${mod} DC`;
-    }
-    if (result.needsEvent) text += ' · nog een event!';
-    if (result.needsPath) text += ' · rustig pad!';
+  if (result.nat1) {
+    return 'Nat 1 — geen beweging · −1 HP · beurt voorbij · volgende beurt overslaan';
   }
+
+  if (result.passTurn) {
+    return 'Geen beweging · beurt voorbij · DC-streak reset';
+  }
+
+  const b = result.moveBreakdown;
+  const roll = result.overshootRoll ?? '—';
+  const dc = result.effectiveDc ?? '—';
+  let text = b
+    ? `${b.total} vakje(s) (${b.base} basis + ${b.extra} overshoot, roll ${roll} vs DC ${dc})`
+    : `${result.moveSteps} vakje(s) vooruit`;
+
+  if (result.nat20) text += ' · Nat 20: dubbele basisstap · +1 HP';
+
+  const p = game.currentPlayer;
+  const streakBonus = getDcBonus(p);
+  if (streakBonus) text += ` · volgende check +${streakBonus} DC`;
+  const mod = getDcModifier(p);
+  if (mod) text += ` · volgende check ${mod} DC`;
+
+  if (result.needsEvent) text += ' · nog een event!';
+  if (result.needsPath) text += ' · rustig pad!';
+
   return text;
+}
+
+function advanceTurn() {
+  const { skippedPlayer } = game.nextTurn();
+  if (skippedPlayer) {
+    addLog(`${skippedPlayer} slaat een beurt over`, 'warn');
+  }
+  renderPlayers();
 }
 
 function handleEventSubmit() {
@@ -545,28 +571,32 @@ function handleEventSubmit() {
   const { config, onComplete } = activeEvent;
   const player = game.currentPlayer;
   const nat20 = els.eventNat20.checked;
+  const nat1 = els.eventNat1.checked;
   const roll = parseCheckTotal(els.eventDiceInput.value);
 
-  if (roll === null && !nat20) {
+  if (roll === null && !nat20 && !nat1) {
     els.eventResult.classList.remove('hidden');
     els.eventResult.className = 'event-card__result event-card__result--fail';
     els.eventResult.innerHTML =
-      '<strong>Ongeldige worp</strong><p>Vul een geheel getal ≥ 1 in (totaal met modifiers), of vink Nat 20 aan.</p>';
+      '<strong>Ongeldige worp</strong><p>Vul een geheel getal ≥ 1 in (totaal met modifiers), of vink Nat 1 / Nat 20 aan.</p>';
     return;
   }
 
   activeEvent.submitted = true;
 
   const effectiveDc = getEffectiveDc(player, config.dc);
-  const success = nat20 || (roll !== null && roll >= effectiveDc);
+  const isNat1 = !nat20 && (nat1 || roll === 1);
+  const success = !isNat1 && (nat20 || (roll !== null && roll >= effectiveDc));
   const rollLabel = nat20
     ? (roll != null ? `${roll} — Nat 20!` : 'Nat 20!')
-    : String(roll);
+    : isNat1
+      ? (roll != null ? `${roll} — Nat 1!` : 'Nat 1!')
+      : String(roll ?? '—');
   const dcDisplay = formatDcDisplay(config.dc, player);
 
   let result;
   try {
-    result = game.resolveEvent(roll, config, { nat20 });
+    result = game.resolveEvent(roll, config, { nat20, nat1 });
     describeEvents(result.events);
     renderTokens();
     renderPlayers();
@@ -620,6 +650,13 @@ function handleEventSubmit() {
 
   finishEventFlow({ handler: () => endEventTurn(onComplete) });
 }
+
+els.eventNat20.addEventListener('change', () => {
+  if (els.eventNat20.checked) els.eventNat1.checked = false;
+});
+els.eventNat1.addEventListener('change', () => {
+  if (els.eventNat1.checked) els.eventNat20.checked = false;
+});
 
 els.eventSubmit.addEventListener('click', handleEventSubmit);
 els.eventDiceInput.addEventListener('keydown', (e) => {

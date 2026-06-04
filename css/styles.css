@@ -747,21 +747,30 @@ body.modal-open {
   gap: 0.75rem;
   align-items: stretch;
 }
-.event-card__nat20 {
+.event-card__nat-crits {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  margin-top: 0.75rem;
+}
+.event-card__nat-crit {
   display: flex;
   align-items: flex-start;
   gap: 0.5rem;
-  margin-top: 0.75rem;
   font-size: 0.9rem;
   color: rgba(255, 248, 220, 0.9);
   cursor: pointer;
   line-height: 1.35;
 }
-.event-card__nat20 input {
+.event-card__nat-crit input {
   margin-top: 0.2rem;
   width: 1.1rem;
   height: 1.1rem;
+  flex-shrink: 0;
   accent-color: #c9a227;
+}
+#event-nat1 {
+  accent-color: #a04040;
 }
 .event-card__roll-input input[type=number] {
   flex: 0 0 80px;

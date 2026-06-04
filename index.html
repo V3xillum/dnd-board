@@ -54,7 +54,9 @@
       <div id="board" class="board"></div>
       <div class="legend">
         <p class="legend__heading">Legenda — kleur op het bord = type vakje</p>
-        <span class="legend-item legend-item--info">🎲 D20-check op event-vakjes</span>
+        <span class="legend-item legend-item--info">🎲 D20-check op event-vakjes — slagen: 1 basis + overshoot (÷2 boven DC); mislukken: beurt voorbij</span>
+        <span class="legend-item legend-item--info">⭐ Nat 20: slagen · dubbele basisstap · +1 HP</span>
+        <span class="legend-item legend-item--info">💀 Nat 1: −1 HP · beurt voorbij · volgende beurt overslaan</span>
         <span class="legend-item">
           <span class="legend-swatch legend-swatch--quiet" aria-hidden="true"></span>
           Rustig pad
@@ -120,10 +122,16 @@
             <input type="number" id="event-dice-input" min="1" placeholder="?" inputmode="numeric" aria-label="Totale worp">
             <button id="event-submit" class="btn btn--d20 btn--large">Bevestig worp</button>
           </div>
-          <label class="event-card__nat20">
-            <input type="checkbox" id="event-nat20">
-            <span>Nat 20 — DC-streak reset · volgende check −2 DC</span>
-          </label>
+          <div class="event-card__nat-crits">
+            <label class="event-card__nat-crit">
+              <input type="checkbox" id="event-nat20">
+              <span>Nat 20 — gegarandeerd slagen · dubbele basisstap · +1 HP</span>
+            </label>
+            <label class="event-card__nat-crit">
+              <input type="checkbox" id="event-nat1">
+              <span>Nat 1 — geen beweging · −1 HP · beurt voorbij · volgende beurt overslaan</span>
+            </label>
+          </div>
         </div>
 
         <div id="event-result" class="event-card__result hidden"></div>

@@ -26,16 +26,6 @@
       <section class="panel">
         <h2>Beurt</h2>
         <p id="current-player" class="current-player">Voeg spelers toe om te beginnen</p>
-        <div id="boss-panel" class="boss-panel hidden" aria-live="polite">
-          <div class="boss-panel__header">
-            <span id="boss-panel-icon" class="boss-panel__icon">🛡️</span>
-            <span id="boss-panel-name" class="boss-panel__name">Eindbaas</span>
-          </div>
-          <div class="boss-hp" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0">
-            <div id="boss-hp-fill" class="boss-hp__fill"></div>
-          </div>
-          <p id="boss-hp-label" class="boss-hp__label">0 / 0</p>
-        </div>
         <div id="hp-controls" class="hp-controls hp-controls--hidden">
           <span class="hp-controls__label">HP (handmatig)</span>
           <div class="hp-controls__row">
@@ -60,9 +50,10 @@
       </section>
     </aside>
 
-    <main class="board-area">
-      <div id="board" class="board"></div>
-      <div class="legend">
+    <div class="play-area">
+      <main class="board-area">
+        <div id="board" class="board"></div>
+        <div class="legend">
         <p class="legend__heading">Legenda — kleur op het bord = type vakje</p>
         <span class="legend-item legend-item--info">🎲 D20-check op event-vakjes — slagen: 1 basis + overshoot (÷2 boven DC); mislukken: beurt voorbij</span>
         <span class="legend-item legend-item--info">⭐ Nat 20: slagen · dubbele basisstap · +1 HP</span>
@@ -108,12 +99,30 @@
           Fey
         </span>
         <span class="legend-item">
+          <span class="legend-swatch legend-swatch--ambush" aria-hidden="true"></span>
+          Ambush — de put (1 worp/beurt, geen beweging)
+        </span>
+        <span class="legend-item">
           <span class="legend-swatch legend-swatch--boss" aria-hidden="true"></span>
           Eindbaas (vak 62)
         </span>
+        <span class="legend-item legend-item--info">🕳️ Ambush: vast op vak tot jij of de ambusher op 0 HP is — daarna normaal verder (geen tweede put op hetzelfde vak)</span>
         <span class="legend-item legend-item--info">⚔️ Eindbaas op 62/63: 1 aanval per beurt, daarna terug naar vak 56 — geen win tot de baas verslagen is</span>
-      </div>
-    </main>
+        </div>
+      </main>
+
+      <aside id="combat-rail" class="combat-rail hidden" aria-live="polite">
+        <header class="combat-rail__head">
+          <h2 class="combat-rail__title">Gevechten</h2>
+          <p class="combat-rail__tagline">Actieve vijanden op het bord</p>
+        </header>
+        <div id="combat-rail-boss" class="combat-rail__boss"></div>
+        <section id="combat-rail-pits-section" class="combat-rail__section hidden">
+          <h3 class="combat-rail__subtitle">Putten</h3>
+          <div id="ambush-pits-list" class="combat-rail__list"></div>
+        </section>
+      </aside>
+    </div>
   </div>
 
   <div id="event-modal" class="event-modal hidden" role="dialog" aria-modal="true">

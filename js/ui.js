@@ -40,11 +40,11 @@ const els = {
   winTitle: document.getElementById('win-title'),
   winText: document.getElementById('win-text'),
   winClose: document.getElementById('win-close'),
-  bossPanel: document.getElementById('boss-panel'),
-  bossPanelIcon: document.getElementById('boss-panel-icon'),
-  bossPanelName: document.getElementById('boss-panel-name'),
-  bossHpFill: document.getElementById('boss-hp-fill'),
-  bossHpLabel: document.getElementById('boss-hp-label'),
+  combatRail: document.getElementById('combat-rail'),
+  combatRailBoss: document.getElementById('combat-rail-boss'),
+  combatRailPitsSection: document.getElementById('combat-rail-pits-section'),
+  ambushPitsList: document.getElementById('ambush-pits-list'),
+  eventCard: document.querySelector('#event-modal .event-card'),
 };
 
 function parseDiceRoll(value, min, max = null) {
@@ -76,6 +76,7 @@ const EVENT_CATEGORY_CLASS = {
   wild: 'cell--wild',
   fey: 'cell--fey',
   boss: 'cell--boss',
+  ambush: 'cell--ambush',
 };
 
 function applyCellStyle(cell, special, num) {
@@ -246,21 +247,138 @@ function adjustCurrentPlayerHp(delta) {
   updateTurnUI();
 }
 
-function updateBossPanel() {
-  if (!game.bossActive || !game.bossConfig) {
-    els.bossPanel.classList.add('hidden');
+function renderCombatPlayerChips(playerIds, options = {}) {
+  const { arenaFilter = null } = options;
+  const cp = game.currentPlayer;
+
+  return playerIds
+    .map((id) => {
+      const p = game.players.find((pl) => pl.id === id);
+      if (!p) return '';
+      const active = cp && id === cp.id;
+      const onArena = arenaFilter ? arenaFilter(p) : false;
+      const classes = ['combat-card__player'];
+      if (active) classes.push('combat-card__player--active');
+      if (onArena) classes.push('combat-card__player--arena');
+      const marker = onArena ? ' <span aria-hidden="true">🎯</span>' : '';
+      return `<span class="${classes.join(' ')}" style="border-color:${p.color}99;color:${p.color}">${escapeAttr(p.name)}${marker}</span>`;
+    })
+    .join('');
+}
+
+function renderBossCombatCard() {
+  if (!game.bossActive || !game.bossConfig) return '';
+
+  const { bossConfig, bossHp, bossMaxHp } = game;
+  const cp = game.currentPlayer;
+  const pct = bossMaxHp > 0 ? Math.round((bossHp / bossMaxHp) * 100) : 0;
+  const yourTurn = cp && isOnBossArena(cp.position);
+  const allIds = game.players.map((p) => p.id);
+  const playersHtml = renderCombatPlayerChips(allIds, {
+    arenaFilter: (p) => isOnBossArena(p.position),
+  });
+
+  return `
+    <article class="combat-card combat-card--boss${yourTurn ? ' combat-card--your-turn' : ''}">
+      <span class="combat-card__badge combat-card__badge--boss">⚔️ Eindbaas</span>
+      <div class="combat-card__header">
+        <span class="combat-card__icon combat-card__icon--boss">${bossConfig.icon || '🛡️'}</span>
+        <div class="combat-card__meta">
+          <span class="combat-card__name">${escapeAttr(bossConfig.name)}</span>
+          <span class="combat-card__space">Vak 62 / 63 · gedeelde schade</span>
+        </div>
+      </div>
+      <div class="boss-hp" role="progressbar" aria-valuenow="${pct}" aria-valuemin="0" aria-valuemax="100">
+        <div class="boss-hp__fill" style="width:${pct}%"></div>
+      </div>
+      <p class="combat-card__hp-label">Nog ${bossHp} / ${bossMaxHp} schade te lijden</p>
+      <span class="combat-card__fighters-label">Gezelschap</span>
+      <div class="combat-card__players">${playersHtml}</div>
+      <p class="combat-card__hint">🎯 = op de drempel (62/63) · na aanval terug naar kamp (56)</p>
+      ${yourTurn ? '<p class="combat-card__turn">⚔️ Jij bent aan de beurt — aanvallen!</p>' : ''}
+    </article>
+  `;
+}
+
+function getActiveAmbushPits() {
+  return Object.entries(game.ambushPits)
+    .filter(([, pit]) => pit.hp > 0 && pit.playerIds.length > 0)
+    .map(([spaceNum, pit]) => ({
+      spaceNum: Number(spaceNum),
+      config: pit.config,
+      hp: pit.hp,
+      maxHp: pit.maxHp,
+      playerIds: pit.playerIds,
+    }))
+    .sort((a, b) => a.spaceNum - b.spaceNum);
+}
+
+function updateCombatRail() {
+  if (!els.combatRail) return;
+
+  const pits = getActiveAmbushPits();
+  const hasBoss = game.bossActive && game.bossConfig;
+  const hasPits = pits.length > 0;
+
+  if (!hasBoss && !hasPits) {
+    els.combatRail.classList.add('hidden');
+    if (els.combatRailBoss) els.combatRailBoss.innerHTML = '';
+    if (els.ambushPitsList) els.ambushPitsList.innerHTML = '';
+    if (els.combatRailPitsSection) els.combatRailPitsSection.classList.add('hidden');
     return;
   }
 
-  const { bossConfig, bossHp, bossMaxHp } = game;
-  const pct = bossMaxHp > 0 ? Math.round((bossHp / bossMaxHp) * 100) : 0;
+  els.combatRail.classList.remove('hidden');
 
-  els.bossPanel.classList.remove('hidden');
-  els.bossPanelIcon.textContent = bossConfig.icon || '🛡️';
-  els.bossPanelName.textContent = bossConfig.name;
-  els.bossHpFill.style.width = `${pct}%`;
-  els.bossHpLabel.textContent = `Eindbaas: ${bossHp} / ${bossMaxHp} schade`;
-  els.bossPanel.querySelector('.boss-hp')?.setAttribute('aria-valuenow', String(pct));
+  if (els.combatRailBoss) {
+    els.combatRailBoss.innerHTML = hasBoss ? renderBossCombatCard() : '';
+  }
+
+  if (els.combatRailPitsSection && els.ambushPitsList) {
+    if (hasPits) {
+      els.combatRailPitsSection.classList.remove('hidden');
+      const cp = game.currentPlayer;
+      els.ambushPitsList.innerHTML = pits
+        .map((pit) => {
+          const { config, hp, maxHp, playerIds, spaceNum } = pit;
+          const pct = maxHp > 0 ? Math.round((hp / maxHp) * 100) : 0;
+          const yourTurn = cp != null && playerIds.includes(cp.id);
+          const playersHtml = renderCombatPlayerChips(playerIds);
+
+          return `
+            <article class="combat-card combat-card--pit${yourTurn ? ' combat-card--your-turn' : ''}">
+              <span class="combat-card__badge combat-card__badge--pit">🕳️ Put · vak ${spaceNum}</span>
+              <div class="combat-card__header">
+                <span class="combat-card__icon">${config.icon || '🕳️'}</span>
+                <div class="combat-card__meta">
+                  <span class="combat-card__name">${escapeAttr(config.name)}</span>
+                  <span class="combat-card__space">Samen vechten · gedeelde vijand-HP</span>
+                </div>
+              </div>
+              <div class="boss-hp ambush-hp" role="progressbar" aria-valuenow="${pct}" aria-valuemin="0" aria-valuemax="100">
+                <div class="boss-hp__fill ambush-hp__fill" style="width:${pct}%"></div>
+              </div>
+              <p class="combat-card__hp-label">Vijand: ${hp} / ${maxHp} HP</p>
+              <span class="combat-card__fighters-label">In dit gevecht</span>
+              <div class="combat-card__players">${playersHtml}</div>
+              ${yourTurn ? '<p class="combat-card__turn">⚔️ Jij bent aan de beurt — vecht!</p>' : ''}
+            </article>
+          `;
+        })
+        .join('');
+    } else {
+      els.combatRailPitsSection.classList.add('hidden');
+      els.ambushPitsList.innerHTML = '';
+    }
+  }
+}
+
+function updateBossPanel() {
+  updateCombatRail();
+}
+
+function updateAmbushPanel() {
+  updateCombatRail();
 }
 
 function bossHpBarHtml() {
@@ -280,6 +398,7 @@ function bossHpBarHtml() {
 function updateTurnUI() {
   const cp = game.currentPlayer;
   updateBossPanel();
+  updateAmbushPanel();
 
   if (game.gameOver) {
     els.currentPlayer.textContent = 'Spel afgelopen!';
@@ -302,12 +421,20 @@ function updateTurnUI() {
   if (game.bossActive && game.bossConfig) {
     turnText += ` — ⚔️ ${game.bossConfig.name}`;
   }
+  const ambushPit = game.getCurrentPlayerPit();
+  if (ambushPit) {
+    turnText += ` — 🕳️ ${ambushPit.config.name}`;
+  }
   els.currentPlayer.textContent = turnText;
   els.currentPlayer.style.color = cp.color;
 
-  const onBossArena = game.bossActive && cp && isOnBossArena(cp.position);
-  els.moveBtn.disabled = onBossArena;
-  els.diceInput.disabled = onBossArena;
+  const inAmbush = game.isCurrentPlayerInAmbush();
+  const onBossArena = !inAmbush && game.bossActive && cp && isOnBossArena(cp.position);
+  const modalNeedsInput =
+    document.body.classList.contains('modal-open')
+    && (activeAmbush !== null || activeBoss !== null || activeEvent !== null);
+  els.moveBtn.disabled = inAmbush || onBossArena || modalNeedsInput;
+  els.diceInput.disabled = inAmbush || onBossArena || modalNeedsInput;
   updateHpControls();
 }
 
@@ -460,6 +587,48 @@ function describeEvents(events) {
           'special',
         );
         break;
+      case 'ambush-start':
+        addLog(
+          `🕳️ ${ev.icon} ${ev.name} — ${ev.player} valt in de put op vak ${ev.spaceNum}! (${ev.ambushHp} HP)`,
+          'warn',
+        );
+        break;
+      case 'ambush-join':
+        addLog(
+          `🕳️ ${ev.player} valt bij ${ev.name} in de put op vak ${ev.spaceNum} (${ev.ambushHp} HP)${ev.allies?.length ? ` — al aanwezig: ${ev.allies.join(', ')}` : ''}`,
+          'warn',
+        );
+        break;
+      case 'ambush-d20': {
+        const nat = ev.nat20 ? ' · Nat 20!' : ev.nat1 ? ' · Nat 1!' : '';
+        addLog(
+          `Ambush ${ev.ambushName}: ${ev.ability} ${ev.roll ?? '—'} vs DC ${ev.effectiveDc} — ${ev.success ? 'succes' : 'faal'} — ambusher ${ev.ambushHp} HP, speler ${ev.playerHp} HP${nat}`,
+          ev.success ? 'success' : 'fail',
+        );
+        break;
+      }
+      case 'ambush-hit':
+        addLog(
+          `Treffer op ${ev.ambushName}! Nog ${ev.ambushHp} ambusher-HP · ${ev.player} op ${ev.playerHp} HP`,
+          'success',
+        );
+        break;
+      case 'ambush-end':
+        if (ev.success) {
+          const freed = ev.freedPlayers?.length ? ` — vrij: ${ev.freedPlayers.join(', ')}` : '';
+          addLog(
+            `🕳️ ${ev.ambushName} verslagen op vak ${ev.spaceNum}!${freed}`,
+            'success',
+          );
+        } else if (ev.pitContinues) {
+          addLog(
+            `🕳️ ${ev.player} valt uit in de put — ${ev.ambushName} blijft voor de anderen`,
+            'warn',
+          );
+        } else {
+          addLog(`🕳️ ${ev.player} valt uit in de put — ${ev.ambushName} wint de ronde`, 'warn');
+        }
+        break;
       default:
         break;
     }
@@ -487,6 +656,16 @@ function formatPlayerDcHint(player) {
 
 let activeEvent = null;
 let activeBoss = null;
+let activeAmbush = null;
+
+function removeCombatHpBars() {
+  els.eventCheck.querySelector('.event-card__boss-hp')?.remove();
+}
+
+function removeAmbushModalExtras() {
+  els.eventCheck.querySelector('.event-card__ambush-fighter-wrap')?.remove();
+  els.eventCard?.style.removeProperty('--ambush-fighter-color');
+}
 
 function resetEventHeader(config) {
   els.eventTitle.textContent = config.name;
@@ -505,8 +684,10 @@ function showEventOutcomeInHeader(success, config) {
 function populateEventModal(config, spaceNum) {
   const player = game.currentPlayer;
 
-  const existingBar = els.eventCheck.querySelector('.event-card__boss-hp');
-  if (existingBar) existingBar.remove();
+  removeCombatHpBars();
+  removeAmbushModalExtras();
+  els.eventCard?.classList.remove('event-card--ambush');
+  restoreEventNatLabels();
 
   els.eventIcon.textContent = config.icon || '🎲';
   els.eventSpace.textContent = `Vak ${spaceNum ?? '?'}`;
@@ -542,12 +723,30 @@ function closeEventModal() {
   }
   activeEvent = null;
   activeBoss = null;
+  activeAmbush = null;
+  els.eventCard?.classList.remove('event-card--ambush');
+  removeAmbushModalExtras();
+}
+
+function restoreEventNatLabels() {
+  const nat20Label = els.eventNat20.parentElement?.querySelector('span');
+  if (nat20Label) {
+    nat20Label.textContent = 'Nat 20 — gegarandeerd slagen · dubbele basisstap · +1 HP';
+  }
+  const nat1Label = els.eventNat1.parentElement?.querySelector('span');
+  if (nat1Label) {
+    nat1Label.textContent = 'Nat 1 — geen beweging · −1 HP · beurt voorbij · volgende beurt overslaan';
+  }
 }
 
 function populateBossModal() {
   const config = game.bossConfig;
   const player = game.currentPlayer;
   if (!config) return;
+
+  removeAmbushModalExtras();
+  els.eventCard?.classList.remove('event-card--ambush');
+  restoreEventNatLabels();
 
   els.eventIcon.textContent = config.icon || '🛡️';
   els.eventSpace.textContent = 'Eindbaas';
@@ -578,9 +777,142 @@ function populateBossModal() {
   els.eventDiceInput.disabled = false;
   els.eventDiceInput.value = '';
 
-  const existingBar = els.eventCheck.querySelector('.event-card__boss-hp');
-  if (existingBar) existingBar.remove();
+  removeCombatHpBars();
   els.eventCheck.insertAdjacentHTML('beforeend', bossHpBarHtml());
+}
+
+function ambushHpBarHtml() {
+  const pit = game.getCurrentPlayerPit();
+  const max = pit?.maxHp || 1;
+  const hp = pit?.hp ?? 0;
+  const pct = Math.round((hp / max) * 100);
+  return `
+    <div class="event-card__boss-hp">
+      <p class="event-card__boss-hp-label">Vijand in de put</p>
+      <div class="boss-hp ambush-hp" role="progressbar" aria-valuenow="${pct}" aria-valuemin="0" aria-valuemax="100">
+        <div class="boss-hp__fill ambush-hp__fill" style="width:${pct}%"></div>
+      </div>
+      <p class="boss-hp__label">Ambusher: ${hp} / ${max} HP</p>
+    </div>
+  `;
+}
+
+function ambushFighterPanelHtml(player, pit) {
+  const allies = pit.playerIds
+    .filter((id) => id !== player.id)
+    .map((id) => game.players.find((p) => p.id === id))
+    .filter(Boolean);
+
+  const alliesHtml = allies.length
+    ? `
+      <div class="ambush-modal__allies">
+        <span class="ambush-modal__allies-label">Ook in de put</span>
+        ${allies.map((a) => `
+          <div class="ambush-modal__ally" style="--ally-color:${a.color}">
+            <span class="ambush-modal__ally-dot" aria-hidden="true"></span>
+            <span class="ambush-modal__ally-name">${escapeAttr(a.name)}</span>
+            <span class="ambush-modal__ally-hp" title="${a.hp} / ${a.maxHp} HP">${formatPlayerHp(a)}</span>
+            <span class="ambush-modal__ally-hp-num">${a.hp}/${a.maxHp}</span>
+          </div>
+        `).join('')}
+      </div>`
+    : '';
+
+  return `
+    <div class="event-card__ambush-fighter-wrap">
+      <div class="ambush-modal__fighter" style="--fighter-color:${player.color}">
+        <div class="ambush-modal__fighter-accent" aria-hidden="true"></div>
+        <div class="ambush-modal__fighter-body">
+          <span class="ambush-modal__turn-badge">Aan de beurt</span>
+          <div class="ambush-modal__fighter-row">
+            <span class="ambush-modal__fighter-dot" aria-hidden="true"></span>
+            <div class="ambush-modal__fighter-meta">
+              <strong class="ambush-modal__fighter-name">${escapeAttr(player.name)}</strong>
+              <span class="ambush-modal__fighter-hp" title="${player.hp} / ${player.maxHp} HP">
+                <span class="ambush-modal__fighter-hearts">${formatPlayerHp(player)}</span>
+                <span class="ambush-modal__fighter-hp-num">${player.hp} / ${player.maxHp} HP</span>
+              </span>
+            </div>
+          </div>
+          <p class="ambush-modal__pit-note">Vecht uit de put op vak ${pit.spaceNum}${allies.length ? ' · samen met je bondgenoten' : ''}</p>
+        </div>
+      </div>
+      ${alliesHtml}
+    </div>
+  `;
+}
+
+function populateAmbushModal() {
+  const pit = game.getCurrentPlayerPit();
+  const player = game.currentPlayer;
+  if (!pit || !player) return;
+
+  const { config } = pit;
+
+  els.eventCard?.classList.add('event-card--ambush');
+  els.eventCard?.style.setProperty('--ambush-fighter-color', player.color);
+  els.eventIcon.textContent = config.icon || '🕳️';
+  els.eventSpace.textContent = `Vak ${player.position}`;
+  els.eventTitle.textContent = config.name;
+  els.eventTitle.className = 'event-card__title';
+  els.eventFlavor.textContent = config.flavor;
+  els.eventFlavor.className = 'event-card__flavor';
+
+  removeAmbushModalExtras();
+  els.eventCheck.insertAdjacentHTML('afterbegin', ambushFighterPanelHtml(player, pit));
+
+  els.eventAbility.textContent = config.ability;
+  els.eventDc.textContent = formatDcDisplay(config.dc, player);
+  els.eventCheck.classList.remove('is-hidden');
+
+  els.eventDiceInput.min = '1';
+  els.eventDiceInput.removeAttribute('max');
+  els.eventDiceInput.placeholder = 'totaal';
+  els.eventRollArea.querySelector('.event-card__roll-hint').textContent =
+    'Vecht om vrij te komen — vul je totale worp in (D20 + modifiers)';
+
+  const nat20Label = els.eventNat20.parentElement?.querySelector('span');
+  if (nat20Label) {
+    nat20Label.textContent = 'Nat 20 — gegarandeerd slagen · ambusher −1 HP';
+  }
+  const nat1Label = els.eventNat1.parentElement?.querySelector('span');
+  if (nat1Label) {
+    nat1Label.textContent = 'Nat 1 — mis · −1 HP (geen extra straf in de put)';
+  }
+
+  els.eventNat20.checked = false;
+  els.eventNat20.disabled = false;
+  els.eventNat1.checked = false;
+  els.eventNat1.disabled = false;
+  els.eventResult.className = 'event-card__result hidden';
+  els.eventRollArea.classList.remove('is-hidden');
+  els.eventClose.disabled = true;
+  els.eventClose.textContent = 'Doorgaan op avontuur';
+  els.eventSubmit.disabled = false;
+  els.eventSubmit.textContent = 'Vechten';
+  els.eventDiceInput.disabled = false;
+  els.eventDiceInput.value = '';
+
+  removeCombatHpBars();
+  els.eventCheck.insertAdjacentHTML('beforeend', ambushHpBarHtml());
+}
+
+function showAmbushModal(onComplete) {
+  if (!game.isCurrentPlayerInAmbush() || !game.getCurrentPlayerPit()) {
+    onComplete?.();
+    return;
+  }
+
+  activeAmbush = { onComplete, submitted: false };
+  activeBoss = null;
+  activeEvent = null;
+
+  els.eventModal.classList.remove('hidden');
+  document.body.classList.add('modal-open');
+  populateAmbushModal();
+  updateAmbushPanel();
+
+  setTimeout(() => els.eventDiceInput.focus(), 100);
 }
 
 function showBossModal(onComplete) {
@@ -591,6 +923,7 @@ function showBossModal(onComplete) {
 
   activeBoss = { onComplete, submitted: false };
   activeEvent = null;
+  activeAmbush = null;
 
   els.eventModal.classList.remove('hidden');
   document.body.classList.add('modal-open');
@@ -609,6 +942,92 @@ function finishBossFlow(onClose) {
   els.eventClose.textContent = onClose?.chainLabel ?? 'Doorgaan op avontuur';
   activeBoss.onClose = onClose?.handler;
   els.eventClose.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+}
+
+function handleAmbushSubmit() {
+  if (!activeAmbush || activeAmbush.submitted || !game.isCurrentPlayerInAmbush()) return;
+
+  const { onComplete } = activeAmbush;
+  const player = game.currentPlayer;
+  const pit = game.getCurrentPlayerPit();
+  const config = pit?.config;
+  if (!config) return;
+
+  const nat20 = els.eventNat20.checked;
+  const nat1 = els.eventNat1.checked;
+  const roll = parseCheckTotal(els.eventDiceInput.value);
+
+  if (roll === null && !nat20 && !nat1) {
+    els.eventResult.classList.remove('hidden');
+    els.eventResult.className = 'event-card__result event-card__result--fail';
+    els.eventResult.innerHTML =
+      '<strong>Ongeldige worp</strong><p>Vul een geheel getal ≥ 1 in, of vink Nat 1 / Nat 20 aan.</p>';
+    return;
+  }
+
+  activeAmbush.submitted = true;
+
+  const effectiveDc = getEffectiveDc(player, config.dc);
+  const isNat1 = !nat20 && (nat1 || roll === 1);
+  const success = !isNat1 && (nat20 || (roll !== null && roll >= effectiveDc));
+  const rollLabel = nat20
+    ? (roll != null ? `${roll} — Nat 20!` : 'Nat 20!')
+    : isNat1
+      ? (roll != null ? `${roll} — Nat 1!` : 'Nat 1!')
+      : String(roll ?? '—');
+  const dcDisplay = formatDcDisplay(config.dc, player);
+
+  let result;
+  try {
+    result = game.resolveAmbushRoll(roll, { nat20, nat1 });
+    describeEvents(result.events);
+    renderTokens();
+    renderPlayers();
+    updateAmbushPanel();
+    if (game.isCurrentPlayerInAmbush()) populateAmbushModal();
+  } catch (err) {
+    console.error(err);
+    els.eventResult.className = 'event-card__result event-card__result--fail';
+    els.eventResult.innerHTML = '<p>Kon de put niet verwerken.</p>';
+    finishAmbushFight(onComplete);
+    advanceTurn();
+    return;
+  }
+
+  els.eventRollArea.classList.add('is-hidden');
+  els.eventCheck.classList.add('is-hidden');
+  els.eventTitle.textContent = success ? 'Treffer!' : 'Mis!';
+  els.eventTitle.className = `event-card__title event-card__title--${success ? 'success' : 'fail'}`;
+  els.eventFlavor.textContent = success ? (config.successText || '') : (config.failText || '');
+  els.eventFlavor.className = `event-card__flavor event-card__flavor--outcome event-card__flavor--${success ? 'success' : 'fail'}`;
+
+  let effectText = success
+    ? `Ambusher verliest 1 HP — nog ${result.ambushHp} / ${result.ambushMaxHp}`
+    : 'Geen schade aan de ambusher · jij verliest 1 HP';
+
+  if (result.ambushEnded) {
+    effectText = success
+      ? 'De put is opgeheven — je mag weer dobbelstenen op dit vak!'
+      : 'Je valt uit — de put is voorbij · terug naar start';
+  }
+
+  els.eventResult.classList.remove('hidden');
+  els.eventResult.className = `event-card__result event-card__result--${success ? 'success' : 'fail'}`;
+  els.eventResult.innerHTML = `
+    <div class="result-roll">🎲 ${rollLabel}</div>
+    <div class="result-vs">vs DC ${dcDisplay}</div>
+    <p class="result-effect">${effectText}</p>
+  `;
+
+  finishAmbushFight(onComplete);
+  advanceTurn();
+}
+
+/** Sluit put-modal van vorige speler; daarna advanceTurn opent zo nodig gevecht voor volgende speler in de put. */
+function finishAmbushFight(onComplete) {
+  restoreEventNatLabels();
+  closeEventModal();
+  onComplete?.();
 }
 
 function handleBossSubmit() {
@@ -724,6 +1143,12 @@ function continueAfterLand(result, onComplete) {
     return;
   }
 
+  if (result.needsAmbush) {
+    updateAmbushPanel();
+    showAmbushModal(onComplete);
+    return;
+  }
+
   if (result.needsBoss) {
     updateBossPanel();
     showBossModal(onComplete);
@@ -756,6 +1181,8 @@ function continueAfterLand(result, onComplete) {
 
 function showEventModal(config, spaceNum, onComplete) {
   activeEvent = { config, spaceNum, onComplete, submitted: false, phase: 'd20' };
+  activeBoss = null;
+  activeAmbush = null;
 
   els.eventModal.classList.remove('hidden');
   document.body.classList.add('modal-open');
@@ -807,6 +1234,7 @@ function formatEventMoveResult(result) {
   if (result.needsEvent) text += ' · nog een event!';
   if (result.needsPath) text += ' · rustig pad!';
   if (result.needsBoss) text += ' · eindbaas!';
+  if (result.needsAmbush) text += ' · ambush-put!';
 
   return text;
 }
@@ -820,12 +1248,20 @@ function advanceTurn() {
   updateTurnUI();
 
   const cp = game.currentPlayer;
-  if (game.bossActive && !game.gameOver && cp && isOnBossArena(cp.position)) {
-    showBossModal();
+  if (!game.gameOver && cp) {
+    if (game.isCurrentPlayerInAmbush()) {
+      showAmbushModal();
+    } else if (game.bossActive && isOnBossArena(cp.position)) {
+      showBossModal();
+    }
   }
 }
 
 function handleEventSubmit() {
+  if (activeAmbush) {
+    handleAmbushSubmit();
+    return;
+  }
   if (activeBoss) {
     handleBossSubmit();
     return;
@@ -912,6 +1348,18 @@ function handleEventSubmit() {
     return;
   }
 
+  if (result.needsAmbush) {
+    finishEventFlow({
+      chainLabel: 'Ambush-put →',
+      handler: () => {
+        closeEventModal();
+        updateAmbushPanel();
+        showAmbushModal(onComplete);
+      },
+    });
+    return;
+  }
+
   if (result.needsBoss) {
     finishEventFlow({
       chainLabel: 'Eindbaas →',
@@ -940,7 +1388,7 @@ els.eventDiceInput.addEventListener('keydown', (e) => {
 });
 els.eventClose.addEventListener('click', () => {
   if (els.eventClose.disabled) return;
-  const handler = activeBoss?.onClose ?? activeEvent?.onClose;
+  const handler = activeAmbush?.onClose ?? activeBoss?.onClose ?? activeEvent?.onClose;
   closeEventModal();
   handler?.();
 });
@@ -1008,6 +1456,7 @@ els.winClose.addEventListener('click', () => {
   if (typeof rebuildBoard === 'function') rebuildBoard();
   els.gameLog.innerHTML = '';
   updateBossPanel();
+  updateAmbushPanel();
   renderBoard();
   renderPlayers();
   addLog('Nieuw avontuur — het bord is opnieuw geschud!');

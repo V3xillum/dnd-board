@@ -72,7 +72,7 @@ Na verplaatsing naar 62/63 tijdens actieve fight: `needsBoss` / event `boss-enga
 - `reset()` wist boss-state.
 
 ### `ui.js`
-- Sidebar: boss-HP-balk + naam/icon (`updateBossPanel()`).
+- Combat-rail rechts: eindbaas-kaart + putten (`updateCombatRail()` / `updateBossPanel()`).
 - Boss-modal: titel `⚔️ ${name}`, HP in modal, knop “Aanvallen”.
 - `advanceTurn()`: boss-modal alleen als speler op 62/63 staat.
 - Log-events: `boss-start`, `boss-guard`, `boss-engage`, `boss-d20`, `boss-hit`, `boss-defeated`, `boss-retreat`.
@@ -98,8 +98,10 @@ Na verplaatsing naar 62/63 tijdens actieve fight: `needsBoss` / event `boss-enga
 
 ## Bewust nog niet gebouwd
 - Boss-fases (bijv. +1 DC onder 50% boss HP)
-- Ambush / de put (sessie 4)
-- Prioriteit ambush vs boss (sessie 4)
+
+## Vervolg (sessie 4)
+- Ambush / de put — zie `MD/sessie-4-ambush.md`
+- Prioriteit ambush > boss in beurt-flow (`isCurrentPlayerInAmbush` vóór boss-arena)
 
 ## Gerelateerd
 - HP-mutatie: `MD/hp-systeem.md`

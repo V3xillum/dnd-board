@@ -1,135 +1,158 @@
 # Sessie 4 — Ambush: de put
 
+**Status:** geïmplementeerd (naslag)
+
 ## Doel
-Ambush-vakjes zijn **de put** van dit ganzenbord: je valt erin en komt er niet uit door verder te lopen. Je vecht de **ambusher** uit met één worp per beurt (succes of faal) tot **jij** of de **ambusher** op 0 HP is. Pas daarna mag die speler weer normaal spelen (dobbelsteen, events, enz.).
+Ambush-vakjes zijn **de put** van dit ganzenbord: je valt erin en komt er niet uit door verder te lopen. Je vecht de **ambusher** uit met één worp per beurt (succes of faal) tot de **gedeelde vijand-HP** op 0 is of jij op 0 HP valt (death). Pas daarna mag die speler weer normaal spelen (2× D6, events, enz.).
 
-Dit is géén snelle one-shot check met +1 movement of skip — het is een **vastgezette gevechtsmodus**, vergelijkbaar met hoe de boss (sessie 3) de eindfase blokkeert, maar per speler en op willekeurige vakjes.
-
----
-
-## Kernregel: de put
-
-### Start
-- Speler landt op een ambush-vak (`category: 'ambush'`).
-- Ambush start: speler zit **vast** op dit vak.
-- Initialiseer **ambusher HP** uit het event (bijv. `ambushHp: 3` in `EVENT_POOL`).
-- Geen beweging, geen normaal event-movement (sessie 2-formule geldt **niet** in de put).
-
-### Elke beurt van die speler (zolang de put actief is)
-- Geen dobbelsteen, geen normaal vak-event.
-- **Eén D20-check** tegen de DC van dit ambush-event.
-- **Succes:** ambusher −1 HP (`ambushHp -= 1`).
-- **Falen:** speler −1 HP via de centrale mutatiefunctie (sessie 1).
-- **Geen** stappen vooruit/achteruit na deze worp — alleen schade.
-
-### Einde put
-De put eindigt zodra **één** van deze waar is:
-
-| Uitkomst | Gevolg |
-|----------|--------|
-| `ambushHp === 0` | Ambusher verslagen → put opgeheven, speler mag weer normaal spelen op **hetzelfde vak** |
-| Speler `hp === 0` | Death-flow sessie 1 (start, HP reset, movement bonus) → put opgeheven |
-
-Pas **na** het einde van de put mag de speler weer dobbelstenen of een normaal event op dat vak doen (als dat vak dan nog een event is — ambush-vak blijft visueel ambush, maar dezelfde put start niet opnieuw tenzij je dat expliciet wilt; standaard: **één put per ambush-landing**, daarna behandelen als “opgeruimd” vak of gewoon normaal event — kies **opgeruimd**: na win geen tweede put op hetzelfde vak in dezelfde game).
-
-### Wat níet gebeurt in de put
-- Geen `calcEventSuccessSteps` / overshoot-movement (sessie 2).
-- Geen `randomSteps1to3` achteruit bij falen — alleen HP-schade.
-- Geen boss-check (sessie 3) tegelijk; prioriteit documenteren: **ambush > boss** als beide zouden kunnen (normaal niet op hetzelfde vak).
+Dit is géén snelle one-shot check met movement — het is een **vastgezette gevechtsmodus**, vergelijkbaar met de boss (sessie 3), maar per vak (`ambushPits`) en op willekeurige vakjes 2–61.
 
 ---
 
-## Speelbaar wanneer
-- **`AMBUSH_RATIO`** (~8% standaard) van event-vakjes 2–61 is ambush — tunable in `events-data.js`
-- Elk ambush-vak toont een **willekeurige** ambusher uit `AMBUSH_POOL` (eigen kleur + legenda)
-- Landen op ambush → put-UI, ambusher HP zichtbaar
-- Vastzittende speler kan niet dobbelstenen tot de put voorbij is
-- Per beurt: één worp → succes = ambusher schade, faal = speler schade
-- Ambusher dood → speler loopt weer normaal verder
-- Speler dood in put → death-flow, put weg
+## Spelregels (zoals gebouwd)
+
+### Per vak: één put
+State: `game.ambushPits[spaceNum]` = `{ config, hp, maxHp, playerIds[] }`.
+
+| Situatie | Wat gebeurt |
+|----------|-------------|
+| Eerste landing op ambush-vak, geen actieve put | Nieuwe put: `pickRandomAmbush()` → `hp` / `maxHp` uit `ambushHp` |
+| Landing terwijl put op dat vak nog actief (`hp > 0`) | Speler voegt zich toe (`ambush-join`), **zelfde** vijand + HP |
+| Iemand staat al op het vak | `syncColocatedPlayersInPit()` — iedereen op dat vak in `playerIds` |
+| Vijand op 0 HP | `clearPitAt(spaceNum)` — **iedereen** in `playerIds` vrij |
+| Speler 0 HP in put | Death-flow (sessie 1); speler uit `playerIds`, put blijft voor anderen |
+| Later opnieuw landen op zelfde vak (na kill) | **Nieuwe** put met weer `pickRandomAmbush()` |
+
+Het bord toont per ambush-vak een tegel uit `AMBUSH_POOL` (bij generatie). De **actieve vijand in de put** komt uit `pickRandomAmbush()` bij een **nieuwe** put — die kan afwijken van de tegelkleur/naam op het bord.
+
+### Elke beurt van een speler in de put
+- Geen 2× D6, geen normaal vak-event.
+- Event-modal (put-styling): **één D20-check** vs `config.dc` (`getEffectiveDc`).
+- **Succes:** gedeelde `pit.hp -= 1`.
+- **Falen:** `mutateHp(player, -1)`.
+- Geen beweging (geen sessie 2-overshoot).
+- **Beurt direct voorbij** na de worp (`advanceTurn()`); modal sluit daarna.
+
+### Nat 20 / Nat 1 in de put
+| | Gedrag |
+|---|--------|
+| **Nat 20** | Gegarandeerd slagen → ambusher −1 HP. Geen +1 HP speler, geen movement. |
+| **Nat 1** | Mis → speler −1 HP. Geen `skipNextTurn`, geen extra straf. |
+
+Geen DC-streak-updates in `resolveAmbushRoll` (zoals boss).
+
+### Meerdere spelers, één put
+- Zelfde `pit.hp` voor alle deelnemers op dat vak.
+- Per beurt vecht **elke** vastzittende speler één keer als hij/zij aan de beurt is.
+- Andere spelers (niet in put) spelen normaal verder (dobbelsteen niet geblokkeerd).
+
+### Prioriteit
+- Put-check vóór normale events op ambush-vak.
+- Ambush vs boss op hetzelfde vak komt niet voor (ambush = 2–61, boss = 62/63).
+- In beurt-flow: `isCurrentPlayerInAmbush()` vóór boss-arena-modal.
 
 ---
 
-## Wat er moet gebeuren
+## Bord & data (`events-data.js`)
 
-### events-data.js
+**`AMBUSH_RATIO`** = `0.08` (~8% van event-slots 2–61, minimaal 1).
 
-**Ambush-pool** (zelfde patroon als `BOSS_POOL` in sessie 3):
-- `category: 'ambush'` + styling-kleur (oranje/geel).
-- `AMBUSH_POOL = EVENT_POOL.filter((e) => e.category === 'ambush')`.
-- **4–6+ events**, DC 9–11, elk met `ambushHp` (2–4), `name`, `icon`, `ability`, `flavor`, `successText`, `failText`.
-- Voorbeelden: goblin in de struiken, sluipmoordenaar, cave spider, bandieten uit de kuil, …
+**6 ambush-events** in `EVENT_POOL` (`category: 'ambush'`, `ambushHp` 2–4, DC 9–11):
 
-**Bordgeneratie — percentage, niet “altijd 2 vakjes”:**
-```js
-const AMBUSH_RATIO = 0.08; // tune: ~8% van event-slots; 0.05 subtieler, 0.12 gevaarlijker
+| Naam | DC | HP |
+|------|-----|-----|
+| Goblin in de struiken | 9 | 2 |
+| Sluipmoordenaar | 10 | 3 |
+| Grotspin | 10 | 3 |
+| Bandieten uit de kuil | 11 | 3 |
+| Schaduwwolf | 9 | 2 |
+| Orc-patrouille | 11 | 4 |
+
+- `AMBUSH_POOL`, `pickRandomAmbush()`, `AMBUSH_RATIO`
+- Ambush uitgesloten van easy/mid/late decks (`eventsExceptBosses()` filtert `boss` + `ambush`)
+- Na normale event-verdeling: willekeurige slots overschrijven met ambush-tegel
+
+---
+
+## Code-overzicht
+
+### `game.js`
+| Onderdeel | Functie |
+|-----------|---------|
+| State | `ambushPits` |
+| Pit helpers | `getPitAt`, `getPlayerPit`, `isPlayerInPit`, `isCurrentPlayerInAmbush`, `getCurrentPlayerPit` |
+| Start/join | `joinOrStartPit`, `syncColocatedPlayersInPit` |
+| Worstelen | `resolveAmbushRoll` |
+| Opruimen | `clearPitAt`, `removePlayerFromPit` |
+| Landing | `resolveSpace()` → `needsAmbush: true` |
+| Chain | `moveAfterEvent` → `needsAmbush` doorgeven |
+| Reset | `ambushPits = {}` in `reset()` |
+
+**Events (log):** `ambush-start`, `ambush-join`, `ambush-d20`, `ambush-hit`, `ambush-end`, `pass-turn`
+
+### `ui.js`
+| Onderdeel | Beschrijving |
+|-----------|--------------|
+| **Combat-rail** (rechts) | `#combat-rail` — eindbaas bovenaan, putten eronder; verborgen als niets actief |
+| Put-kaarten rail | Per put: vak, vijand, HP-balk, spelers; highlight + “Jij bent aan de beurt” |
+| **Ambush-modal** | Hergebruik `#event-modal`, class `event-card--ambush` |
+| Fighter-blok modal | Naam, HP (harten), spelerkleur, “Aan de beurt”, bondgenoten in put |
+| Vijand in modal | Gedeelde ambusher-HP-balk onder ability check |
+| Beurt | Na worp: modal dicht → `advanceTurn()` → bij volgende speler in put opnieuw modal |
+| Dobbelsteen | Uit tijdens put (`inAmbush`) of open modal (`modalNeedsInput`) |
+| `updateCombatRail()` | Vult boss + putten; `updateAmbushPanel()` / `updateBossPanel()` delegaten hiernaar |
+
+### `index.html` + `css/styles.css`
+- `play-area`: bord links, `combat-rail` rechts
+- Legenda: `cell--ambush` / `--tile-ambush` (oranje/geel)
+- Styling: `.combat-card--pit`, `.ambush-modal__fighter`, spelerkleur via CSS vars
+
+---
+
+## UI-schets
+
 ```
+┌─────────────────────────────────────────────────────────┐
+│  [Sidebar: spelers, beurt, 2×D6]  │  Bord  │ Gevechten │
+│                                   │        │ ┌ Boss ─┐ │
+│                                   │        │ └───────┘ │
+│                                   │        │ ┌ Put 5 ┤ │
+│                                   │        │ │ Orlion│ │
+│                                   │        │ └───────┘ │
+└─────────────────────────────────────────────────────────┘
 
-In `buildSpecialSpaces()`, **na** pad + normale events op 2–61:
-1. Verzamel slots met `type: 'event'`.
-2. `ambushCount = Math.max(1, Math.round(eventSlots.length * AMBUSH_RATIO))` (cap op aantal beschikbare slots).
-3. Kies willekeurige slots → overschrijf met `{ type: 'event', ...draw uit AMBUSH_POOL }`.
-4. Exclude ambush-events uit easy/mid/late decks (zoals bosses), geen dubbele rol als normaal event.
-
-**Put start:** `ambushConfig` = het event **op dat vak** (naam, DC, `ambushHp`, icon, flavor) — geen aparte random draw bij landing, tenzij het vak leeg is (fallback: random uit `AMBUSH_POOL`).
-
-### game.js
-
-**State op `Game` (globaal per actieve put):**
-- `ambushActive: false`
-- `ambushPlayerId: null` — wie zit in de put
-- `ambushHp` / `ambushMaxHp`
-- `ambushConfig` — referentie naar het event (naam, DC, icon, …)
-- Optioneel: `ambushClearedSpaces: Set` — vaknummers waar de put al gewonnen is (geen herstart)
-
-**`resolveSpace()`:** bij ambush-vak + speler landt → start put (tenzij vak al cleared). Geen normale `needsEvent` voor movement-chain.
-
-**Beurt-flow:** als `ambushActive && currentPlayer.id === ambushPlayerId` → `resolveAmbushRoll(roll, nat20)` i.p.v. dobbelsteen/boss/normaal event. Hergebruik Nat 20/Nat 1-regels uit sessie 2 **alleen** als dat past (bijv. Nat 20 = gegarandeerd succes +1 HP ambusher hit; Nat 1 = fail + HP — documenteer in implementatie).
-
-**`resolveAmbushRoll`:**
-- Succes → `ambushHp -= 1`, log event
-- Falen → `applyHpChange(player, -1)` (sessie 1)
-- Als `ambushHp === 0` → clear ambush state, event `ambush-end` success
-- Als speler death → clear ambush state (death-handler doet positie)
-
-Reset alle ambush-state in `game.reset()`.
-
-### ui.js
-
-- `cell--ambush` in `EVENT_CATEGORY_CLASS` + legenda in `index.html`.
-- **Put-panel** (sidebar of overlay): ambusher naam/icon, HP-balk, “Je zit vast — vecht om eruit te komen”.
-- Ambush-modal (of hergebruik event-modal met duidelijke **put**-styling): één worp, geen movement-resultaat.
-- Blokkeer dobbelsteen-knop zolang `ambushActive` voor de huidige speler.
-- Log: `Ambush: [naam] — succes/faal — ambusher X HP, speler Y HP`.
+Put-modal (centrum):
+  [Aan de beurt] Orlion · ❤️❤️❤️ 3/3 HP  (spelerkleur)
+  Ook in de put: Speler2 · HP
+  Vijand: Orc-patrouille · HP-balk
+  Ability check + worp
+```
 
 ---
 
 ## Handmatige testchecklist
 
-- [ ] Land op ambush → put start, geen dobbelsteen
-- [ ] Succes → ambusher HP omlaag, speler positie ongewijzigd
-- [ ] Falen → speler HP omlaag, geen achteruitbeweging
-- [ ] Ambusher op 0 HP → put weg, volgende actie mag dobbelsteen zijn
-- [ ] Speler op 0 HP in put → death + put weg
-- [ ] Andere spelers kunnen wel normaal spelen (alleen de vastzittende speler zit in de put)
-- [ ] Nieuw spel → ambush-state weg
-- [ ] Nieuw avontuur → ander aantal/kleur ambush-vakjes volgens `AMBUSH_RATIO`
+- [x] Land op ambush → put start, geen dobbelsteen
+- [x] Succes → gedeelde ambusher HP omlaag, positie ongewijzigd
+- [x] Falen → speler HP omlaag, geen achteruitbeweging
+- [x] Ambusher op 0 HP → put weg, iedereen in put vrij
+- [x] Speler 0 HP in put → death; anderen blijven vechten indien nog in put
+- [x] Twee spelers, zelfde vak → zelfde vijand, gedeelde HP
+- [x] Speler 1 vecht → speler 2 → speler 1: modal opent weer automatisch
+- [x] Na kill: nieuwe landing = nieuwe random ambush
+- [x] Combat-rail: alle actieve putten + spelers; alleen “jouw beurt” op actieve speler
+- [x] Andere spelers (niet in put) kunnen dobbelstenen
+- [x] `reset()` / nieuw avontuur → `ambushPits` leeg
 
 ---
 
-## Afhankelijkheden
+## Bekende beperkingen / polish later
+- Bordtegel-naam kan afwijken van vijand in actieve put (random bij nieuwe put)
+- Geen animatie “val in de put”
+- Zwaardere ambushers op late vakjes (nu gelijk verdeeld via ratio)
+- Boss-fases (sessie 3) nog niet
 
-| Sessie | Nodig voor |
-|--------|------------|
-| 1 | Speler HP, centrale mutatie, death |
-| 2 | D20-modal, Nat 1/20 (optioneel in put) |
-| 3 | Patroon “speciale modus i.p.v. normale beurt” (boss); ambush is apart maar vergelijkbaar |
-
----
-
-## Na sessie 4
-Het spel is v1.1. Mogelijke polish:
-- Boss fases (sessie 3)
-- Meer ambush-events / zwaardere ambushers op late vakjes
-- Animatie “val in de put”
-- Ambush + boss prioriteit / edge cases op vak 62+
+## Gerelateerd
+- HP-mutatie: `MD/hp-systeem.md`
+- Nat 20/1 in modals: `MD/sessie-2-nat-overshoot.md`
+- Boss + combat-rail: `MD/sessie-3-boss-win.md`

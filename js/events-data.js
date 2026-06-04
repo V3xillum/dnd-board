@@ -43,6 +43,8 @@ const ENCAMPMENT_TILE = {
 
 const GUARDIAN_EVENT_NAME = 'Laatste wachter';
 const PATH_RATIO = 0.38;
+/** ~8% van event-slots wordt ambush-put; tune 0.05 subtieler, 0.12 gevaarlijker */
+const AMBUSH_RATIO = 0.08;
 
 const EVENT_POOL = [
   { name: 'Valput', icon: '🕳️', ability: 'Acrobatics', dc: 10, category: 'trap',
@@ -185,6 +187,30 @@ const EVENT_POOL = [
     flavor: 'Een duivel in een pak biedt een contract aan.',
     successText: 'Je onderhandelt als een advocaat.',
     failText: 'Kleine lettertjes. Duizelig.' },
+  { name: 'Goblin in de struiken', icon: '👺', ability: 'Perception', dc: 9, category: 'ambush', ambushHp: 2,
+    flavor: 'Touwtjes en pijlen uit het groen — je zit in hun hinderlaag en komt er niet zomaar uit.',
+    successText: 'Je ontwijkt de volgende salvo en richt een tegenaanval.',
+    failText: 'Een pijl raakt je — de goblins lachen vanuit de struiken.' },
+  { name: 'Sluipmoordenaar', icon: '🗡️', ability: 'Insight', dc: 10, category: 'ambush', ambushHp: 3,
+    flavor: 'Een kap uit de schaduw. Je bent omsingeld — alleen een goede worp opent een gaatje.',
+    successText: 'Je parreert en dwingt de moordenaar terug.',
+    failText: 'Een mes scheert langs — je bloedt en blijft vastzitten.' },
+  { name: 'Grotspin', icon: '🕷️', ability: 'Acrobatics', dc: 10, category: 'ambush', ambushHp: 3,
+    flavor: 'Webben plakken aan je laarzen. De spin kruipt dichterbij uit de duisternis.',
+    successText: 'Je snijdt een draad door en raakt de spin.',
+    failText: 'Kleverige draden en een bijtende klik — pijn.' },
+  { name: 'Bandieten uit de kuil', icon: '💰', ability: 'Intimidation', dc: 11, category: 'ambush', ambushHp: 3,
+    flavor: 'De vloer zakt weg. Bandieten omringen je in een ondiepe kuil — geen weg zonder gevecht.',
+    successText: 'Je bluft of slaat — een bandiet wankelt.',
+    failText: 'Ze lachen en raken je hard met de kolf.' },
+  { name: 'Schaduwwolf', icon: '🐺', ability: 'Animal Handling', dc: 9, category: 'ambush', ambushHp: 2,
+    flavor: 'Gele ogen in de mist. De wolf springt — je moet vechten om los te komen.',
+    successText: 'De wolf deinst terug met een jammerende schreeuw.',
+    failText: 'Klauwen aan je mantel — hij houdt je in de put.' },
+  { name: 'Orc-patrouille', icon: '⚔️', ability: 'Combat', dc: 11, category: 'ambush', ambushHp: 4,
+    flavor: 'Drie orcs blokkeren elke uitgang. Geen onderhandelen — alleen rollen en slaan.',
+    successText: 'Je raakt de leider — de patrouille wankelt.',
+    failText: 'Hun schildmuur houdt stand. Jij lijdt de schade.' },
   { name: GUARDIAN_EVENT_NAME, icon: '🛡️', ability: 'Combat', dc: 14, category: 'boss',
     flavor: 'De Laatste Wachter blokkeert de ingang tot de schat. Samen moeten jullie hem vellen!',
     successText: 'Een rake klap — de wachter wankelt!',
@@ -797,6 +823,7 @@ function createDeck(source) {
 }
 
 const BOSS_POOL = EVENT_POOL.filter((e) => e.category === 'boss');
+const AMBUSH_POOL = EVENT_POOL.filter((e) => e.category === 'ambush');
 
 function getDefaultBoss() {
   return EVENT_POOL.find((e) => e.name === GUARDIAN_EVENT_NAME) || BOSS_POOL[0] || EVENT_POOL[0];
@@ -808,7 +835,12 @@ function pickRandomBoss() {
 }
 
 function eventsExceptBosses() {
-  return EVENT_POOL.filter((e) => e.category !== 'boss');
+  return EVENT_POOL.filter((e) => e.category !== 'boss' && e.category !== 'ambush');
+}
+
+function pickRandomAmbush() {
+  if (AMBUSH_POOL.length === 0) return null;
+  return AMBUSH_POOL[Math.floor(Math.random() * AMBUSH_POOL.length)];
 }
 
 function eventsByDc(min, max) {
@@ -871,6 +903,23 @@ function buildSpecialSpaces() {
   assignEvents(midSlots, midDeck);
   assignEvents(lateSlots, hardDeck);
 
+  const eventSlotNums = [];
+  for (let n = 2; n <= 61; n += 1) {
+    if (n !== ENCAMPMENT_SPACE && spaces[n]?.type === 'event') {
+      eventSlotNums.push(n);
+    }
+  }
+
+  const ambushCount = Math.max(
+    1,
+    Math.min(Math.round(eventSlotNums.length * AMBUSH_RATIO), eventSlotNums.length),
+  );
+  const ambushSlots = shuffleArray(eventSlotNums).slice(0, ambushCount);
+  ambushSlots.forEach((slot) => {
+    const ambush = pickRandomAmbush();
+    if (ambush) spaces[slot] = { type: 'event', ...ambush };
+  });
+
   return spaces;
 }
 
@@ -885,6 +934,9 @@ function rebuildBoard() {
 window.SPECIAL_SPACES = SPECIAL_SPACES;
 window.EVENT_POOL = EVENT_POOL;
 window.BOSS_POOL = BOSS_POOL;
+window.AMBUSH_POOL = AMBUSH_POOL;
+window.AMBUSH_RATIO = AMBUSH_RATIO;
+window.pickRandomAmbush = pickRandomAmbush;
 window.PATH_TILES = PATH_TILES;
 window.ENCAMPMENT_SPACE = ENCAMPMENT_SPACE;
 window.ENCAMPMENT_TILE = ENCAMPMENT_TILE;

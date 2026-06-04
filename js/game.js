@@ -144,6 +144,106 @@ class Game {
     this.bossHp = 0;
     this.bossMaxHp = 0;
     this.bossConfig = null;
+    /** Per vak: actieve put met gedeelde vijand en lijst vastzittende spelers */
+    this.ambushPits = {};
+  }
+
+  copyAmbushConfig(source) {
+    if (!source) return null;
+    const hp = source.ambushHp ?? 3;
+    return {
+      name: source.name,
+      icon: source.icon,
+      ability: source.ability,
+      dc: source.dc,
+      ambushHp: hp,
+      flavor: source.flavor,
+      successText: source.successText,
+      failText: source.failText,
+    };
+  }
+
+  getPitAt(spaceNum) {
+    return this.ambushPits[spaceNum] ?? null;
+  }
+
+  getPlayerPit(player) {
+    if (!player) return null;
+    const pit = this.getPitAt(player.position);
+    if (!pit || pit.hp <= 0 || !pit.playerIds.includes(player.id)) return null;
+    return {
+      spaceNum: player.position,
+      config: pit.config,
+      hp: pit.hp,
+      maxHp: pit.maxHp,
+      playerIds: pit.playerIds,
+    };
+  }
+
+  isPlayerInPit(player) {
+    return this.getPlayerPit(player) != null;
+  }
+
+  isCurrentPlayerInAmbush() {
+    return this.currentPlayer != null && this.isPlayerInPit(this.currentPlayer);
+  }
+
+  getCurrentPlayerPit() {
+    return this.getPlayerPit(this.currentPlayer);
+  }
+
+  removePlayerFromPit(player) {
+    const pit = this.getPitAt(player.position);
+    if (!pit) return;
+    pit.playerIds = pit.playerIds.filter((id) => id !== player.id);
+  }
+
+  clearPitAt(spaceNum) {
+    delete this.ambushPits[spaceNum];
+  }
+
+  /** Iedereen die op dit vak staat hoort in dezelfde actieve put. */
+  syncColocatedPlayersInPit(spaceNum) {
+    const pit = this.getPitAt(spaceNum);
+    if (!pit || pit.hp <= 0) return;
+    this.players.forEach((p) => {
+      if (p.position === spaceNum && !pit.playerIds.includes(p.id)) {
+        pit.playerIds.push(p.id);
+      }
+    });
+  }
+
+  /**
+   * Landen op ambush-vak: nieuwe put (random vijand) of meedoen aan bestaande put op dit vak.
+   * @returns {{ config, kind: 'start'|'join'|'already', pit }|null}
+   */
+  joinOrStartPit(player, spaceNum) {
+    let pit = this.getPitAt(spaceNum);
+
+    if (pit && pit.hp > 0) {
+      const wasNew = !pit.playerIds.includes(player.id);
+      if (wasNew) pit.playerIds.push(player.id);
+      this.syncColocatedPlayersInPit(spaceNum);
+      return {
+        config: pit.config,
+        kind: wasNew ? 'join' : 'already',
+        pit,
+      };
+    }
+
+    const raw = typeof pickRandomAmbush === 'function' ? pickRandomAmbush() : null;
+    const config = this.copyAmbushConfig(raw);
+    if (!config) return null;
+
+    pit = {
+      config,
+      hp: config.ambushHp,
+      maxHp: config.ambushHp,
+      playerIds: [player.id],
+    };
+    this.ambushPits[spaceNum] = pit;
+    this.syncColocatedPlayersInPit(spaceNum);
+    return { config, kind: 'start', pit };
   }
 
   copyBossConfig(source) {
@@ -280,7 +380,7 @@ class Game {
   move(steps) {
     const player = this.currentPlayer;
     if (!player || this.gameOver) {
-      return { events: [], winner: null, needsEvent: false, needsPath: false };
+      return { events: [], winner: null, needsEvent: false, needsPath: false, needsAmbush: false };
     }
 
     const from = player.position;
@@ -402,6 +502,50 @@ class Game {
       return { events, winner: player, needsEvent: false, needsPath: false };
     }
 
+    if (space.type === 'event' && space.category === 'ambush') {
+      const joined = this.joinOrStartPit(player, player.position);
+      if (joined) {
+        const { config, kind, pit } = joined;
+        const allies = pit.playerIds
+          .filter((id) => id !== player.id)
+          .map((id) => this.players.find((p) => p.id === id)?.name)
+          .filter(Boolean);
+
+        if (kind === 'join') {
+          events.push({
+            type: 'ambush-join',
+            name: config.name,
+            icon: config.icon,
+            ambushHp: pit.hp,
+            ambushMaxHp: pit.maxHp,
+            player: player.name,
+            allies,
+            spaceNum: player.position,
+          });
+        } else {
+          events.push({
+            type: 'ambush-start',
+            name: config.name,
+            icon: config.icon,
+            flavor: config.flavor,
+            ambushHp: pit.hp,
+            ambushMaxHp: pit.maxHp,
+            player: player.name,
+            spaceNum: player.position,
+          });
+        }
+
+        return {
+          events,
+          winner: null,
+          needsEvent: false,
+          needsPath: false,
+          needsAmbush: this.isPlayerInPit(player),
+        };
+      }
+      return { events, winner: null, needsEvent: false, needsPath: false };
+    }
+
     if (space.type === 'event') {
       const effectiveDc = getEffectiveDc(player, space.dc);
       events.push({
@@ -506,8 +650,115 @@ class Game {
       needsEvent: chain.needsEvent ?? false,
       needsPath: chain.needsPath ?? false,
       needsBoss: chain.needsBoss ?? false,
+      needsAmbush: chain.needsAmbush ?? false,
       eventConfig: chain.eventConfig ?? null,
       pathConfig: chain.pathConfig ?? null,
+    };
+  }
+
+  resolveAmbushRoll(roll, options = {}) {
+    const player = this.currentPlayer;
+    const pitView = this.getPlayerPit(player);
+    const spaceNum = player?.position;
+    const pit = spaceNum != null ? this.getPitAt(spaceNum) : null;
+
+    if (!player || !pitView || !pit) {
+      return {
+        events: [],
+        passTurn: true,
+        success: false,
+        effectiveDc: null,
+      };
+    }
+
+    const config = pit.config;
+    const { nat20 = false, nat1 = false } = options;
+    const dcModApplied = player.nextDcMod ?? 0;
+    player.nextDcMod = 0;
+
+    const effectiveDc = getEffectiveDc(player, config.dc);
+    const isNat1 = !nat20 && (nat1 || roll === 1);
+    const success = !isNat1 && (nat20 || (roll != null && roll >= effectiveDc));
+
+    const events = [{
+      type: 'ambush-d20',
+      roll: roll ?? null,
+      dc: config.dc,
+      effectiveDc,
+      dcBonus: getDcBonus(player),
+      dcMod: dcModApplied,
+      ability: config.ability,
+      success,
+      nat20,
+      nat1: isNat1,
+      player: player.name,
+      ambushName: config.name,
+      ambushHp: pit.hp,
+      playerHp: player.hp,
+      spaceNum,
+    }];
+
+    if (success) {
+      pit.hp = Math.max(0, pit.hp - 1);
+      events.push({
+        type: 'ambush-hit',
+        ambushHp: pit.hp,
+        ambushMaxHp: pit.maxHp,
+        player: player.name,
+        ambushName: config.name,
+        playerHp: player.hp,
+        spaceNum,
+      });
+    } else {
+      events.push(...this.mutateHp(player, -1));
+    }
+
+    const d20Event = events.find((e) => e.type === 'ambush-d20');
+    d20Event.ambushHp = pit.hp;
+    d20Event.playerHp = player.hp;
+
+    const died = events.some((e) => e.type === 'death');
+    const ambushDefeated = pit.hp <= 0;
+
+    if (ambushDefeated) {
+      const freedNames = pit.playerIds
+        .map((id) => this.players.find((p) => p.id === id)?.name)
+        .filter(Boolean);
+      events.push({
+        type: 'ambush-end',
+        success: true,
+        ambushName: config.name,
+        player: player.name,
+        freedPlayers: freedNames,
+        spaceNum,
+      });
+      this.clearPitAt(spaceNum);
+    } else if (died) {
+      this.removePlayerFromPit(player);
+      events.push({
+        type: 'ambush-end',
+        success: false,
+        ambushName: config.name,
+        player: player.name,
+        spaceNum,
+        pitContinues: pit.playerIds.length > 0,
+      });
+    }
+
+    if (!this.gameOver) {
+      events.push({ type: 'pass-turn', player: player.name });
+    }
+
+    return {
+      events,
+      passTurn: !this.gameOver,
+      success,
+      effectiveDc,
+      nat20,
+      nat1: isNat1,
+      ambushHp: ambushDefeated ? 0 : pit.hp,
+      ambushMaxHp: pit.maxHp,
+      ambushEnded: ambushDefeated || died,
     };
   }
 
@@ -688,6 +939,7 @@ class Game {
         needsEvent: moveResult.needsEvent,
         needsPath: moveResult.needsPath,
         needsBoss: moveResult.needsBoss ?? false,
+        needsAmbush: moveResult.needsAmbush ?? false,
         eventConfig: moveResult.eventConfig,
         pathConfig: moveResult.pathConfig,
         passTurn: false,
@@ -760,6 +1012,7 @@ class Game {
     this.bossHp = 0;
     this.bossMaxHp = 0;
     this.bossConfig = null;
+    this.ambushPits = {};
   }
 }
 

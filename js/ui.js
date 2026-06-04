@@ -40,6 +40,11 @@ const els = {
   winTitle: document.getElementById('win-title'),
   winText: document.getElementById('win-text'),
   winClose: document.getElementById('win-close'),
+  bossPanel: document.getElementById('boss-panel'),
+  bossPanelIcon: document.getElementById('boss-panel-icon'),
+  bossPanelName: document.getElementById('boss-panel-name'),
+  bossHpFill: document.getElementById('boss-hp-fill'),
+  bossHpLabel: document.getElementById('boss-hp-label'),
 };
 
 function parseDiceRoll(value, min, max = null) {
@@ -70,6 +75,7 @@ const EVENT_CATEGORY_CLASS = {
   mystery: 'cell--mystery',
   wild: 'cell--wild',
   fey: 'cell--fey',
+  boss: 'cell--boss',
 };
 
 function applyCellStyle(cell, special, num) {
@@ -84,6 +90,7 @@ function applyCellStyle(cell, special, num) {
   }
 
   if (num === 1) cell.classList.add('cell--start');
+  if (special.encampment || num === ENCAMPMENT_SPACE) cell.classList.add('cell--encampment');
 }
 
 function escapeAttr(text) {
@@ -239,11 +246,45 @@ function adjustCurrentPlayerHp(delta) {
   updateTurnUI();
 }
 
+function updateBossPanel() {
+  if (!game.bossActive || !game.bossConfig) {
+    els.bossPanel.classList.add('hidden');
+    return;
+  }
+
+  const { bossConfig, bossHp, bossMaxHp } = game;
+  const pct = bossMaxHp > 0 ? Math.round((bossHp / bossMaxHp) * 100) : 0;
+
+  els.bossPanel.classList.remove('hidden');
+  els.bossPanelIcon.textContent = bossConfig.icon || '🛡️';
+  els.bossPanelName.textContent = bossConfig.name;
+  els.bossHpFill.style.width = `${pct}%`;
+  els.bossHpLabel.textContent = `Eindbaas: ${bossHp} / ${bossMaxHp} schade`;
+  els.bossPanel.querySelector('.boss-hp')?.setAttribute('aria-valuenow', String(pct));
+}
+
+function bossHpBarHtml() {
+  const max = game.bossMaxHp || 1;
+  const hp = game.bossHp;
+  const pct = Math.round((hp / max) * 100);
+  return `
+    <div class="event-card__boss-hp">
+      <div class="boss-hp" role="progressbar" aria-valuenow="${pct}" aria-valuemin="0" aria-valuemax="100">
+        <div class="boss-hp__fill" style="width:${pct}%"></div>
+      </div>
+      <p class="boss-hp__label">Gedeelde schade: ${hp} / ${max}</p>
+    </div>
+  `;
+}
+
 function updateTurnUI() {
   const cp = game.currentPlayer;
+  updateBossPanel();
+
   if (game.gameOver) {
     els.currentPlayer.textContent = 'Spel afgelopen!';
     els.moveBtn.disabled = true;
+    els.diceInput.disabled = true;
     updateHpControls();
     return;
   }
@@ -251,15 +292,22 @@ function updateTurnUI() {
   if (!cp) {
     els.currentPlayer.textContent = 'Voeg spelers toe om te beginnen';
     els.moveBtn.disabled = true;
+    els.diceInput.disabled = false;
     updateHpControls();
     return;
   }
 
   let turnText = `${cp.name} is aan de beurt`;
   if (game.pendingExtraTurn) turnText += ' (extra beurt!)';
+  if (game.bossActive && game.bossConfig) {
+    turnText += ` — ⚔️ ${game.bossConfig.name}`;
+  }
   els.currentPlayer.textContent = turnText;
   els.currentPlayer.style.color = cp.color;
-  els.moveBtn.disabled = false;
+
+  const onBossArena = game.bossActive && cp && isOnBossArena(cp.position);
+  els.moveBtn.disabled = onBossArena;
+  els.diceInput.disabled = onBossArena;
   updateHpControls();
 }
 
@@ -371,6 +419,47 @@ function describeEvents(events) {
       case 'finish':
         addLog(`🏆 ${ev.player} bereikt de Draken-schat!`, 'win');
         break;
+      case 'boss-start':
+        addLog(
+          `⚔️ ${ev.icon} ${ev.name} verschijnt! (${ev.bossHp} schade) — ${ev.player} triggert de eindbaas`,
+          'warn',
+        );
+        break;
+      case 'boss-guard':
+        addLog(
+          `De schat is bereikbaar, maar ${ev.name ?? 'de eindbaas'} blokkeert de overwinning!`,
+          'warn',
+        );
+        break;
+      case 'boss-d20': {
+        const nat = ev.nat20 ? ' · Nat 20!' : ev.nat1 ? ' · Nat 1!' : '';
+        addLog(
+          `⚔️ vs ${ev.bossName}: ${ev.ability} ${ev.roll ?? '—'} vs DC ${ev.effectiveDc} — ${ev.success ? 'Raak!' : 'Mis!'}${nat}`,
+          ev.success ? 'success' : 'fail',
+        );
+        break;
+      }
+      case 'boss-hit':
+        addLog(
+          `Raak op ${ev.bossName}! Nog ${ev.bossHp} schade nodig`,
+          'success',
+        );
+        break;
+      case 'boss-defeated':
+        addLog(`🏆 ${ev.bossName} is verslagen!`, 'success');
+        break;
+      case 'boss-engage':
+        addLog(
+          `${ev.player} bereikt vak ${ev.spaceNum} — tijd om ${ev.name ?? 'de eindbaas'} aan te vallen!`,
+          'special',
+        );
+        break;
+      case 'boss-retreat':
+        addLog(
+          `${ev.player} trekt terug naar het kamp op vak ${ev.to} (was vak ${ev.from})`,
+          'special',
+        );
+        break;
       default:
         break;
     }
@@ -397,6 +486,7 @@ function formatPlayerDcHint(player) {
 }
 
 let activeEvent = null;
+let activeBoss = null;
 
 function resetEventHeader(config) {
   els.eventTitle.textContent = config.name;
@@ -414,6 +504,9 @@ function showEventOutcomeInHeader(success, config) {
 
 function populateEventModal(config, spaceNum) {
   const player = game.currentPlayer;
+
+  const existingBar = els.eventCheck.querySelector('.event-card__boss-hp');
+  if (existingBar) existingBar.remove();
 
   els.eventIcon.textContent = config.icon || '🎲';
   els.eventSpace.textContent = `Vak ${spaceNum ?? '?'}`;
@@ -448,6 +541,160 @@ function closeEventModal() {
     document.body.classList.remove('modal-open');
   }
   activeEvent = null;
+  activeBoss = null;
+}
+
+function populateBossModal() {
+  const config = game.bossConfig;
+  const player = game.currentPlayer;
+  if (!config) return;
+
+  els.eventIcon.textContent = config.icon || '🛡️';
+  els.eventSpace.textContent = 'Eindbaas';
+  els.eventTitle.textContent = `⚔️ ${config.name}`;
+  els.eventTitle.className = 'event-card__title';
+  els.eventFlavor.textContent = config.flavor;
+  els.eventFlavor.className = 'event-card__flavor';
+  els.eventAbility.textContent = config.ability;
+  els.eventDc.textContent = formatDcDisplay(config.dc, player);
+  els.eventCheck.classList.remove('is-hidden');
+
+  els.eventDiceInput.min = '1';
+  els.eventDiceInput.removeAttribute('max');
+  els.eventDiceInput.placeholder = 'totaal';
+  els.eventRollArea.querySelector('.event-card__roll-hint').textContent =
+    'Val de eindbaas aan — vul je totale worp in (D20 + modifiers)';
+
+  els.eventNat20.checked = false;
+  els.eventNat20.disabled = false;
+  els.eventNat1.checked = false;
+  els.eventNat1.disabled = false;
+  els.eventResult.className = 'event-card__result hidden';
+  els.eventRollArea.classList.remove('is-hidden');
+  els.eventClose.disabled = true;
+  els.eventClose.textContent = 'Doorgaan op avontuur';
+  els.eventSubmit.disabled = false;
+  els.eventSubmit.textContent = 'Aanvallen';
+  els.eventDiceInput.disabled = false;
+  els.eventDiceInput.value = '';
+
+  const existingBar = els.eventCheck.querySelector('.event-card__boss-hp');
+  if (existingBar) existingBar.remove();
+  els.eventCheck.insertAdjacentHTML('beforeend', bossHpBarHtml());
+}
+
+function showBossModal(onComplete) {
+  if (!game.bossActive || !game.bossConfig) {
+    onComplete?.();
+    return;
+  }
+
+  activeBoss = { onComplete, submitted: false };
+  activeEvent = null;
+
+  els.eventModal.classList.remove('hidden');
+  document.body.classList.add('modal-open');
+  populateBossModal();
+  updateBossPanel();
+
+  setTimeout(() => els.eventDiceInput.focus(), 100);
+}
+
+function finishBossFlow(onClose) {
+  els.eventSubmit.disabled = true;
+  els.eventDiceInput.disabled = true;
+  els.eventNat20.disabled = true;
+  els.eventNat1.disabled = true;
+  els.eventClose.disabled = false;
+  els.eventClose.textContent = onClose?.chainLabel ?? 'Doorgaan op avontuur';
+  activeBoss.onClose = onClose?.handler;
+  els.eventClose.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+}
+
+function handleBossSubmit() {
+  if (!activeBoss || activeBoss.submitted || !game.bossActive) return;
+
+  const { onComplete } = activeBoss;
+  const player = game.currentPlayer;
+  const config = game.bossConfig;
+  const nat20 = els.eventNat20.checked;
+  const nat1 = els.eventNat1.checked;
+  const roll = parseCheckTotal(els.eventDiceInput.value);
+
+  if (roll === null && !nat20 && !nat1) {
+    els.eventResult.classList.remove('hidden');
+    els.eventResult.className = 'event-card__result event-card__result--fail';
+    els.eventResult.innerHTML =
+      '<strong>Ongeldige worp</strong><p>Vul een geheel getal ≥ 1 in, of vink Nat 1 / Nat 20 aan.</p>';
+    return;
+  }
+
+  activeBoss.submitted = true;
+
+  const effectiveDc = getEffectiveDc(player, config.dc);
+  const isNat1 = !nat20 && (nat1 || roll === 1);
+  const success = !isNat1 && (nat20 || (roll !== null && roll >= effectiveDc));
+  const rollLabel = nat20
+    ? (roll != null ? `${roll} — Nat 20!` : 'Nat 20!')
+    : isNat1
+      ? (roll != null ? `${roll} — Nat 1!` : 'Nat 1!')
+      : String(roll ?? '—');
+  const dcDisplay = formatDcDisplay(config.dc, player);
+
+  let result;
+  try {
+    result = game.resolveBoss(roll, { nat20, nat1 });
+    describeEvents(result.events);
+    renderTokens();
+    renderPlayers();
+    updateBossPanel();
+    populateBossModal();
+  } catch (err) {
+    console.error(err);
+    els.eventResult.className = 'event-card__result event-card__result--fail';
+    els.eventResult.innerHTML = '<p>Kon de aanval niet verwerken.</p>';
+    finishBossFlow({ handler: () => endBossTurn(onComplete) });
+    return;
+  }
+
+  els.eventRollArea.classList.add('is-hidden');
+  els.eventCheck.classList.add('is-hidden');
+  els.eventTitle.textContent = success ? 'Raak!' : 'Mis!';
+  els.eventTitle.className = `event-card__title event-card__title--${success ? 'success' : 'fail'}`;
+  els.eventFlavor.textContent = success ? (config.successText || '') : (config.failText || '');
+  els.eventFlavor.className = `event-card__flavor event-card__flavor--outcome event-card__flavor--${success ? 'success' : 'fail'}`;
+
+  let effectText = success
+    ? `De eindbaas verliest 1 schade — nog ${game.bossHp} / ${game.bossMaxHp}`
+    : 'Geen schade aan de baas · jij verliest 1 HP';
+
+  if (result.winner) {
+    effectText += ' · De schat is vrij!';
+  } else if (!game.bossActive) {
+    effectText = 'De eindbaas is verslagen! Wie op vak 63 staat wint — anders loop naar de schat.';
+  } else if (result.retreatedTo != null) {
+    effectText += ` · terug naar vak ${result.retreatedTo} — loop opnieuw naar 62/63 om aan te vallen`;
+  }
+
+  els.eventResult.classList.remove('hidden');
+  els.eventResult.className = `event-card__result event-card__result--${success ? 'success' : 'fail'}`;
+  els.eventResult.innerHTML = `
+    <div class="result-roll">🎲 ${rollLabel}</div>
+    <div class="result-vs">vs DC ${dcDisplay}</div>
+    <p class="result-effect">${effectText}</p>
+  `;
+
+  if (result.winner) {
+    finishBossFlow({ handler: () => showWinModal(result.winner) });
+    return;
+  }
+
+  finishBossFlow({ handler: () => endBossTurn(onComplete) });
+}
+
+function endBossTurn(onComplete) {
+  advanceTurn();
+  onComplete?.();
 }
 
 function showPathModal(config, spaceNum, onComplete) {
@@ -474,6 +721,12 @@ function showPathModal(config, spaceNum, onComplete) {
 function continueAfterLand(result, onComplete) {
   if (result.winner) {
     showWinModal(result.winner);
+    return;
+  }
+
+  if (result.needsBoss) {
+    updateBossPanel();
+    showBossModal(onComplete);
     return;
   }
 
@@ -553,6 +806,7 @@ function formatEventMoveResult(result) {
 
   if (result.needsEvent) text += ' · nog een event!';
   if (result.needsPath) text += ' · rustig pad!';
+  if (result.needsBoss) text += ' · eindbaas!';
 
   return text;
 }
@@ -563,9 +817,19 @@ function advanceTurn() {
     addLog(`${skippedPlayer} slaat een beurt over`, 'warn');
   }
   renderPlayers();
+  updateTurnUI();
+
+  const cp = game.currentPlayer;
+  if (game.bossActive && !game.gameOver && cp && isOnBossArena(cp.position)) {
+    showBossModal();
+  }
 }
 
 function handleEventSubmit() {
+  if (activeBoss) {
+    handleBossSubmit();
+    return;
+  }
   if (!activeEvent || activeEvent.submitted) return;
 
   const { config, onComplete } = activeEvent;
@@ -648,6 +912,18 @@ function handleEventSubmit() {
     return;
   }
 
+  if (result.needsBoss) {
+    finishEventFlow({
+      chainLabel: 'Eindbaas →',
+      handler: () => {
+        closeEventModal();
+        updateBossPanel();
+        showBossModal(onComplete);
+      },
+    });
+    return;
+  }
+
   finishEventFlow({ handler: () => endEventTurn(onComplete) });
 }
 
@@ -663,8 +939,8 @@ els.eventDiceInput.addEventListener('keydown', (e) => {
   if (e.key === 'Enter') handleEventSubmit();
 });
 els.eventClose.addEventListener('click', () => {
-  if (els.eventClose.disabled || !activeEvent) return;
-  const handler = activeEvent.onClose;
+  if (els.eventClose.disabled) return;
+  const handler = activeBoss?.onClose ?? activeEvent?.onClose;
   closeEventModal();
   handler?.();
 });
@@ -731,6 +1007,7 @@ els.winClose.addEventListener('click', () => {
   game.reset();
   if (typeof rebuildBoard === 'function') rebuildBoard();
   els.gameLog.innerHTML = '';
+  updateBossPanel();
   renderBoard();
   renderPlayers();
   addLog('Nieuw avontuur — het bord is opnieuw geschud!');

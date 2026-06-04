@@ -26,6 +26,16 @@
       <section class="panel">
         <h2>Beurt</h2>
         <p id="current-player" class="current-player">Voeg spelers toe om te beginnen</p>
+        <div id="boss-panel" class="boss-panel hidden" aria-live="polite">
+          <div class="boss-panel__header">
+            <span id="boss-panel-icon" class="boss-panel__icon">🛡️</span>
+            <span id="boss-panel-name" class="boss-panel__name">Eindbaas</span>
+          </div>
+          <div class="boss-hp" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0">
+            <div id="boss-hp-fill" class="boss-hp__fill"></div>
+          </div>
+          <p id="boss-hp-label" class="boss-hp__label">0 / 0</p>
+        </div>
         <div id="hp-controls" class="hp-controls hp-controls--hidden">
           <span class="hp-controls__label">HP (handmatig)</span>
           <div class="hp-controls__row">
@@ -62,6 +72,10 @@
           Rustig pad
         </span>
         <span class="legend-item">
+          <span class="legend-swatch legend-swatch--encampment" aria-hidden="true"></span>
+          Kamp (vak 56) — hergroeperen na boss-aanval
+        </span>
+        <span class="legend-item">
           <span class="legend-swatch legend-swatch--trap" aria-hidden="true"></span>
           Val / gevaar
         </span>
@@ -93,6 +107,11 @@
           <span class="legend-swatch legend-swatch--fey" aria-hidden="true"></span>
           Fey
         </span>
+        <span class="legend-item">
+          <span class="legend-swatch legend-swatch--boss" aria-hidden="true"></span>
+          Eindbaas (vak 62)
+        </span>
+        <span class="legend-item legend-item--info">⚔️ Eindbaas op 62/63: 1 aanval per beurt, daarna terug naar vak 56 — geen win tot de baas verslagen is</span>
       </div>
     </main>
   </div>

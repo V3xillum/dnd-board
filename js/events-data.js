@@ -8,7 +8,8 @@
  * - ~38% rustige pad-vakjes (unieke tegels uit PATH_TILES, daarna opnieuw shufflen)
  * - rest D20-events, uniek per ronde zolang de pool groot genoeg is
  * - makkelijkere DC vroeg op het bord, zwaarder tegen het einde
- * - vak 62 = altijd Laatste wachter
+ * - vak 56 = altijd kamp (rustig pad, terugtrekplek na boss-aanval)
+ * - vak 62 = willekeurige eindbaas uit BOSS_POOL
  *
  * Zie js/EVENTS.md voor uitleg en voorbeelden.
  */
@@ -29,6 +30,16 @@ const PATH_TILES = [
   { name: 'Vogelnest', icon: '🪺', flavor: 'Een nest in een hoek. De moeder kijkt je wantrouwig aan, maar laat je passeren.' },
   { name: 'Warme tocht', icon: '♨️', flavor: 'Warme lucht uit een spleet. Vulcanisch? Magisch? Vandaag niet jouw probleem.' },
 ];
+
+/** Vast rustig vak — boss-retreat en even bijkomen vóór de volgende aanval */
+const ENCAMPMENT_SPACE = 56;
+const ENCAMPMENT_TILE = {
+  name: 'Kamp bij de drempel',
+  icon: '⛺',
+  encampment: true,
+  flavor:
+    'Tenten, een smeulend vuur en stille wachters. Hier hergroept het gezelschap na elke aanval op de eindbaas — even op adem, dan weer de drempel op.',
+};
 
 const GUARDIAN_EVENT_NAME = 'Laatste wachter';
 const PATH_RATIO = 0.38;
@@ -174,10 +185,22 @@ const EVENT_POOL = [
     flavor: 'Een duivel in een pak biedt een contract aan.',
     successText: 'Je onderhandelt als een advocaat.',
     failText: 'Kleine lettertjes. Duizelig.' },
-  { name: GUARDIAN_EVENT_NAME, icon: '🛡️', ability: 'Combat', dc: 14, category: 'combat',
-    flavor: 'Een ridder blokkeert de ingang tot de schat.',
-    successText: 'Eerlijk duel gewonnen. Hij saluteert.',
-    failText: 'Neergeslagen. Bijna...' },
+  { name: GUARDIAN_EVENT_NAME, icon: '🛡️', ability: 'Combat', dc: 14, category: 'boss',
+    flavor: 'De Laatste Wachter blokkeert de ingang tot de schat. Samen moeten jullie hem vellen!',
+    successText: 'Een rake klap — de wachter wankelt!',
+    failText: 'Zijn schild is te sterk. Je likt je wonden.' },
+  { name: 'Oude rode draak', icon: '🐲', ability: 'Intimidation', dc: 15, category: 'boss',
+    flavor: 'Vuur en zwavel. De draak van de schatkamer spuwt een waarschuwingsvlam.',
+    successText: 'Je houdt zijn blik. Een schram op zijn schubben!',
+    failText: 'De vlam raakt je. Terugdeinzen.' },
+  { name: 'Stormreus', icon: '⛈️', ability: 'Athletics', dc: 14, category: 'boss',
+    flavor: 'Donder op de drempel. Een reus blokkeert de poort met een rotsblok.',
+    successText: 'Je ontwijkt zijn stamp en raakt een zwakke plek.',
+    failText: 'De grond beeft. Je valt op je knieën.' },
+  { name: 'Gevallen paladijn', icon: '⚔️', ability: 'Combat', dc: 13, category: 'boss',
+    flavor: 'Eens een held, nu de laatste verdediger van de schat. Zijn ogen gloeien dof.',
+    successText: 'Eerlijk duel — zijn harnas kraakt.',
+    failText: 'Zijn zegen is nog niet vervlogen. Je wijkt terug.' },
   { name: 'Spiegeldubbelganger', icon: '🪞', ability: 'Insight', dc: 12, category: 'mystery',
     flavor: 'Je spiegelbeeld stapt uit het glas.',
     successText: 'Je omarmt je schaduw-zelf. Het smelt weg.',
@@ -773,12 +796,23 @@ function createDeck(source) {
   };
 }
 
-function eventsExceptGuardian() {
-  return EVENT_POOL.filter((e) => e.name !== GUARDIAN_EVENT_NAME);
+const BOSS_POOL = EVENT_POOL.filter((e) => e.category === 'boss');
+
+function getDefaultBoss() {
+  return EVENT_POOL.find((e) => e.name === GUARDIAN_EVENT_NAME) || BOSS_POOL[0] || EVENT_POOL[0];
+}
+
+function pickRandomBoss() {
+  if (BOSS_POOL.length === 0) return getDefaultBoss();
+  return BOSS_POOL[Math.floor(Math.random() * BOSS_POOL.length)];
+}
+
+function eventsExceptBosses() {
+  return EVENT_POOL.filter((e) => e.category !== 'boss');
 }
 
 function eventsByDc(min, max) {
-  return eventsExceptGuardian().filter((e) => e.dc >= min && e.dc <= max);
+  return eventsExceptBosses().filter((e) => e.dc >= min && e.dc <= max);
 }
 
 /** Vak 2–61 (excl. 62): shuffle, ~38% pad, rest events met DC-progressie */
@@ -798,12 +832,14 @@ function buildSpecialSpaces() {
     },
   };
 
-  const guardian = EVENT_POOL.find((e) => e.name === GUARDIAN_EVENT_NAME)
-    || EVENT_POOL[EVENT_POOL.length - 1];
-  spaces[62] = { type: 'event', ...guardian };
+  const bossPreview = pickRandomBoss();
+  spaces[62] = { type: 'event', ...bossPreview };
+  spaces[ENCAMPMENT_SPACE] = { type: 'path', ...ENCAMPMENT_TILE };
 
   const playable = [];
-  for (let n = 2; n <= 61; n += 1) playable.push(n);
+  for (let n = 2; n <= 61; n += 1) {
+    if (n !== ENCAMPMENT_SPACE) playable.push(n);
+  }
 
   const shuffledSlots = shuffleArray(playable);
   const pathCount = Math.round(shuffledSlots.length * PATH_RATIO);
@@ -848,6 +884,11 @@ function rebuildBoard() {
 
 window.SPECIAL_SPACES = SPECIAL_SPACES;
 window.EVENT_POOL = EVENT_POOL;
+window.BOSS_POOL = BOSS_POOL;
 window.PATH_TILES = PATH_TILES;
+window.ENCAMPMENT_SPACE = ENCAMPMENT_SPACE;
+window.ENCAMPMENT_TILE = ENCAMPMENT_TILE;
+window.getDefaultBoss = getDefaultBoss;
+window.pickRandomBoss = pickRandomBoss;
 window.rebuildBoard = rebuildBoard;
 window.buildSpecialSpaces = buildSpecialSpaces;

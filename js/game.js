@@ -1,6 +1,13 @@
 const TOTAL_SPACES = 63;
 const FINISH_SPACE = 63;
+const BOSS_SPACE = 62;
+const BOSS_RETREAT_SPACE = 56;
 const PATH_SPACES = 62;
+const BOSS_HP_PER_PLAYER = 3;
+
+function isOnBossArena(position) {
+  return position === BOSS_SPACE || position === FINISH_SPACE;
+}
 const BOARD_SIZE = 9;
 const DEFAULT_HP = 3;
 
@@ -133,6 +140,58 @@ class Game {
     this.pendingExtraTurn = false;
     this.gameOver = false;
     this.winner = null;
+    this.bossActive = false;
+    this.bossHp = 0;
+    this.bossMaxHp = 0;
+    this.bossConfig = null;
+  }
+
+  copyBossConfig(source) {
+    if (!source) return null;
+    return {
+      name: source.name,
+      icon: source.icon,
+      ability: source.ability,
+      dc: source.dc,
+      flavor: source.flavor,
+      successText: source.successText,
+      failText: source.failText,
+    };
+  }
+
+  activateBoss(landedSpace) {
+    if (this.bossActive) return null;
+
+    let raw;
+    if (landedSpace === BOSS_SPACE) {
+      raw = SPECIAL_SPACES[BOSS_SPACE];
+    } else {
+      const pool = typeof BOSS_POOL !== 'undefined' ? BOSS_POOL : [];
+      raw = pool.length > 0
+        ? pool[Math.floor(Math.random() * pool.length)]
+        : (typeof getDefaultBoss === 'function' ? getDefaultBoss() : null);
+    }
+
+    const config = this.copyBossConfig(raw);
+    if (!config) return null;
+
+    const playerCount = Math.max(1, this.players.length);
+    this.bossConfig = config;
+    this.bossMaxHp = BOSS_HP_PER_PLAYER * playerCount;
+    this.bossHp = this.bossMaxHp;
+    this.bossActive = true;
+    return config;
+  }
+
+  /** Eerste speler op vak 63 na boss-kill wint. */
+  checkWinAfterBoss() {
+    const onFinish = this.players.find((p) => p.position === FINISH_SPACE);
+    if (!onFinish) return null;
+
+    this.clearMovementBonusOnFinish(onFinish);
+    this.gameOver = true;
+    this.winner = onFinish;
+    return onFinish;
   }
 
   addPlayer(name, color) {
@@ -254,12 +313,68 @@ class Game {
   }
 
   resolveSpace(player, events) {
+    const onBossSpace = player.position === BOSS_SPACE || player.position === FINISH_SPACE;
+
+    if (!this.bossActive && onBossSpace) {
+      const config = this.activateBoss(player.position);
+      if (config) {
+        events.push({
+          type: 'boss-start',
+          name: config.name,
+          icon: config.icon,
+          flavor: config.flavor,
+          bossHp: this.bossHp,
+          bossMaxHp: this.bossMaxHp,
+          player: player.name,
+          spaceNum: player.position,
+        });
+        return {
+          events,
+          winner: null,
+          needsEvent: false,
+          needsPath: false,
+          needsBoss: true,
+        };
+      }
+    }
+
     if (player.position === FINISH_SPACE) {
+      if (this.bossActive) {
+        events.push({
+          type: 'boss-guard',
+          player: player.name,
+          name: this.bossConfig?.name,
+        });
+        return {
+          events,
+          winner: null,
+          needsEvent: false,
+          needsPath: false,
+          needsBoss: true,
+        };
+      }
+
       this.clearMovementBonusOnFinish(player);
       this.gameOver = true;
       this.winner = player;
       events.push({ type: 'finish', player: player.name });
       return { events, winner: player, needsEvent: false, needsPath: false };
+    }
+
+    if (this.bossActive && isOnBossArena(player.position)) {
+      events.push({
+        type: 'boss-engage',
+        player: player.name,
+        spaceNum: player.position,
+        name: this.bossConfig?.name,
+      });
+      return {
+        events,
+        winner: null,
+        needsEvent: false,
+        needsPath: false,
+        needsBoss: true,
+      };
     }
 
     const space = SPECIAL_SPACES[player.position];
@@ -346,6 +461,22 @@ class Game {
     });
 
     if (player.position === FINISH_SPACE) {
+      if (this.bossActive) {
+        events.push({
+          type: 'boss-guard',
+          player: player.name,
+          name: this.bossConfig?.name,
+        });
+        return {
+          winner: null,
+          needsEvent: false,
+          needsPath: false,
+          needsBoss: true,
+          eventConfig: null,
+          pathConfig: null,
+        };
+      }
+
       this.clearMovementBonusOnFinish(player);
       this.gameOver = true;
       this.winner = player;
@@ -374,8 +505,102 @@ class Game {
       winner: chain.winner,
       needsEvent: chain.needsEvent ?? false,
       needsPath: chain.needsPath ?? false,
+      needsBoss: chain.needsBoss ?? false,
       eventConfig: chain.eventConfig ?? null,
       pathConfig: chain.pathConfig ?? null,
+    };
+  }
+
+  resolveBoss(roll, options = {}) {
+    const config = this.bossConfig;
+    if (!this.bossActive || !config || !this.currentPlayer) {
+      return {
+        events: [],
+        winner: null,
+        passTurn: true,
+        success: false,
+        effectiveDc: null,
+      };
+    }
+
+    const { nat20 = false, nat1 = false } = options;
+    const player = this.currentPlayer;
+    const dcModApplied = player.nextDcMod ?? 0;
+    player.nextDcMod = 0;
+
+    const effectiveDc = getEffectiveDc(player, config.dc);
+    const isNat1 = !nat20 && (nat1 || roll === 1);
+    const success = !isNat1 && (nat20 || (roll != null && roll >= effectiveDc));
+
+    const events = [{
+      type: 'boss-d20',
+      roll: roll ?? null,
+      dc: config.dc,
+      effectiveDc,
+      dcBonus: getDcBonus(player),
+      dcMod: dcModApplied,
+      ability: config.ability,
+      success,
+      nat20,
+      nat1: isNat1,
+      player: player.name,
+      bossName: config.name,
+    }];
+
+    let winner = null;
+
+    if (success) {
+      this.bossHp = Math.max(0, this.bossHp - 1);
+      events.push({
+        type: 'boss-hit',
+        bossHp: this.bossHp,
+        bossMaxHp: this.bossMaxHp,
+        player: player.name,
+        bossName: config.name,
+      });
+    } else {
+      events.push(...this.mutateHp(player, -1));
+    }
+
+    if (this.bossHp <= 0) {
+      this.bossActive = false;
+      this.bossHp = 0;
+      events.push({ type: 'boss-defeated', bossName: config.name });
+      winner = this.checkWinAfterBoss();
+      if (winner) {
+        events.push({ type: 'finish', player: winner.name });
+      }
+    }
+
+    const died = events.some((e) => e.type === 'death');
+    const skipRetreat = died || (winner && winner.id === player.id);
+
+    if (!skipRetreat) {
+      const from = player.position;
+      player.position = BOSS_RETREAT_SPACE;
+      events.push({
+        type: 'boss-retreat',
+        player: player.name,
+        from,
+        to: BOSS_RETREAT_SPACE,
+      });
+    }
+
+    if (!winner) {
+      events.push({ type: 'pass-turn', player: player.name });
+    }
+
+    return {
+      events,
+      winner,
+      passTurn: !winner,
+      success,
+      effectiveDc,
+      nat20,
+      nat1: isNat1,
+      bossHp: this.bossHp,
+      bossMaxHp: this.bossMaxHp,
+      retreatedTo: skipRetreat ? null : BOSS_RETREAT_SPACE,
     };
   }
 
@@ -462,6 +687,7 @@ class Game {
         winner: moveResult.winner,
         needsEvent: moveResult.needsEvent,
         needsPath: moveResult.needsPath,
+        needsBoss: moveResult.needsBoss ?? false,
         eventConfig: moveResult.eventConfig,
         pathConfig: moveResult.pathConfig,
         passTurn: false,
@@ -530,12 +756,19 @@ class Game {
     this.pendingExtraTurn = false;
     this.gameOver = false;
     this.winner = null;
+    this.bossActive = false;
+    this.bossHp = 0;
+    this.bossMaxHp = 0;
+    this.bossConfig = null;
   }
 }
 
 window.Game = Game;
 window.TOTAL_SPACES = TOTAL_SPACES;
 window.FINISH_SPACE = FINISH_SPACE;
+window.BOSS_SPACE = BOSS_SPACE;
+window.BOSS_RETREAT_SPACE = BOSS_RETREAT_SPACE;
+window.isOnBossArena = isOnBossArena;
 window.getPathDirection = getPathDirection;
 window.getDcBonus = getDcBonus;
 window.getDcModifier = getDcModifier;

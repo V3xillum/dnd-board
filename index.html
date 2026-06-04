@@ -1,0 +1,159 @@
+<!DOCTYPE html>
+<html lang="nl">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>D&amp;D Ganzenbord</title>
+  <link rel="stylesheet" href="css/styles.css">
+</head>
+<body>
+  <div class="app">
+    <header class="header">
+      <h1>⚔️ D&amp;D Ganzenbord</h1>
+      <p class="subtitle">Rol je dobbelstenen, overleef de checks, bereik de schat!</p>
+    </header>
+
+    <aside class="sidebar">
+      <section class="panel">
+        <h2>Spelers</h2>
+        <div class="add-player">
+          <input type="text" id="player-name" placeholder="Naam avonturier" maxlength="20">
+          <button id="add-player-btn" class="btn btn--primary">Toevoegen</button>
+        </div>
+        <ul id="player-list" class="player-list"></ul>
+      </section>
+
+      <section class="panel">
+        <h2>Beurt</h2>
+        <p id="current-player" class="current-player">Voeg spelers toe om te beginnen</p>
+        <div class="dice-controls">
+          <label class="dice-label" for="dice-input">
+            Dobbelsteenworp (2× D6)
+            <input type="number" id="dice-input" min="2" max="12" placeholder="2–12" inputmode="numeric">
+          </label>
+          <p class="dice-hint">Gooi twee D6 en vul het totaal in.</p>
+          <button id="move-btn" class="btn btn--primary" disabled>Verplaats</button>
+        </div>
+      </section>
+
+      <section class="panel panel--log">
+        <h2>Avonturenlog</h2>
+        <ul id="game-log" class="game-log"></ul>
+      </section>
+    </aside>
+
+    <main class="board-area">
+      <div id="board" class="board"></div>
+      <div class="legend">
+        <p class="legend__heading">Legenda — kleur op het bord = type vakje</p>
+        <span class="legend-item legend-item--info">🎲 D20-check op event-vakjes</span>
+        <span class="legend-item">
+          <span class="legend-swatch legend-swatch--quiet" aria-hidden="true"></span>
+          Rustig pad
+        </span>
+        <span class="legend-item">
+          <span class="legend-swatch legend-swatch--trap" aria-hidden="true"></span>
+          Val / gevaar
+        </span>
+        <span class="legend-item">
+          <span class="legend-swatch legend-swatch--combat" aria-hidden="true"></span>
+          Combat
+        </span>
+        <span class="legend-item">
+          <span class="legend-swatch legend-swatch--magic" aria-hidden="true"></span>
+          Magie
+        </span>
+        <span class="legend-item">
+          <span class="legend-swatch legend-swatch--social" aria-hidden="true"></span>
+          Social
+        </span>
+        <span class="legend-item">
+          <span class="legend-swatch legend-swatch--loot" aria-hidden="true"></span>
+          Loot
+        </span>
+        <span class="legend-item">
+          <span class="legend-swatch legend-swatch--mystery" aria-hidden="true"></span>
+          Mysterie
+        </span>
+        <span class="legend-item">
+          <span class="legend-swatch legend-swatch--wild" aria-hidden="true"></span>
+          Wildernis
+        </span>
+        <span class="legend-item">
+          <span class="legend-swatch legend-swatch--fey" aria-hidden="true"></span>
+          Fey
+        </span>
+      </div>
+    </main>
+  </div>
+
+  <div id="event-modal" class="event-modal hidden" role="dialog" aria-modal="true">
+    <div class="event-card">
+      <div class="event-card__frame">
+        <header class="event-card__header">
+          <span class="event-card__icon" id="event-icon">🎲</span>
+          <span class="event-card__badge" id="event-space">Vak 0</span>
+        </header>
+
+        <h2 class="event-card__title" id="event-title"></h2>
+        <p class="event-card__flavor" id="event-flavor"></p>
+
+        <div class="event-card__check" id="event-check">
+          <div class="check-badge">
+            <span class="check-badge__label">Ability Check</span>
+            <span class="check-badge__ability" id="event-ability">Stealth</span>
+            <span class="check-badge__dc">DC <strong id="event-dc">10</strong></span>
+          </div>
+        </div>
+
+        <div class="event-card__roll" id="event-roll-area">
+          <p class="event-card__roll-hint">Vul je totale worp in (D20 + modifiers, geen maximum)</p>
+          <div class="event-card__roll-input">
+            <input type="number" id="event-dice-input" min="1" placeholder="?" inputmode="numeric" aria-label="Totale worp">
+            <button id="event-submit" class="btn btn--d20 btn--large">Bevestig worp</button>
+          </div>
+          <label class="event-card__nat20">
+            <input type="checkbox" id="event-nat20">
+            <span>Nat 20 — DC-streak reset · volgende check −2 DC</span>
+          </label>
+        </div>
+
+        <div id="event-result" class="event-card__result hidden"></div>
+
+        <button id="event-close" class="btn btn--primary btn--wide" disabled>Doorgaan op avontuur</button>
+      </div>
+    </div>
+  </div>
+
+  <div id="path-modal" class="event-modal hidden" role="dialog" aria-modal="true">
+    <div class="event-card event-card--path">
+      <div class="event-card__frame">
+        <header class="event-card__header">
+          <span class="event-card__icon" id="path-icon">🚶</span>
+          <span class="event-card__badge" id="path-space">Vak 0</span>
+        </header>
+        <p class="path-card__tag">Rustig pad</p>
+        <h2 class="event-card__title" id="path-title"></h2>
+        <p class="event-card__flavor" id="path-flavor"></p>
+        <p class="path-card__note">Geen ability check — even ademhalen en doorlopen.</p>
+        <button id="path-close" class="btn btn--primary btn--wide">Verder lopen</button>
+      </div>
+    </div>
+  </div>
+
+  <div id="win-modal" class="event-modal hidden" role="dialog" aria-modal="true">
+    <div class="event-card event-card--win">
+      <div class="event-card__frame">
+        <span class="event-card__icon event-card__icon--large">💰</span>
+        <h2 id="win-title" class="event-card__title">Overwinning!</h2>
+        <p id="win-text" class="event-card__flavor"></p>
+        <button id="win-close" class="btn btn--primary btn--wide">Nieuw avontuur</button>
+      </div>
+    </div>
+  </div>
+
+  <script src="js/events-data.js"></script>
+  <script src="js/game.js"></script>
+  <script src="js/ui.js"></script>
+</body>
+</html>

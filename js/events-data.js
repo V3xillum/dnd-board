@@ -922,6 +922,71 @@ const EVENT_POOL = [
     flavor: 'Je voetstappen komen terug van vóór je — te vroeg, te luid. De gang liegt over richting.',
     successText: 'Je volgt het echte geluid van druppelwater, niet de echo. De juiste deur ligt links.',
     failText: 'Je vertrouwt de echo en loopt terug naar waar je al was.' },
+    // Blight-thema
+{ name: 'Zwartwortel-netwerk', icon: '🌿', ability: 'Nature', dc: 11, category: 'mystery',
+  flavor: 'Onder het mos ontdek je dikke zwarte wortels die pulseren als aders. Ze lopen allemaal dezelfde richting op.',
+  successText: 'Je volgt het patroon en leert waar de besmetting vandaan lijkt te komen.',
+  failText: 'Een wortel schiet omhoog en spuit zwart sap over je handen.' },
+
+{ name: 'Blight-spinnen', icon: '🕷️', ability: 'Athletics', dc: 12, category: 'combat',
+  flavor: 'Tussen de bomen bewegen vormen van wortels en schors. Pas wanneer ze dichterbij komen zie je de poten.',
+  successText: 'Je vernietigt de kern van de zwerm voordat ze je omsingelen.',
+  failText: 'De spinnen springen tegelijk. Overal klauwen en wortels.' },
+
+{ name: 'Fluistering van de Blight', icon: '🖤', ability: 'Wisdom', dc: 12, category: 'magic',
+  flavor: 'Een stem klinkt vanuit de bomen. Rustig. Nieuwsgierig. Ze kent jouw naam.',
+  successText: 'Je sluit de verbinding af voordat de stem dieper kan doordringen.',
+  failText: 'Een vraag blijft hangen in je gedachten lang nadat de stem verdwenen is.' },
+
+{ name: 'Zwart sap', icon: '🩸', ability: 'Survival', dc: 10, category: 'wild',
+  flavor: 'Een beekje voert donker sap mee. Dieren vermijden de plek zichtbaar.',
+  successText: 'Je vindt een veilige route langs de besmetting.',
+  failText: 'Je stapt in het sap en voelt een koude steek door je been trekken.' },
+
+{ name: 'De Knoop', icon: '🌳', ability: 'Investigation', dc: 13, category: 'loot',
+  flavor: 'Een boom lijkt dood, tot je ontdekt dat de stam hol is. Binnen klopt iets als een hart.',
+  successText: 'Je vernietigt de knoop en vindt iets dat het beschermde.',
+  failText: 'De boom opent zich. Jij stond te dichtbij.' },
+
+{ name: 'Blight-jager', icon: '🐺', ability: 'Stealth', dc: 12, category: 'ambush', ambushHp: 3,
+  flavor: 'Een corrupte wolf volgt je al uren. Je ziet hem pas wanneer hij besluit gezien te worden.',
+  successText: 'Je draait de jacht om voordat hij kan toeslaan.',
+  failText: 'Hij springt vanuit het struikgewas.' },
+
+{ name: 'Verdorven Druïde', icon: '🍂', ability: 'Insight', dc: 13, category: 'social',
+  flavor: 'De druïde spreekt vriendelijk. Zijn bloemen bloeien zwart.',
+  successText: 'Je merkt de tegenstrijdigheden in zijn verhaal en houdt afstand.',
+  failText: 'Zijn woorden klinken logisch. Misschien té logisch.' },
+
+{ name: 'Avatar van de Blight', icon: '🕸️', ability: 'Nature', dc: 15, category: 'boss',
+  flavor: 'Een enorme spin van wortels, schors en zwart sap trekt zich los uit het bos zelf.',
+  successText: 'Je ontdekt een zwakke plek waar natuur en corruptie elkaar raken.',
+  failText: 'De grond opent zich onder haar gewicht.' },
+  //Far realm
+  { name: 'Verkeerde sterren', icon: '👁️', ability: 'Arcana', dc: 12, category: 'magic',
+    flavor: 'De sterren boven je vormen patronen die niet zouden mogen bestaan.',
+    successText: 'Je verbreekt het visioen voordat het terugkijkt.',
+    failText: 'Iets merkt op dat jij kijkt.' },
+
+  { name: 'Verloren tijd', icon: '⏳', ability: 'Investigation', dc: 11, category: 'mystery',
+    flavor: 'Volgens je geheugen ben je hier net aangekomen. Volgens de zon niet.',
+    successText: 'Je reconstrueert wat er gebeurd moet zijn.',
+    failText: 'Een uur ontbreekt. Je weet niet waarvan.' },
+
+  { name: 'Flayer-verkenner', icon: '🧠', ability: 'Stealth', dc: 12, category: 'ambush', ambushHp: 2,
+    flavor: 'Een rat kijkt je net iets te intelligent aan.',
+    successText: 'Je ontdekt de verkenner voordat hij zijn rapport kan sturen.',
+    failText: 'Hij piept eenmaal. Er luistert iemand mee.' },
+
+  { name: 'Gebroken werkelijkheid', icon: '🌀', ability: 'Wisdom', dc: 13, category: 'magic',
+    flavor: 'De bomen staan op de verkeerde plekken. Daarna weer niet.',
+    successText: 'Je houdt vast aan wat echt is.',
+    failText: 'Je twijfelt aan alles wat je ziet.' },
+
+  { name: 'Far Realm infectie', icon: '👁️‍🗨️', ability: 'Medicine', dc: 14, category: 'mystery',
+    flavor: 'Een reiziger vertoont vreemde symptomen. De pupillen bewegen niet synchroon.',
+    successText: 'Je herkent de tekenen voordat de infectie zich verspreidt.',
+    failText: 'Je komt dichterbij dan verstandig was.' },
 ];
 
 function shuffleArray(items) {

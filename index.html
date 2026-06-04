@@ -26,6 +26,14 @@
       <section class="panel">
         <h2>Beurt</h2>
         <p id="current-player" class="current-player">Voeg spelers toe om te beginnen</p>
+        <div id="hp-controls" class="hp-controls hp-controls--hidden">
+          <span class="hp-controls__label">HP (handmatig)</span>
+          <div class="hp-controls__row">
+            <button type="button" id="hp-minus-btn" class="btn btn--hp" title="1 HP schade" aria-label="HP verlagen">−</button>
+            <span id="hp-display" class="hp-display" aria-live="polite"></span>
+            <button type="button" id="hp-plus-btn" class="btn btn--hp" title="1 HP genezen" aria-label="HP verhogen">+</button>
+          </div>
+        </div>
         <div class="dice-controls">
           <label class="dice-label" for="dice-input">
             Dobbelsteenworp (2× D6)

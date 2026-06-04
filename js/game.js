@@ -2,6 +2,7 @@ const TOTAL_SPACES = 63;
 const FINISH_SPACE = 63;
 const PATH_SPACES = 62;
 const BOARD_SIZE = 9;
+const DEFAULT_HP = 3;
 
 function isCenterCell(r, c) {
   const start = Math.floor(BOARD_SIZE / 2) - 1;
@@ -71,6 +72,11 @@ function randomSteps1to3() {
   return Math.floor(Math.random() * 3) + 1;
 }
 
+function applyMovementBonus(player, steps) {
+  if (steps <= 0) return steps;
+  return steps + (player.movementBonus ?? 0);
+}
+
 function getDcBonus(player) {
   return player?.dcStreak ?? 0;
 }
@@ -111,9 +117,65 @@ class Game {
       name,
       color,
       position: 0,
+      hp: DEFAULT_HP,
+      maxHp: DEFAULT_HP,
+      movementBonus: 0,
       dcStreak: 0,
       nextDcMod: 0,
     });
+  }
+
+  /**
+   * Centrale HP-mutatie. Bij 0 HP: death (start, HP vol, movementBonus +1).
+   * @returns {object[]} events voor describeEvents()
+   */
+  mutateHp(player, delta) {
+    if (!player || this.gameOver || delta === 0) return [];
+
+    const events = [];
+    const from = player.hp;
+    const to = Math.min(player.maxHp, Math.max(0, from + delta));
+
+    player.hp = to;
+    events.push({
+      type: 'hp-change',
+      player: player.name,
+      from,
+      to,
+      delta: to - from,
+    });
+
+    if (player.hp <= 0) {
+      player.position = 0;
+      player.hp = player.maxHp;
+      player.movementBonus = (player.movementBonus ?? 0) + 1;
+      events.push({
+        type: 'death',
+        player: player.name,
+        hp: player.hp,
+        movementBonus: player.movementBonus,
+      });
+    }
+
+    return events;
+  }
+
+  clearMovementBonusOnFinish(player) {
+    if (player?.movementBonus) {
+      player.movementBonus = 0;
+    }
+  }
+
+  /** Overshoot voorbij vak 63: kaats terug; catch-up bonus verbruikt (zelfde als finish bereiken). */
+  applyFinishOvershootBounce(player, pos) {
+    const overshoot = pos - TOTAL_SPACES;
+    const hadBonus = (player.movementBonus ?? 0) > 0;
+    this.clearMovementBonusOnFinish(player);
+    return {
+      position: Math.max(0, TOTAL_SPACES - overshoot),
+      overshoot,
+      movementBonusCleared: hadBonus,
+    };
   }
 
   removePlayer(id) {
@@ -138,19 +200,28 @@ class Game {
     }
 
     const from = player.position;
-    let pos = from + steps;
+    const effectiveSteps = applyMovementBonus(player, steps);
+    let pos = from + effectiveSteps;
     const events = [{
       type: 'move',
       from,
       to: pos,
-      steps,
+      steps: effectiveSteps,
+      baseSteps: steps,
+      movementBonus: player.movementBonus ?? 0,
       player: player.name,
     }];
 
     if (pos > TOTAL_SPACES) {
-      const overshoot = pos - TOTAL_SPACES;
-      pos = TOTAL_SPACES - overshoot;
-      events.push({ type: 'bounce', position: pos, overshoot });
+      const bounce = this.applyFinishOvershootBounce(player, pos);
+      pos = bounce.position;
+      events.push({
+        type: 'bounce',
+        position: pos,
+        overshoot: bounce.overshoot,
+        player: player.name,
+        movementBonusCleared: bounce.movementBonusCleared,
+      });
     }
 
     player.position = Math.max(0, pos);
@@ -159,6 +230,7 @@ class Game {
 
   resolveSpace(player, events) {
     if (player.position === FINISH_SPACE) {
+      this.clearMovementBonusOnFinish(player);
       this.gameOver = true;
       this.winner = player;
       events.push({ type: 'finish', player: player.name });
@@ -183,6 +255,7 @@ class Game {
     }
 
     if (space.type === 'finish') {
+      this.clearMovementBonusOnFinish(player);
       this.gameOver = true;
       this.winner = player;
       events.push({ type: 'finish', player: player.name });
@@ -219,13 +292,20 @@ class Game {
   moveAfterEvent(player, steps, events, chainEvents) {
     const from = player.position;
     const direction = steps >= 0 ? 'forward' : 'back';
-    const amount = Math.abs(steps);
-    let pos = from + steps;
+    const effectiveSteps = applyMovementBonus(player, steps);
+    const amount = Math.abs(effectiveSteps);
+    let pos = from + effectiveSteps;
 
-    if (steps > 0 && pos > TOTAL_SPACES) {
-      const overshoot = pos - TOTAL_SPACES;
-      pos = TOTAL_SPACES - overshoot;
-      events.push({ type: 'bounce', position: pos, overshoot });
+    if (effectiveSteps > 0 && pos > TOTAL_SPACES) {
+      const bounce = this.applyFinishOvershootBounce(player, pos);
+      pos = bounce.position;
+      events.push({
+        type: 'bounce',
+        position: pos,
+        overshoot: bounce.overshoot,
+        player: player.name,
+        movementBonusCleared: bounce.movementBonusCleared,
+      });
     }
 
     player.position = Math.max(0, pos);
@@ -234,11 +314,14 @@ class Game {
       from,
       to: player.position,
       steps: amount,
+      baseSteps: Math.abs(steps),
+      movementBonus: player.movementBonus ?? 0,
       direction,
       player: player.name,
     });
 
     if (player.position === FINISH_SPACE) {
+      this.clearMovementBonusOnFinish(player);
       this.gameOver = true;
       this.winner = player;
       events.push({ type: 'finish', player: player.name });
@@ -389,3 +472,5 @@ window.getEffectiveDc = getEffectiveDc;
 window.isCenterCell = isCenterCell;
 window.isCenterCovered = isCenterCovered;
 window.getCenterAnchor = getCenterAnchor;
+window.applyMovementBonus = applyMovementBonus;
+window.DEFAULT_HP = DEFAULT_HP;

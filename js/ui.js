@@ -10,6 +10,10 @@ const els = {
   currentPlayer: document.getElementById('current-player'),
   diceInput: document.getElementById('dice-input'),
   moveBtn: document.getElementById('move-btn'),
+  hpControls: document.getElementById('hp-controls'),
+  hpDisplay: document.getElementById('hp-display'),
+  hpMinusBtn: document.getElementById('hp-minus-btn'),
+  hpPlusBtn: document.getElementById('hp-plus-btn'),
   pathModal: document.getElementById('path-modal'),
   pathIcon: document.getElementById('path-icon'),
   pathSpace: document.getElementById('path-space'),
@@ -173,7 +177,7 @@ function renderPlayers() {
       <span class="player-dot" style="background:${p.color}"></span>
       <span class="player-info">
         <strong>${p.name}</strong>
-        <small>Vak ${p.position}${formatPlayerDcHint(p)}</small>
+        <small>Vak ${p.position} · ${formatPlayerHp(p)}${formatPlayerDcHint(p)}${formatPlayerMovementHint(p)}</small>
       </span>
       <button class="btn-remove" title="Verwijder speler" data-id="${p.id}">×</button>
     `;
@@ -193,17 +197,60 @@ function renderPlayers() {
   updateTurnUI();
 }
 
+function formatPlayerHp(player) {
+  const filled = '❤️'.repeat(player.hp);
+  const empty = '🖤'.repeat(Math.max(0, player.maxHp - player.hp));
+  return filled + empty;
+}
+
+function formatPlayerMovementHint(player) {
+  const bonus = player.movementBonus ?? 0;
+  return bonus > 0 ? ` · +${bonus} beweging` : '';
+}
+
+function updateHpControls() {
+  const cp = game.currentPlayer;
+  const show = cp && !game.gameOver;
+
+  els.hpControls.classList.toggle('hp-controls--hidden', !show);
+  els.hpMinusBtn.disabled = !show;
+  els.hpPlusBtn.disabled = !show || !cp || cp.hp >= cp.maxHp;
+
+  if (!show || !cp) {
+    els.hpDisplay.textContent = '';
+    return;
+  }
+
+  els.hpDisplay.textContent = formatPlayerHp(cp);
+  els.hpDisplay.title = `${cp.hp} / ${cp.maxHp} HP`;
+}
+
+function adjustCurrentPlayerHp(delta) {
+  const player = game.currentPlayer;
+  if (!player || game.gameOver) return;
+
+  const events = game.mutateHp(player, delta);
+  if (events.length === 0) return;
+
+  describeEvents(events);
+  renderBoard();
+  renderPlayers();
+  updateTurnUI();
+}
+
 function updateTurnUI() {
   const cp = game.currentPlayer;
   if (game.gameOver) {
     els.currentPlayer.textContent = 'Spel afgelopen!';
     els.moveBtn.disabled = true;
+    updateHpControls();
     return;
   }
 
   if (!cp) {
     els.currentPlayer.textContent = 'Voeg spelers toe om te beginnen';
     els.moveBtn.disabled = true;
+    updateHpControls();
     return;
   }
 
@@ -212,6 +259,7 @@ function updateTurnUI() {
   els.currentPlayer.textContent = turnText;
   els.currentPlayer.style.color = cp.color;
   els.moveBtn.disabled = false;
+  updateHpControls();
 }
 
 function addLog(message, type = '') {
@@ -228,12 +276,37 @@ function addLog(message, type = '') {
 function describeEvents(events) {
   events.forEach((ev) => {
     switch (ev.type) {
-      case 'move':
-        addLog(`${ev.player} verplaatst ${ev.steps} vakje(s) → vak ${ev.to}`);
+      case 'move': {
+        const bonusNote =
+          ev.movementBonus > 0 && ev.baseSteps != null && ev.steps !== ev.baseSteps
+            ? ` (${ev.baseSteps}+${ev.movementBonus} catch-up)`
+            : '';
+        addLog(`${ev.player} verplaatst ${ev.steps} vakje(s)${bonusNote} → vak ${ev.to}`);
         break;
-      case 'bounce':
-        addLog(`Te ver! Terugkaatsen naar vak ${ev.position}`, 'warn');
+      }
+      case 'hp-change': {
+        const verb = ev.delta < 0 ? 'verliest' : 'herstelt';
+        const amount = Math.abs(ev.delta);
+        addLog(
+          `${ev.player} ${verb} ${amount} HP (${ev.from} → ${ev.to})`,
+          ev.delta < 0 ? 'fail' : 'success',
+        );
         break;
+      }
+      case 'death':
+        addLog(
+          `${ev.player} valt uit! Terug naar start · ${ev.hp} HP · +${ev.movementBonus} beweging (catch-up)`,
+          'warn',
+        );
+        break;
+      case 'bounce': {
+        let msg = `Te ver! Terugkaatsen naar vak ${ev.position}`;
+        if (ev.movementBonusCleared && ev.player) {
+          msg += ` — ${ev.player}: catch-up bonus verbruikt`;
+        }
+        addLog(msg, 'warn');
+        break;
+      }
       case 'landed':
         if (ev.name) addLog(`Landt op: ${ev.icon} ${ev.name}`, 'special');
         break;
@@ -260,8 +333,15 @@ function describeEvents(events) {
         break;
       case 'event-move': {
         const dir = ev.direction === 'back' ? 'terug' : 'vooruit';
+        const bonusNote =
+          ev.movementBonus > 0 &&
+          ev.direction === 'forward' &&
+          ev.baseSteps != null &&
+          ev.steps !== ev.baseSteps
+            ? ` (${ev.baseSteps}+${ev.movementBonus} catch-up)`
+            : '';
         addLog(
-          `${ev.player} ${ev.steps} vakje(s) ${dir} → vak ${ev.to}`,
+          `${ev.player} ${ev.steps} vakje(s) ${dir}${bonusNote} → vak ${ev.to}`,
           ev.direction === 'back' ? 'fail' : 'success',
         );
         break;
@@ -604,6 +684,9 @@ els.moveBtn.addEventListener('click', () => {
 els.diceInput.addEventListener('keydown', (e) => {
   if (e.key === 'Enter') els.moveBtn.click();
 });
+
+els.hpMinusBtn.addEventListener('click', () => adjustCurrentPlayerHp(-1));
+els.hpPlusBtn.addEventListener('click', () => adjustCurrentPlayerHp(1));
 
 els.winClose.addEventListener('click', () => {
   els.winModal.classList.add('hidden');

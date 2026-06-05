@@ -119,8 +119,19 @@ function getDcModifier(player) {
   return player?.nextDcMod ?? 0;
 }
 
-function getEffectiveDc(player, baseDc) {
-  const total = baseDc + getDcBonus(player) + getDcModifier(player);
+/** Moeilijkheidsgraad 1–5 → vaste +1 DC per stap (niveau 1 = +0, niveau 5 = +4) */
+const DC_DIFFICULTY_MAX_LEVEL = 5;
+
+function getDifficultyDcBonus(level = 1) {
+  const clamped = Math.max(1, Math.min(DC_DIFFICULTY_MAX_LEVEL, level));
+  return clamped - 1;
+}
+
+function getEffectiveDc(player, baseDc, difficultyLevel, dcModOverride) {
+  const level = difficultyLevel ?? window.getGame?.()?.difficultyLevel ?? 1;
+  const difficultyBonus = getDifficultyDcBonus(level);
+  const mod = dcModOverride ?? getDcModifier(player);
+  const total = baseDc + difficultyBonus + getDcBonus(player) + mod;
   return Math.max(1, total);
 }
 
@@ -145,8 +156,17 @@ class Game {
     this.bossHp = 0;
     this.bossMaxHp = 0;
     this.bossConfig = null;
+    this.bossMultiplier = 1;
+    this.bossDmgPerHit = 1;
+    this.bossRevealRoll = null;
+    /** Beschermers vóór de eindbaas (roll 12); niet op het bord als putten */
+    this.bossMinions = [];
     /** Per vak: actieve put met gedeelde vijand en lijst vastzittende spelers */
     this.ambushPits = {};
+    /** Per vak: onthulde mystery-inhoud (path of ambush + multiplier) */
+    this.revealedSpaces = {};
+    /** 1–5: +0 … +4 op event-DC */
+    this.difficultyLevel = 1;
   }
 
   copyAmbushConfig(source) {
@@ -237,14 +257,26 @@ class Game {
       };
     }
 
-    const raw = typeof pickRandomAmbush === 'function' ? pickRandomAmbush() : null;
+    const revealed = this.revealedSpaces[spaceNum];
+    let raw;
+    let multiplier = 1;
+
+    if (revealed?.type === 'ambush') {
+      raw = revealed.config;
+      multiplier = revealed.multiplier ?? 1;
+    } else {
+      raw = typeof pickRandomAmbush === 'function' ? pickRandomAmbush() : null;
+    }
+
     const config = this.copyAmbushConfig(raw);
     if (!config) return null;
 
+    const hp = Math.ceil(config.ambushHp * multiplier);
     pit = {
       config,
-      hp: config.ambushHp,
-      maxHp: config.ambushHp,
+      hp,
+      maxHp: hp,
+      dmgPerHit: multiplier,
       playerIds: [player.id],
     };
     this.ambushPits[spaceNum] = pit;
@@ -282,11 +314,118 @@ class Game {
     if (!config) return null;
 
     const playerCount = Math.max(1, this.players.length);
+    const mult = this.bossMultiplier ?? 1;
     this.bossConfig = config;
-    this.bossMaxHp = BOSS_HP_PER_PLAYER * playerCount;
+    this.bossMaxHp = Math.ceil(BOSS_HP_PER_PLAYER * playerCount * mult);
     this.bossHp = this.bossMaxHp;
     this.bossActive = true;
     return config;
+  }
+
+  spawnBossMinions(events) {
+    this.bossMinions = [];
+    for (let i = 0; i < 2; i += 1) {
+      const raw = typeof pickRandomAmbush === 'function' ? pickRandomAmbush() : null;
+      const config = this.copyAmbushConfig(raw);
+      if (!config) continue;
+      const hp = config.ambushHp ?? 3;
+      this.bossMinions.push({ config, hp, maxHp: hp });
+    }
+
+    if (this.bossMinions.length > 0) {
+      events.push({
+        type: 'boss-minion-start',
+        minions: this.bossMinions.map((m, index) => ({
+          index,
+          name: m.config.name,
+          icon: m.config.icon,
+          hp: m.hp,
+          maxHp: m.maxHp,
+        })),
+      });
+    }
+  }
+
+  getActiveBossMinion() {
+    return this.bossMinions.find((m) => m.hp > 0) ?? null;
+  }
+
+  hasBossMinions() {
+    return this.getActiveBossMinion() !== null;
+  }
+
+  getBossRevealFromRoll(roll) {
+    const clamped = Math.max(1, Math.min(12, roll));
+    if (clamped <= 8) {
+      return { roll: clamped, multiplier: 1, tier: 'standard' };
+    }
+    if (clamped <= 11) {
+      return { roll: clamped, multiplier: 1.5, tier: 'strong' };
+    }
+    return { roll: clamped, multiplier: 2, tier: 'epic' };
+  }
+
+  resolveBossReveal(landedSpace, roll) {
+    const player = this.currentPlayer;
+    const { roll: clamped, multiplier, tier } = this.getBossRevealFromRoll(roll);
+
+    this.bossMultiplier = multiplier;
+    this.bossDmgPerHit = multiplier;
+    this.bossRevealRoll = clamped;
+
+    const events = [{
+      type: 'boss-reveal',
+      roll: clamped,
+      tier,
+      multiplier,
+      player: player?.name,
+      spaceNum: landedSpace,
+    }];
+
+    const config = this.activateBoss(landedSpace);
+    if (!config) {
+      return { events, reveal: null, needsBoss: false };
+    }
+
+    if (tier === 'epic') {
+      this.spawnBossMinions(events);
+    }
+
+    events.push({
+      type: 'boss-start',
+      name: config.name,
+      icon: config.icon,
+      flavor: config.flavor,
+      bossHp: this.bossHp,
+      bossMaxHp: this.bossMaxHp,
+      multiplier,
+      tier,
+      minionCount: this.bossMinions.length,
+      player: player?.name,
+      spaceNum: landedSpace,
+    });
+
+    const minionPreview = this.bossMinions.map((m) => ({
+      name: m.config.name,
+      icon: m.config.icon,
+      hp: m.hp,
+      maxHp: m.maxHp,
+    }));
+
+    return {
+      events,
+      reveal: {
+        roll: clamped,
+        tier,
+        multiplier,
+        config,
+        bossHp: this.bossHp,
+        bossMaxHp: this.bossMaxHp,
+        minions: minionPreview,
+      },
+      needsBoss: true,
+      needsBossMinion: this.hasBossMinions(),
+    };
   }
 
   /** Eerste speler op vak 63 na boss-kill wint. */
@@ -309,10 +448,179 @@ class Game {
       hp: DEFAULT_HP,
       maxHp: DEFAULT_MAX_HP,
       movementBonus: 0,
+      dmgBonus: 0,
       dcStreak: 0,
       nextDcMod: 0,
       skipNextTurn: false,
     });
+  }
+
+  grantDmgBonus(player, events) {
+    if (!player) return;
+    player.dmgBonus = (player.dmgBonus ?? 0) + 1;
+    events.push({
+      type: 'dmg-bonus',
+      player: player.name,
+      dmgBonus: player.dmgBonus,
+    });
+  }
+
+  copyPathConfig(source) {
+    if (!source) return null;
+    return {
+      name: source.name,
+      icon: source.icon,
+      flavor: source.flavor,
+    };
+  }
+
+  buildAmbushRevelation(multiplier, jackpot) {
+    const raw = typeof pickRandomAmbush === 'function' ? pickRandomAmbush() : null;
+    const config = this.copyAmbushConfig(raw);
+    if (!config) return null;
+    return {
+      type: 'ambush',
+      config,
+      multiplier,
+      jackpot: Boolean(jackpot),
+    };
+  }
+
+  getMysteryTile() {
+    return {
+      type: 'mystery',
+      category: 'mystery',
+      icon: '❓',
+      name: 'Onbekend gevaar',
+      flavor: 'Iets loert hier. Je weet nog niet wat.',
+    };
+  }
+
+  applyRevealToBoard(spaceNum, revelation) {
+    if (!revelation) return;
+
+    if (revelation.type === 'path') {
+      SPECIAL_SPACES[spaceNum] = { type: 'path', ...revelation.config };
+    } else if (revelation.type === 'ambush') {
+      SPECIAL_SPACES[spaceNum] = {
+        type: 'event',
+        category: 'ambush',
+        ...revelation.config,
+      };
+    }
+
+    window.SPECIAL_SPACES = SPECIAL_SPACES;
+  }
+
+  /** Terug naar ❓ na mystery-bezoek (pad uitgerust of ambush verslagen). */
+  resetMysterySpace(spaceNum, events) {
+    if (!this.revealedSpaces[spaceNum]) return false;
+
+    delete this.revealedSpaces[spaceNum];
+    SPECIAL_SPACES[spaceNum] = this.getMysteryTile();
+    window.SPECIAL_SPACES = SPECIAL_SPACES;
+    events.push({ type: 'mystery-reset', spaceNum });
+    return true;
+  }
+
+  /** Na rustig pad van mystery-D12: vak weer onbekend maken. */
+  resetMysteryPathAfterRest(spaceNum) {
+    if (this.revealedSpaces[spaceNum]?.type !== 'path') return [];
+    const events = [];
+    this.resetMysterySpace(spaceNum, events);
+    return events;
+  }
+
+  resolveMysteryRoll(spaceNum, roll) {
+    const player = this.currentPlayer;
+    const clamped = Math.max(1, Math.min(12, roll));
+    const events = [{
+      type: 'mystery-roll',
+      roll: clamped,
+      spaceNum,
+      player: player?.name,
+    }];
+
+    let revelation;
+    if (clamped <= 2) {
+      const tile = typeof pickRandomPath === 'function'
+        ? pickRandomPath()
+        : { name: 'Rustig pad', icon: '🚶', flavor: 'Even ademhalen onderweg.' };
+      revelation = {
+        type: 'path',
+        config: this.copyPathConfig(tile),
+      };
+    } else if (clamped <= 8) {
+      revelation = this.buildAmbushRevelation(1, false);
+    } else if (clamped <= 11) {
+      revelation = this.buildAmbushRevelation(1.5, false);
+    } else {
+      revelation = this.buildAmbushRevelation(2, true);
+    }
+
+    if (!revelation) {
+      return { events, revelation: null, spaceNum };
+    }
+
+    this.revealedSpaces[spaceNum] = revelation;
+    this.applyRevealToBoard(spaceNum, revelation);
+
+    events.push({
+      type: 'mystery-reveal',
+      spaceNum,
+      revealType: revelation.type,
+      multiplier: revelation.multiplier ?? null,
+      jackpot: revelation.jackpot ?? false,
+      name: revelation.config?.name,
+      icon: revelation.config?.icon,
+      ambushHp: revelation.type === 'ambush'
+        ? Math.ceil((revelation.config?.ambushHp ?? 3) * (revelation.multiplier ?? 1))
+        : null,
+      player: player?.name,
+    });
+
+    return { events, revelation, spaceNum };
+  }
+
+  startRevealedAmbush(player, spaceNum) {
+    const joined = this.joinOrStartPit(player, spaceNum);
+    if (!joined) return null;
+
+    const { config, kind, pit } = joined;
+    const allies = pit.playerIds
+      .filter((id) => id !== player.id)
+      .map((id) => this.players.find((p) => p.id === id)?.name)
+      .filter(Boolean);
+
+    const events = [];
+    if (kind === 'join') {
+      events.push({
+        type: 'ambush-join',
+        name: config.name,
+        icon: config.icon,
+        ambushHp: pit.hp,
+        ambushMaxHp: pit.maxHp,
+        player: player.name,
+        allies,
+        spaceNum,
+      });
+    } else {
+      events.push({
+        type: 'ambush-start',
+        name: config.name,
+        icon: config.icon,
+        flavor: config.flavor,
+        ambushHp: pit.hp,
+        ambushMaxHp: pit.maxHp,
+        player: player.name,
+        spaceNum,
+      });
+    }
+
+    return {
+      events,
+      needsAmbush: this.isPlayerInPit(player),
+    };
   }
 
   /** Mislukte gevechts-check: −1 HP; bij Nat 1 nog eens −1 HP + `nat1`-event. */
@@ -346,7 +654,7 @@ class Game {
 
     if (player.hp <= 0) {
       player.position = 0;
-      player.hp = player.maxHp;
+      player.hp = DEFAULT_HP;
       player.movementBonus = (player.movementBonus ?? 0) + 1;
       events.push({
         type: 'death',
@@ -431,30 +739,24 @@ class Game {
     const onBossSpace = player.position === BOSS_SPACE || player.position === FINISH_SPACE;
 
     if (!this.bossActive && onBossSpace) {
-      const config = this.activateBoss(player.position);
-      if (config) {
-        events.push({
-          type: 'boss-start',
-          name: config.name,
-          icon: config.icon,
-          flavor: config.flavor,
-          bossHp: this.bossHp,
-          bossMaxHp: this.bossMaxHp,
-          player: player.name,
-          spaceNum: player.position,
-        });
-        return {
-          events,
-          winner: null,
-          needsEvent: false,
-          needsPath: false,
-          needsBoss: true,
-        };
-      }
+      events.push({
+        type: 'boss-reveal-pending',
+        player: player.name,
+        spaceNum: player.position,
+      });
+      return {
+        events,
+        winner: null,
+        needsEvent: false,
+        needsPath: false,
+        needsBossReveal: true,
+        bossRevealSpaceNum: player.position,
+      };
     }
 
     if (player.position === FINISH_SPACE) {
       if (this.bossActive) {
+        const hasMinions = this.hasBossMinions();
         events.push({
           type: 'boss-guard',
           player: player.name,
@@ -465,7 +767,8 @@ class Game {
           winner: null,
           needsEvent: false,
           needsPath: false,
-          needsBoss: true,
+          needsBossMinion: hasMinions,
+          needsBoss: !hasMinions,
         };
       }
 
@@ -477,23 +780,111 @@ class Game {
     }
 
     if (this.bossActive && isOnBossArena(player.position)) {
+      const hasMinions = this.hasBossMinions();
       events.push({
-        type: 'boss-engage',
+        type: hasMinions ? 'boss-minion-engage' : 'boss-engage',
         player: player.name,
         spaceNum: player.position,
-        name: this.bossConfig?.name,
+        name: hasMinions
+          ? this.getActiveBossMinion()?.config?.name
+          : this.bossConfig?.name,
       });
       return {
         events,
         winner: null,
         needsEvent: false,
         needsPath: false,
-        needsBoss: true,
+        needsBossMinion: hasMinions,
+        needsBoss: !hasMinions,
       };
     }
 
     const space = SPECIAL_SPACES[player.position];
     if (!space || space.type === 'start') {
+      return { events, winner: null, needsEvent: false, needsPath: false };
+    }
+
+    if (space.type === 'mystery') {
+      const spaceNum = player.position;
+      const revealed = this.revealedSpaces[spaceNum];
+
+      if (!revealed) {
+        events.push({
+          type: 'mystery-pending',
+          spaceNum,
+          player: player.name,
+        });
+        return {
+          events,
+          winner: null,
+          needsEvent: false,
+          needsPath: false,
+          needsMysteryRoll: true,
+          mysterySpaceNum: spaceNum,
+        };
+      }
+
+      if (revealed.type === 'path') {
+        events.push({
+          type: 'path',
+          spaceNum,
+          name: revealed.config.name,
+          icon: revealed.config.icon,
+          flavor: revealed.config.flavor,
+          player: player.name,
+        });
+        return {
+          events,
+          winner: null,
+          needsEvent: false,
+          needsPath: true,
+          pathConfig: revealed.config,
+        };
+      }
+
+      if (revealed.type === 'ambush') {
+        const joined = this.joinOrStartPit(player, spaceNum);
+        if (joined) {
+          const { config, kind, pit } = joined;
+          const allies = pit.playerIds
+            .filter((id) => id !== player.id)
+            .map((id) => this.players.find((p) => p.id === id)?.name)
+            .filter(Boolean);
+
+          if (kind === 'join') {
+            events.push({
+              type: 'ambush-join',
+              name: config.name,
+              icon: config.icon,
+              ambushHp: pit.hp,
+              ambushMaxHp: pit.maxHp,
+              player: player.name,
+              allies,
+              spaceNum,
+            });
+          } else {
+            events.push({
+              type: 'ambush-start',
+              name: config.name,
+              icon: config.icon,
+              flavor: config.flavor,
+              ambushHp: pit.hp,
+              ambushMaxHp: pit.maxHp,
+              player: player.name,
+              spaceNum,
+            });
+          }
+
+          return {
+            events,
+            winner: null,
+            needsEvent: false,
+            needsPath: false,
+            needsAmbush: this.isPlayerInPit(player),
+          };
+        }
+      }
+
       return { events, winner: null, needsEvent: false, needsPath: false };
     }
 
@@ -562,7 +953,7 @@ class Game {
     }
 
     if (space.type === 'event') {
-      const effectiveDc = getEffectiveDc(player, space.dc);
+      const effectiveDc = getEffectiveDc(player, space.dc, this.difficultyLevel);
       events.push({
         type: 'landed',
         spaceNum: player.position,
@@ -665,7 +1056,12 @@ class Game {
       needsEvent: chain.needsEvent ?? false,
       needsPath: chain.needsPath ?? false,
       needsBoss: chain.needsBoss ?? false,
+      needsBossMinion: chain.needsBossMinion ?? false,
+      needsBossReveal: chain.needsBossReveal ?? false,
+      bossRevealSpaceNum: chain.bossRevealSpaceNum ?? null,
       needsAmbush: chain.needsAmbush ?? false,
+      needsMysteryRoll: chain.needsMysteryRoll ?? false,
+      mysterySpaceNum: chain.mysterySpaceNum ?? null,
       eventConfig: chain.eventConfig ?? null,
       pathConfig: chain.pathConfig ?? null,
     };
@@ -691,8 +1087,8 @@ class Game {
     const dcModApplied = player.nextDcMod ?? 0;
     player.nextDcMod = 0;
 
-    const effectiveDc = getEffectiveDc(player, config.dc);
-    const isNat1 = !nat20 && (nat1 || roll === 1);
+    const effectiveDc = getEffectiveDc(player, config.dc, this.difficultyLevel, dcModApplied);
+    const isNat1 = !nat20 && nat1;
     const success = !isNat1 && (nat20 || (roll != null && roll >= effectiveDc));
 
     const events = [{
@@ -714,7 +1110,12 @@ class Game {
     }];
 
     if (success) {
-      pit.hp = Math.max(0, pit.hp - 1);
+      const dmgBonus = player.dmgBonus ?? 0;
+      const hitDamage = nat20 ? 2 + dmgBonus : 1 + dmgBonus;
+      pit.hp = Math.max(0, pit.hp - hitDamage);
+      if (nat20) {
+        events.push({ type: 'nat20', player: player.name });
+      }
       events.push({
         type: 'ambush-hit',
         ambushHp: pit.hp,
@@ -723,13 +1124,18 @@ class Game {
         ambushName: config.name,
         playerHp: player.hp,
         spaceNum,
+        damage: hitDamage,
+        nat20,
       });
-      if (nat20) {
-        events.push({ type: 'nat20', player: player.name });
-        events.push(...this.mutateHp(player, 1));
-      }
     } else {
-      this.applyCombatCheckFail(player, events, isNat1);
+      const failHits = Math.ceil(pit.dmgPerHit ?? 1);
+      for (let i = 0; i < failHits; i += 1) {
+        events.push(...this.mutateHp(player, -1));
+      }
+      if (isNat1) {
+        events.push({ type: 'nat1', player: player.name });
+        events.push(...this.mutateHp(player, -1));
+      }
     }
 
     const d20Event = events.find((e) => e.type === 'ambush-d20');
@@ -743,6 +1149,10 @@ class Game {
       const freedNames = pit.playerIds
         .map((id) => this.players.find((p) => p.id === id)?.name)
         .filter(Boolean);
+      const wasMysteryAmbush = this.revealedSpaces[spaceNum]?.type === 'ambush';
+      if (this.revealedSpaces[spaceNum]?.jackpot) {
+        this.grantDmgBonus(player, events);
+      }
       events.push({
         type: 'ambush-end',
         success: true,
@@ -752,6 +1162,9 @@ class Game {
         spaceNum,
       });
       this.clearPitAt(spaceNum);
+      if (wasMysteryAmbush) {
+        this.resetMysterySpace(spaceNum, events);
+      }
     } else if (died) {
       this.removePlayerFromPit(player, spaceNum);
       const pitContinues = (this.getPitAt(spaceNum)?.playerIds.length ?? 0) > 0;
@@ -782,9 +1195,123 @@ class Game {
     };
   }
 
+  resolveBossMinionRoll(roll, options = {}) {
+    const minion = this.getActiveBossMinion();
+    const config = minion?.config;
+    const player = this.currentPlayer;
+
+    if (!player || !minion || !config || !isOnBossArena(player.position)) {
+      return {
+        events: [],
+        passTurn: true,
+        success: false,
+        effectiveDc: null,
+      };
+    }
+
+    const { nat20 = false, nat1 = false } = options;
+    const dcModApplied = player.nextDcMod ?? 0;
+    player.nextDcMod = 0;
+
+    const effectiveDc = getEffectiveDc(player, config.dc, this.difficultyLevel, dcModApplied);
+    const isNat1 = !nat20 && nat1;
+    const success = !isNat1 && (nat20 || (roll != null && roll >= effectiveDc));
+
+    const events = [{
+      type: 'boss-minion-d20',
+      roll: roll ?? null,
+      dc: config.dc,
+      effectiveDc,
+      dcBonus: getDcBonus(player),
+      dcMod: dcModApplied,
+      ability: config.ability,
+      success,
+      nat20,
+      nat1: isNat1,
+      player: player.name,
+      minionName: config.name,
+      minionHp: minion.hp,
+      spaceNum: player.position,
+    }];
+
+    if (success) {
+      const dmgBonus = player.dmgBonus ?? 0;
+      const hitDamage = nat20 ? 2 + dmgBonus : 1 + dmgBonus;
+      minion.hp = Math.max(0, minion.hp - hitDamage);
+      if (nat20) {
+        events.push({ type: 'nat20', player: player.name });
+      }
+      events.push({
+        type: 'boss-minion-hit',
+        minionHp: minion.hp,
+        minionMaxHp: minion.maxHp,
+        player: player.name,
+        minionName: config.name,
+        damage: hitDamage,
+        nat20,
+        spaceNum: player.position,
+      });
+    } else {
+      const failHits = Math.ceil(this.bossDmgPerHit ?? 1);
+      for (let i = 0; i < failHits; i += 1) {
+        events.push(...this.mutateHp(player, -1));
+      }
+      if (isNat1) {
+        events.push({ type: 'nat1', player: player.name });
+        events.push(...this.mutateHp(player, -1));
+      }
+    }
+
+    const d20Event = events.find((e) => e.type === 'boss-minion-d20');
+    d20Event.minionHp = minion.hp;
+
+    const died = events.some((e) => e.type === 'death');
+    const minionDefeated = minion.hp <= 0;
+
+    if (minionDefeated) {
+      events.push({
+        type: 'boss-minion-end',
+        success: true,
+        minionName: config.name,
+        player: player.name,
+        spaceNum: player.position,
+        minionsRemaining: this.bossMinions.filter((m) => m.hp > 0).length,
+      });
+    }
+
+    const skipRetreat = died;
+    if (!skipRetreat) {
+      const from = player.position;
+      player.position = BOSS_RETREAT_SPACE;
+      events.push({
+        type: 'boss-retreat',
+        player: player.name,
+        from,
+        to: BOSS_RETREAT_SPACE,
+      });
+    }
+
+    if (!this.gameOver) {
+      events.push({ type: 'pass-turn', player: player.name });
+    }
+
+    return {
+      events,
+      passTurn: !this.gameOver,
+      success,
+      effectiveDc,
+      nat20,
+      nat1: isNat1,
+      minionHp: minionDefeated ? 0 : minion.hp,
+      minionMaxHp: minion.maxHp,
+      minionEnded: minionDefeated,
+      retreatedTo: skipRetreat ? null : BOSS_RETREAT_SPACE,
+    };
+  }
+
   resolveBoss(roll, options = {}) {
     const config = this.bossConfig;
-    if (!this.bossActive || !config || !this.currentPlayer) {
+    if (!this.bossActive || !config || !this.currentPlayer || this.hasBossMinions()) {
       return {
         events: [],
         winner: null,
@@ -799,8 +1326,8 @@ class Game {
     const dcModApplied = player.nextDcMod ?? 0;
     player.nextDcMod = 0;
 
-    const effectiveDc = getEffectiveDc(player, config.dc);
-    const isNat1 = !nat20 && (nat1 || roll === 1);
+    const effectiveDc = getEffectiveDc(player, config.dc, this.difficultyLevel, dcModApplied);
+    const isNat1 = !nat20 && nat1;
     const success = !isNat1 && (nat20 || (roll != null && roll >= effectiveDc));
 
     const events = [{
@@ -821,25 +1348,36 @@ class Game {
     let winner = null;
 
     if (success) {
-      this.bossHp = Math.max(0, this.bossHp - 1);
+      const dmgBonus = player.dmgBonus ?? 0;
+      const hitDamage = nat20 ? 2 + dmgBonus : 1 + dmgBonus;
+      this.bossHp = Math.max(0, this.bossHp - hitDamage);
+      if (nat20) {
+        events.push({ type: 'nat20', player: player.name });
+      }
       events.push({
         type: 'boss-hit',
         bossHp: this.bossHp,
         bossMaxHp: this.bossMaxHp,
         player: player.name,
         bossName: config.name,
+        damage: hitDamage,
+        nat20,
       });
-      if (nat20) {
-        events.push({ type: 'nat20', player: player.name });
-        events.push(...this.mutateHp(player, 1));
-      }
     } else {
-      this.applyCombatCheckFail(player, events, isNat1);
+      const failHits = Math.ceil(this.bossDmgPerHit ?? 1);
+      for (let i = 0; i < failHits; i += 1) {
+        events.push(...this.mutateHp(player, -1));
+      }
+      if (isNat1) {
+        events.push({ type: 'nat1', player: player.name });
+        events.push(...this.mutateHp(player, -1));
+      }
     }
 
     if (this.bossHp <= 0) {
       this.bossActive = false;
       this.bossHp = 0;
+      this.bossMinions = [];
       events.push({ type: 'boss-defeated', bossName: config.name });
       winner = this.checkWinAfterBoss();
       if (winner) {
@@ -886,7 +1424,7 @@ class Game {
     player.nextDcMod = 0;
 
     const dcBonus = getDcBonus(player);
-    const effectiveDc = Math.max(1, config.dc + dcBonus + dcModApplied);
+    const effectiveDc = getEffectiveDc(player, config.dc, this.difficultyLevel, dcModApplied);
     const isNat1 = !nat20 && nat1;
     const success = !isNat1 && (nat20 || (roll != null && roll >= effectiveDc));
 
@@ -963,7 +1501,12 @@ class Game {
         needsEvent: moveResult.needsEvent,
         needsPath: moveResult.needsPath,
         needsBoss: moveResult.needsBoss ?? false,
+        needsBossMinion: moveResult.needsBossMinion ?? false,
+        needsBossReveal: moveResult.needsBossReveal ?? false,
+        bossRevealSpaceNum: moveResult.bossRevealSpaceNum ?? null,
         needsAmbush: moveResult.needsAmbush ?? false,
+        needsMysteryRoll: moveResult.needsMysteryRoll ?? false,
+        mysterySpaceNum: moveResult.mysterySpaceNum ?? null,
         eventConfig: moveResult.eventConfig,
         pathConfig: moveResult.pathConfig,
         passTurn: false,
@@ -1036,7 +1579,12 @@ class Game {
     this.bossHp = 0;
     this.bossMaxHp = 0;
     this.bossConfig = null;
+    this.bossMultiplier = 1;
+    this.bossDmgPerHit = 1;
+    this.bossRevealRoll = null;
+    this.bossMinions = [];
     this.ambushPits = {};
+    this.revealedSpaces = {};
   }
 }
 
@@ -1049,6 +1597,8 @@ window.isOnBossArena = isOnBossArena;
 window.getPathDirection = getPathDirection;
 window.getDcBonus = getDcBonus;
 window.getDcModifier = getDcModifier;
+window.getDifficultyDcBonus = getDifficultyDcBonus;
+window.DC_DIFFICULTY_MAX_LEVEL = DC_DIFFICULTY_MAX_LEVEL;
 window.getEffectiveDc = getEffectiveDc;
 window.isCenterCell = isCenterCell;
 window.isCenterCovered = isCenterCovered;

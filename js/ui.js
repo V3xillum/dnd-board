@@ -6,6 +6,7 @@ const els = {
   board: document.getElementById('board'),
   playerList: document.getElementById('player-list'),
   playerName: document.getElementById('player-name'),
+  difficultySelect: document.getElementById('difficulty-select'),
   addBtn: document.getElementById('add-player-btn'),
   currentPlayer: document.getElementById('current-player'),
   diceInput: document.getElementById('dice-input'),
@@ -20,6 +21,30 @@ const els = {
   pathTitle: document.getElementById('path-title'),
   pathFlavor: document.getElementById('path-flavor'),
   pathClose: document.getElementById('path-close'),
+  mysteryModal: document.getElementById('mystery-modal'),
+  mysteryCard: document.querySelector('#mystery-modal .event-card'),
+  mysteryIcon: document.getElementById('mystery-icon'),
+  mysterySpace: document.getElementById('mystery-space'),
+  mysteryTitle: document.getElementById('mystery-title'),
+  mysteryFlavor: document.getElementById('mystery-flavor'),
+  mysteryRollArea: document.getElementById('mystery-roll-area'),
+  mysteryRevealArea: document.getElementById('mystery-reveal-area'),
+  mysteryRevealContent: document.getElementById('mystery-reveal-content'),
+  mysteryDiceInput: document.getElementById('mystery-dice-input'),
+  mysterySubmit: document.getElementById('mystery-submit'),
+  mysteryAction: document.getElementById('mystery-action'),
+  bossRevealModal: document.getElementById('boss-reveal-modal'),
+  bossRevealCard: document.querySelector('#boss-reveal-modal .event-card'),
+  bossRevealIcon: document.getElementById('boss-reveal-icon'),
+  bossRevealSpace: document.getElementById('boss-reveal-space'),
+  bossRevealTitle: document.getElementById('boss-reveal-title'),
+  bossRevealFlavor: document.getElementById('boss-reveal-flavor'),
+  bossRevealRollArea: document.getElementById('boss-reveal-roll-area'),
+  bossRevealResultArea: document.getElementById('boss-reveal-result-area'),
+  bossRevealResultContent: document.getElementById('boss-reveal-result-content'),
+  bossRevealDiceInput: document.getElementById('boss-reveal-dice-input'),
+  bossRevealSubmit: document.getElementById('boss-reveal-submit'),
+  bossRevealAction: document.getElementById('boss-reveal-action'),
   gameLog: document.getElementById('game-log'),
   eventModal: document.getElementById('event-modal'),
   eventIcon: document.getElementById('event-icon'),
@@ -42,6 +67,8 @@ const els = {
   winClose: document.getElementById('win-close'),
   combatRail: document.getElementById('combat-rail'),
   combatRailBoss: document.getElementById('combat-rail-boss'),
+  combatRailMinionsSection: document.getElementById('combat-rail-minions-section'),
+  bossMinionsList: document.getElementById('boss-minions-list'),
   combatRailPitsSection: document.getElementById('combat-rail-pits-section'),
   ambushPitsList: document.getElementById('ambush-pits-list'),
   eventCard: document.querySelector('#event-modal .event-card'),
@@ -53,15 +80,82 @@ const els = {
   rulesCloseBtn: document.getElementById('rules-close-btn'),
   rulesCloseBottom: document.getElementById('rules-close-bottom'),
   legendRulesLink: document.getElementById('legend-rules-link'),
+  newAdventureBtn: document.getElementById('new-adventure-btn'),
+  confirmModal: document.getElementById('confirm-modal'),
+  confirmCancel: document.getElementById('confirm-cancel'),
+  confirmOk: document.getElementById('confirm-ok'),
 };
 
 function syncModalScrollLock() {
   const open =
     !els.eventModal.classList.contains('hidden') ||
     !els.pathModal.classList.contains('hidden') ||
+    !els.mysteryModal.classList.contains('hidden') ||
+    !els.bossRevealModal.classList.contains('hidden') ||
     !els.winModal.classList.contains('hidden') ||
+    (els.confirmModal && !els.confirmModal.classList.contains('hidden')) ||
     (els.rulesModal && !els.rulesModal.classList.contains('hidden'));
   document.body.classList.toggle('modal-open', open);
+  updateTokenTurnStates();
+}
+
+const MODAL_ENTER_CLASSES = [
+  'event-card--enter-calm',
+  'event-card--enter-combat',
+  'event-card--enter-win',
+  'event-modal__stack--enter-calm',
+  'event-modal__stack--enter-combat',
+];
+
+const COMBAT_EVENT_CATEGORIES = new Set(['combat', 'trap']);
+
+function getEventModalEnterTier(config) {
+  if (!config) return 'calm';
+  return COMBAT_EVENT_CATEGORIES.has(config.category) ? 'combat' : 'calm';
+}
+
+function playModalCardEnter(modalEl, tier = 'calm') {
+  if (!modalEl) return;
+
+  const stack = modalEl.querySelector('.event-modal__stack');
+  const card = modalEl.querySelector('.event-card');
+  const target = stack || card;
+  if (!target) return;
+
+  target.classList.remove(...MODAL_ENTER_CLASSES);
+
+  if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+
+  const enterClass = tier === 'combat'
+    ? (stack ? 'event-modal__stack--enter-combat' : 'event-card--enter-combat')
+    : tier === 'win'
+      ? 'event-card--enter-win'
+      : (stack ? 'event-modal__stack--enter-calm' : 'event-card--enter-calm');
+
+  void target.offsetWidth;
+  target.classList.add(enterClass);
+
+  const onEnd = (e) => {
+    if (e.target !== target) return;
+    target.classList.remove(enterClass);
+    target.removeEventListener('animationend', onEnd);
+  };
+  target.addEventListener('animationend', onEnd);
+}
+
+let lastSpectatorModalAnimKey = null;
+
+function spectatorModalAnimKey(activeModal) {
+  if (!activeModal) return null;
+  const { type, phase, spaceNum } = activeModal;
+  return `${type}|${phase ?? ''}|${spaceNum ?? ''}`;
+}
+
+function playSpectatorModalEnter(modalEl, tier, activeModal) {
+  const key = spectatorModalAnimKey(activeModal);
+  if (key === lastSpectatorModalAnimKey) return;
+  lastSpectatorModalAnimKey = key;
+  playModalCardEnter(modalEl, tier);
 }
 
 function showRulesModal() {
@@ -75,6 +169,70 @@ function closeRulesModal() {
   if (!els.rulesModal) return;
   els.rulesModal.classList.add('hidden');
   syncModalScrollLock();
+}
+
+function forceCloseAllModals() {
+  els.winModal.classList.add('hidden');
+  els.winModal.classList.remove('win-modal--spectator');
+
+  els.eventModal.classList.add('hidden');
+  els.eventModal.classList.remove('event-modal--spectator');
+  activeEvent = null;
+  activeBoss = null;
+  activeBossMinion = null;
+  activeAmbush = null;
+  els.eventCard?.classList.remove('event-card--ambush');
+  removeAmbushModalExtras();
+
+  els.pathModal.classList.add('hidden');
+  els.pathModal.classList.remove('path-modal--spectator');
+  pathModalCallback = null;
+  pathModalSpaceNum = null;
+
+  els.mysteryModal.classList.add('hidden');
+  els.mysteryModal.classList.remove('mystery-modal--spectator');
+  els.mysteryCard?.classList.remove('event-card--jackpot');
+  activeMystery = null;
+
+  els.bossRevealModal.classList.add('hidden');
+  els.bossRevealModal.classList.remove('boss-reveal-modal--spectator');
+  els.bossRevealCard?.classList.remove('event-card--epic');
+  activeBossReveal = null;
+
+  els.confirmModal?.classList.add('hidden');
+  closeRulesModal();
+  clearSyncedActiveModal();
+  syncModalScrollLock();
+}
+
+function startNewAdventure() {
+  forceCloseAllModals();
+  game.reset();
+  if (typeof rebuildBoard === 'function') rebuildBoard();
+  els.gameLog.innerHTML = '';
+  updateBossPanel();
+  updateAmbushPanel();
+  renderBoard();
+  renderPlayers();
+  updateTurnUI();
+  updateDifficultyUI();
+  addLog('Nieuw avontuur — het bord is opnieuw geschud!');
+  window.syncAfterAction?.();
+  window.resetMultiplayerLog?.();
+}
+
+function showNewAdventureConfirm() {
+  if (document.querySelector('.app')?.classList.contains('app--spectator')) return;
+  els.confirmModal?.classList.remove('hidden');
+  syncModalScrollLock();
+  playModalCardEnter(els.confirmModal, 'calm');
+  els.confirmCancel?.focus();
+}
+
+function closeNewAdventureConfirm() {
+  els.confirmModal?.classList.add('hidden');
+  syncModalScrollLock();
+  els.newAdventureBtn?.focus();
 }
 
 function parseDiceRoll(value, min, max = null) {
@@ -114,6 +272,8 @@ function applyCellStyle(cell, special, num) {
 
   if (special.type === 'event') {
     cell.classList.add(EVENT_CATEGORY_CLASS[special.category] || 'cell--event');
+  } else if (special.type === 'mystery') {
+    cell.classList.add('cell--mystery-unrevealed');
   } else if (special.type === 'path') {
     cell.classList.add('cell--quiet');
   } else {
@@ -188,19 +348,480 @@ function renderBoard() {
   renderTokens();
 }
 
+function snapshotSpecialSpaces() {
+  const snap = {};
+  const spaces = window.SPECIAL_SPACES ?? {};
+  Object.entries(spaces).forEach(([num, special]) => {
+    if (!special) return;
+    snap[num] = `${special.type}|${special.category ?? ''}|${special.icon ?? ''}`;
+  });
+  return snap;
+}
+
+function isMysteryUnrevealedFingerprint(fp) {
+  return fp === 'mystery|mystery|❓';
+}
+
+function isMysteryRevealedFingerprint(fp) {
+  if (!fp) return false;
+  if (fp.startsWith('path|')) return true;
+  return fp.startsWith('event|ambush|');
+}
+
+function detectMysteryCellChanges(prevSnap, nextSnap) {
+  const reveals = [];
+  const resets = [];
+  const keys = new Set([...Object.keys(prevSnap ?? {}), ...Object.keys(nextSnap ?? {})]);
+
+  keys.forEach((key) => {
+    const prev = prevSnap?.[key];
+    const next = nextSnap?.[key];
+    if (!prev || prev === next) return;
+    if (isMysteryUnrevealedFingerprint(prev) && isMysteryRevealedFingerprint(next)) {
+      reveals.push(Number(key));
+    } else if (isMysteryRevealedFingerprint(prev) && isMysteryUnrevealedFingerprint(next)) {
+      resets.push(Number(key));
+    }
+  });
+
+  return { reveals, resets };
+}
+
+const MYSTERY_CELL_ANIM_MS = { reveal: 720, reset: 580 };
+
+function playMysteryCellEffect(spaceNum, kind) {
+  if (prefersReducedMotion()) return;
+  const cell = document.querySelector(`[data-space="${spaceNum}"]`);
+  if (!cell) return;
+
+  const cls = kind === 'reset' ? 'cell--mystery-pulse-reset' : 'cell--mystery-pulse-reveal';
+  cell.classList.remove('cell--mystery-pulse-reveal', 'cell--mystery-pulse-reset');
+  void cell.offsetWidth;
+  cell.classList.add(cls);
+
+  const ms = MYSTERY_CELL_ANIM_MS[kind] ?? 650;
+  window.setTimeout(() => cell.classList.remove(cls), ms);
+}
+
+function playMysteryCellChanges({ reveals = [], resets = [] } = {}) {
+  reveals.forEach((spaceNum) => playMysteryCellEffect(spaceNum, 'reveal'));
+  resets.forEach((spaceNum) => playMysteryCellEffect(spaceNum, 'reset'));
+}
+
+function playMysteryResetFromEvents(events) {
+  const resetEv = events?.find((e) => e.type === 'mystery-reset');
+  if (resetEv?.spaceNum != null) playMysteryCellEffect(resetEv.spaceNum, 'reset');
+}
+
+let tokensAnimating = false;
+
+function prefersReducedMotion() {
+  return window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+}
+
+function getOrCreateTokenLayer() {
+  let layer = document.getElementById('token-layer');
+  if (!layer && els.board) {
+    layer = document.createElement('div');
+    layer.id = 'token-layer';
+    layer.className = 'token-layer';
+    layer.setAttribute('aria-hidden', 'true');
+    els.board.appendChild(layer);
+  }
+  return layer;
+}
+
+function getSpaceCenter(spaceNum) {
+  const cell = document.querySelector(`[data-space="${spaceNum}"]`);
+  const board = els.board;
+  if (!cell || !board) return null;
+  const cellRect = cell.getBoundingClientRect();
+  const boardRect = board.getBoundingClientRect();
+  return {
+    x: cellRect.left + cellRect.width / 2 - boardRect.left,
+    y: cellRect.top + cellRect.height / 2 - boardRect.top,
+  };
+}
+
+function getTokenStackOffset(index, total) {
+  if (total <= 1) return { x: 0, y: 0 };
+  const angle = (index / total) * Math.PI * 2 - Math.PI / 2;
+  const radius = total > 3 ? 9 : 7;
+  return { x: Math.cos(angle) * radius, y: Math.sin(angle) * radius };
+}
+
+function getTokenStepDuration(stepCount) {
+  if (prefersReducedMotion()) return 0;
+  return Math.min(220, Math.max(100, Math.floor(1600 / Math.max(stepCount, 1))));
+}
+
+function waitMs(ms) {
+  return new Promise((resolve) => { setTimeout(resolve, ms); });
+}
+
+function waitForTokenTransition(token, fallbackMs) {
+  return new Promise((resolve) => {
+    let done = false;
+    const finish = () => {
+      if (done) return;
+      done = true;
+      token.removeEventListener('transitionend', onEnd);
+      resolve();
+    };
+    const onEnd = (e) => {
+      if (e.target === token && (e.propertyName === 'left' || e.propertyName === 'top')) finish();
+    };
+    token.addEventListener('transitionend', onEnd);
+    setTimeout(finish, fallbackMs + 40);
+  });
+}
+
+function positionTokenElement(token, spaceNum, stackIndex, stackTotal, animate = true) {
+  const center = getSpaceCenter(spaceNum);
+  if (!center) {
+    token.style.display = 'none';
+    return;
+  }
+  const offset = getTokenStackOffset(stackIndex, stackTotal);
+  if (!animate) {
+    token.style.transition = 'none';
+  }
+  token.style.display = '';
+  token.style.left = `${center.x + offset.x}px`;
+  token.style.top = `${center.y + offset.y}px`;
+  if (!animate) {
+    void token.offsetWidth;
+    token.style.transition = '';
+  }
+}
+
+function ensureTokenElement(player) {
+  const layer = getOrCreateTokenLayer();
+  if (!layer) return null;
+
+  let token = layer.querySelector(`[data-player-id="${player.id}"]`);
+  if (!token) {
+    token = document.createElement('span');
+    token.className = 'token';
+    token.dataset.playerId = player.id;
+    layer.appendChild(token);
+  }
+
+  token.style.background = player.color;
+  token.title = `${player.name} — vak ${player.position}`;
+  token.textContent = player.name.charAt(0).toUpperCase();
+  return token;
+}
+
+function buildMovePath(from, to, forward = true) {
+  const path = [];
+  if (from === to) return path;
+
+  if (forward) {
+    const start = Math.max(1, from <= 0 ? 1 : from + 1);
+    for (let s = start; s <= to; s++) path.push(s);
+  } else {
+    for (let s = from - 1; s >= Math.max(1, to); s--) path.push(s);
+  }
+  return path;
+}
+
+function findDeathFromSpace(events, deathIndex, playerName) {
+  for (let j = deathIndex - 1; j >= 0; j--) {
+    const prev = events[j];
+    if (prev.player !== playerName) continue;
+    if (prev.type === 'move' || prev.type === 'event-move') {
+      return prev.to > 0 ? prev.to : prev.from;
+    }
+    if (prev.type === 'boss-retreat') return prev.from;
+    if (prev.type === 'landed') return prev.spaceNum;
+  }
+  return 1;
+}
+
+function buildMovementsFromEvents(events) {
+  const movements = [];
+  const finish = window.FINISH_SPACE ?? 63;
+
+  events.forEach((ev, i) => {
+    const name = ev.player;
+    if (!name) return;
+
+    if (ev.type === 'move') {
+      const bounce = events.find((e, j) => j > i && e.type === 'bounce' && e.player === name);
+      if (bounce) {
+        const peak = Math.min(ev.to, finish);
+        if (ev.from !== peak) {
+          movements.push({ playerName: name, from: ev.from, to: peak, forward: true });
+        }
+        if (peak !== bounce.position) {
+          movements.push({ playerName: name, from: peak, to: bounce.position, forward: false });
+        }
+      } else if (ev.from !== ev.to) {
+        movements.push({ playerName: name, from: ev.from, to: ev.to, forward: true });
+      }
+      return;
+    }
+
+    if (ev.type === 'event-move' && ev.from !== ev.to) {
+      movements.push({
+        playerName: name,
+        from: ev.from,
+        to: ev.to,
+        forward: ev.direction !== 'back',
+      });
+      return;
+    }
+
+    if (ev.type === 'boss-retreat' && ev.from !== ev.to) {
+      movements.push({ playerName: name, from: ev.from, to: ev.to, forward: false });
+      return;
+    }
+
+    if (ev.type === 'death') {
+      movements.push({
+        playerName: name,
+        death: true,
+        fromSpace: findDeathFromSpace(events, i, name),
+      });
+    }
+  });
+
+  return movements;
+}
+
+async function animateToSpace(token, spaceNum, stepMs) {
+  token.style.transition = `left ${stepMs}ms ease-in-out, top ${stepMs}ms ease-in-out`;
+  positionTokenElement(token, spaceNum, 0, 1, true);
+  if (stepMs <= 0) return;
+  await waitForTokenTransition(token, stepMs);
+}
+
+async function animateTokenAlongPath(playerId, from, to, forward = true) {
+  const player = game.players.find((p) => p.id === playerId);
+  if (!player) return;
+
+  const path = buildMovePath(from, to, forward);
+  if (path.length === 0) return;
+
+  const token = ensureTokenElement(player);
+  if (!token) return;
+
+  const stepMs = getTokenStepDuration(path.length);
+  token.classList.add('token--moving');
+  token.classList.remove('token--waiting');
+  token.style.setProperty('--token-step-ms', `${stepMs}ms`);
+  token.style.display = '';
+
+  if (from > 0) {
+    positionTokenElement(token, from, 0, 1, false);
+    await waitMs(16);
+  } else {
+    positionTokenElement(token, path[0], 0, 1, false);
+    await waitMs(16);
+    for (let i = 1; i < path.length; i++) {
+      await animateToSpace(token, path[i], stepMs);
+    }
+    token.classList.remove('token--moving');
+    return;
+  }
+
+  for (const space of path) {
+    await animateToSpace(token, space, stepMs);
+  }
+
+  token.classList.remove('token--moving');
+}
+
+async function animateTokenDeath(playerId, fromSpace) {
+  const player = game.players.find((p) => p.id === playerId);
+  if (!player || fromSpace <= 0) return;
+
+  const token = ensureTokenElement(player);
+  if (!token) return;
+
+  token.classList.add('token--moving');
+  token.classList.remove('token--waiting');
+  positionTokenElement(token, fromSpace, 0, 1, false);
+  token.style.display = '';
+  await waitMs(30);
+  token.classList.add('token--dying');
+  await waitMs(380);
+  token.classList.remove('token--dying', 'token--moving');
+  token.style.display = 'none';
+}
+
+async function animateMovements(movements, idKey = 'playerName') {
+  if (prefersReducedMotion() || !movements?.length) return;
+
+  tokensAnimating = true;
+  document.body.classList.add('tokens-animating');
+  updateTurnUI();
+
+  try {
+    for (const move of movements) {
+      const player = idKey === 'playerId'
+        ? game.players.find((p) => p.id === move.playerId)
+        : game.players.find((p) => p.name === move.playerName);
+      if (!player) continue;
+
+      if (move.death) {
+        await animateTokenDeath(player.id, move.fromSpace);
+      } else {
+        await animateTokenAlongPath(player.id, move.from, move.to, move.forward);
+      }
+    }
+  } finally {
+    tokensAnimating = false;
+    document.body.classList.remove('tokens-animating');
+    updateTurnUI();
+  }
+}
+
+async function animateFromEvents(events) {
+  const movements = buildMovementsFromEvents(events);
+  await animateMovements(movements, 'playerName');
+}
+
+function snapshotTokenPositions() {
+  const snap = {};
+  game.players.forEach((p) => {
+    snap[p.id] = p.position;
+  });
+  return snap;
+}
+
+function hasTokenPositionChanges(prevPositions) {
+  if (!prevPositions || Object.keys(prevPositions).length === 0) return false;
+  return game.players.some((p) => {
+    if (!(p.id in prevPositions)) return false;
+    return prevPositions[p.id] !== p.position;
+  });
+}
+
+function isLikelyGameReset(prevPositions) {
+  if (!prevPositions || game.players.length === 0) return false;
+  const hadBoardPositions = Object.values(prevPositions).some((pos) => pos > 0);
+  return hadBoardPositions && game.players.every((p) => p.position <= 0);
+}
+
+function buildMovementsFromPositionDiff(prevPositions) {
+  const movements = [];
+  game.players.forEach((p) => {
+    if (!(p.id in prevPositions)) return;
+    const from = prevPositions[p.id];
+    const to = p.position;
+    if (from === to) return;
+
+    if (to <= 0 && from > 0) {
+      movements.push({ playerId: p.id, death: true, fromSpace: from });
+      return;
+    }
+
+    movements.push({
+      playerId: p.id,
+      from,
+      to,
+      forward: to > from,
+    });
+  });
+  return movements;
+}
+
+function repositionTokensToSnapshot(prevPositions) {
+  game.players.forEach((p) => {
+    if (!(p.id in prevPositions)) return;
+    const oldPos = prevPositions[p.id];
+    const token = ensureTokenElement(p);
+    if (!token) return;
+
+    token.classList.remove('token--moving', 'token--dying', 'token--waiting');
+
+    if (oldPos <= 0) {
+      token.style.display = 'none';
+      return;
+    }
+
+    positionTokenElement(token, oldPos, 0, 1, false);
+    token.style.display = '';
+  });
+}
+
+async function animateFromPositionDiff(prevPositions) {
+  if (isLikelyGameReset(prevPositions)) return;
+  const movements = buildMovementsFromPositionDiff(prevPositions);
+  await animateMovements(movements, 'playerId');
+}
+
+async function syncTokensAfterEvents(events) {
+  window.syncAfterAction?.();
+  await animateFromEvents(events);
+  renderTokens();
+}
+
 function renderTokens() {
-  document.querySelectorAll('.tokens').forEach((t) => { t.innerHTML = ''; });
+  const layer = getOrCreateTokenLayer();
+  if (!layer) return;
+
+  layer.querySelectorAll('.token').forEach((token) => {
+    if (!game.players.some((p) => p.id === token.dataset.playerId)) token.remove();
+  });
+
+  if (tokensAnimating) return;
+
+  const byPosition = {};
+  game.players.forEach((p) => {
+    if (p.position <= 0) return;
+    if (!byPosition[p.position]) byPosition[p.position] = [];
+    byPosition[p.position].push(p);
+  });
 
   game.players.forEach((p) => {
-    const cell = document.querySelector(`[data-space="${p.position}"] .tokens`);
-    if (!cell) return;
+    const token = ensureTokenElement(p);
+    if (!token) return;
 
-    const token = document.createElement('span');
-    token.className = 'token';
-    token.style.background = p.color;
-    token.title = `${p.name} — vak ${p.position}`;
-    token.textContent = p.name.charAt(0).toUpperCase();
-    cell.appendChild(token);
+    token.classList.remove('token--moving', 'token--dying');
+
+    if (p.position <= 0) {
+      token.style.display = 'none';
+      return;
+    }
+
+    const group = byPosition[p.position] ?? [p];
+    const stackIndex = group.findIndex((x) => x.id === p.id);
+    positionTokenElement(token, p.position, stackIndex, group.length, false);
+  });
+
+  updateTokenTurnStates();
+}
+
+function isPlayerWaitingToRoll(player) {
+  if (!player || game.gameOver || tokensAnimating) return false;
+  if (game.currentPlayer?.id !== player.id) return false;
+
+  const inAmbush = game.isCurrentPlayerInAmbush();
+  const onBossArena = !inAmbush && game.bossActive && isOnBossArena(player.position);
+  const modalNeedsInput =
+    document.body.classList.contains('modal-open')
+    && (activeAmbush !== null || activeBossMinion !== null || activeBoss !== null
+      || activeEvent !== null || activeMystery !== null || activeBossReveal !== null);
+
+  return !inAmbush && !onBossArena && !modalNeedsInput;
+}
+
+function updateTokenTurnStates() {
+  const layer = getOrCreateTokenLayer();
+  if (!layer || tokensAnimating) return;
+
+  const activeId = !game.gameOver ? game.currentPlayer?.id : null;
+
+  game.players.forEach((p) => {
+    const token = layer.querySelector(`[data-player-id="${p.id}"]`);
+    if (!token || p.position <= 0) return;
+
+    const isActive = p.id === activeId;
+    token.classList.toggle('token--active', isActive);
+    token.classList.toggle('token--waiting', isActive && isPlayerWaitingToRoll(p));
   });
 }
 
@@ -216,7 +837,7 @@ function renderPlayers() {
       <span class="player-dot" style="background:${p.color}"></span>
       <span class="player-info">
         <strong>${p.name}</strong>
-        <small>Vak ${p.position} · ${formatPlayerHp(p)}${formatPlayerDcHint(p)}${formatPlayerMovementHint(p)}</small>
+        <small>Vak ${p.position} · ${formatPlayerHp(p)}${formatPlayerDcHint(p)}${formatPlayerMovementHint(p)}${formatPlayerDmgHint(p)}</small>
       </span>
       <button class="btn-remove" title="Verwijder speler" data-id="${p.id}">×</button>
     `;
@@ -230,6 +851,7 @@ function renderPlayers() {
       renderBoard();
       renderPlayers();
       updateTurnUI();
+      window.syncAfterAction?.();
     });
   });
 
@@ -242,8 +864,15 @@ function formatPlayerHp(player) {
   return filled + empty;
 }
 
-function getHpChangeFromEvents(events) {
-  return events?.find((e) => e.type === 'hp-change') ?? null;
+function getHpChangeFromEvents(events, playerName) {
+  if (!events?.length) return null;
+  const changes = events.filter(
+    (e) => e.type === 'hp-change' && (!playerName || e.player === playerName),
+  );
+  if (changes.length === 0) return null;
+  const totalDelta = changes.reduce((sum, e) => sum + e.delta, 0);
+  const last = changes[changes.length - 1];
+  return { ...last, delta: totalDelta };
 }
 
 function hasDeathInEvents(events) {
@@ -271,12 +900,12 @@ function buildResultHpHtml(events, player) {
       <div class="result-death">
         <span class="result-death__icon" aria-hidden="true">💀</span>
         <p class="result-death__title">Je bent uitgevallen!</p>
-        <p class="result-death__detail">Terug naar start · ${deathEv.hp} / ${player?.maxHp ?? deathEv.hp} HP${bonusNote}</p>
+        <p class="result-death__detail">Terug naar start · ${window.DEFAULT_HP} HP${bonusNote}</p>
       </div>
     `;
   }
 
-  const hpEv = getHpChangeFromEvents(events);
+  const hpEv = getHpChangeFromEvents(events, player.name);
   if (!hpEv || !player) return '';
 
   const delta = hpEv.delta;
@@ -304,6 +933,11 @@ function buildResultHpHtml(events, player) {
 function formatPlayerMovementHint(player) {
   const bonus = player.movementBonus ?? 0;
   return bonus > 0 ? ` · +${bonus} beweging` : '';
+}
+
+function formatPlayerDmgHint(player) {
+  const bonus = player.dmgBonus ?? 0;
+  return bonus > 0 ? ` · +${bonus} schade` : '';
 }
 
 function updateHpControls() {
@@ -334,6 +968,7 @@ function adjustCurrentPlayerHp(delta) {
   renderBoard();
   renderPlayers();
   updateTurnUI();
+  window.syncAfterAction?.();
 }
 
 function renderCombatPlayerChips(playerIds, options = {}) {
@@ -355,11 +990,49 @@ function renderCombatPlayerChips(playerIds, options = {}) {
     .join('');
 }
 
+function renderBossMinionCombatCards() {
+  const minions = game.bossMinions ?? [];
+  if (!minions.length) return '';
+
+  const cp = game.currentPlayer;
+  const active = game.getActiveBossMinion();
+
+  return minions
+    .map((minion, index) => {
+      const { config, hp, maxHp } = minion;
+      const defeated = hp <= 0;
+      const isActive = active === minion;
+      const yourTurn = isActive && cp && isOnBossArena(cp.position);
+      const pct = maxHp > 0 ? Math.round((hp / maxHp) * 100) : 0;
+
+      return `
+        <article class="combat-card combat-card--minion${defeated ? ' combat-card--defeated' : ''}${yourTurn ? ' combat-card--your-turn' : ''}${isActive && !defeated ? ' combat-card--minion-active' : ''}">
+          <span class="combat-card__badge combat-card__badge--minion">${defeated ? '✓ Verslagen' : `👹 Beschermer ${index + 1}`}</span>
+          <div class="combat-card__header">
+            <span class="combat-card__icon">${config.icon || '👹'}</span>
+            <div class="combat-card__meta">
+              <span class="combat-card__name">${escapeAttr(config.name)}</span>
+              <span class="combat-card__space">Vak 62 / 63 · vóór de eindbaas</span>
+            </div>
+          </div>
+          <div class="boss-hp ambush-hp" role="progressbar" aria-valuenow="${pct}" aria-valuemin="0" aria-valuemax="100">
+            <div class="boss-hp__fill ambush-hp__fill" style="width:${pct}%"></div>
+          </div>
+          <p class="combat-card__hp-label">${defeated ? 'Verslagen' : `Vijand: ${hp} / ${maxHp} HP`}</p>
+          ${yourTurn ? '<p class="combat-card__turn">⚔️ Jij bent aan de beurt — vecht!</p>' : ''}
+        </article>
+      `;
+    })
+    .join('');
+}
+
 function renderBossCombatCard() {
   if (!game.bossActive || !game.bossConfig) return '';
 
   const { bossConfig, bossHp, bossMaxHp } = game;
   const cp = game.currentPlayer;
+  const mult = game.bossMultiplier ?? 1;
+  const multNote = mult > 1 ? ` · ×${mult}` : '';
   const pct = bossMaxHp > 0 ? Math.round((bossHp / bossMaxHp) * 100) : 0;
   const yourTurn = cp && isOnBossArena(cp.position);
   const allIds = game.players.map((p) => p.id);
@@ -380,7 +1053,7 @@ function renderBossCombatCard() {
       <div class="boss-hp" role="progressbar" aria-valuenow="${pct}" aria-valuemin="0" aria-valuemax="100">
         <div class="boss-hp__fill" style="width:${pct}%"></div>
       </div>
-      <p class="combat-card__hp-label">Nog ${bossHp} / ${bossMaxHp} schade te lijden</p>
+      <p class="combat-card__hp-label">Nog ${bossHp} / ${bossMaxHp} schade te lijden${multNote}</p>
       <span class="combat-card__fighters-label">Gezelschap</span>
       <div class="combat-card__players">${playersHtml}</div>
       ${yourTurn ? '<p class="combat-card__turn">⚔️ Jij bent aan de beurt — aanvallen!</p>' : ''}
@@ -406,11 +1079,14 @@ function updateCombatRail() {
 
   const pits = getActiveAmbushPits();
   const hasBoss = game.bossActive && game.bossConfig;
+  const hasMinions = hasBoss && (game.bossMinions?.length ?? 0) > 0;
   const hasPits = pits.length > 0;
 
   if (!hasBoss && !hasPits) {
     els.combatRail.classList.add('hidden');
     if (els.combatRailBoss) els.combatRailBoss.innerHTML = '';
+    if (els.bossMinionsList) els.bossMinionsList.innerHTML = '';
+    if (els.combatRailMinionsSection) els.combatRailMinionsSection.classList.add('hidden');
     if (els.ambushPitsList) els.ambushPitsList.innerHTML = '';
     if (els.combatRailPitsSection) els.combatRailPitsSection.classList.add('hidden');
     return;
@@ -420,6 +1096,16 @@ function updateCombatRail() {
 
   if (els.combatRailBoss) {
     els.combatRailBoss.innerHTML = hasBoss ? renderBossCombatCard() : '';
+  }
+
+  if (els.combatRailMinionsSection && els.bossMinionsList) {
+    if (hasMinions) {
+      els.combatRailMinionsSection.classList.remove('hidden');
+      els.bossMinionsList.innerHTML = renderBossMinionCombatCards();
+    } else {
+      els.combatRailMinionsSection.classList.add('hidden');
+      els.bossMinionsList.innerHTML = '';
+    }
   }
 
   if (els.combatRailPitsSection && els.ambushPitsList) {
@@ -507,7 +1193,10 @@ function updateTurnUI() {
 
   let turnText = `${cp.name} is aan de beurt`;
   if (game.pendingExtraTurn) turnText += ' (extra beurt!)';
-  if (game.bossActive && game.bossConfig) {
+  const activeMinion = game.getActiveBossMinion?.();
+  if (activeMinion) {
+    turnText += ` — 👹 ${activeMinion.config.name}`;
+  } else if (game.bossActive && game.bossConfig) {
     turnText += ` — ⚔️ ${game.bossConfig.name}`;
   }
   const ambushPit = game.getCurrentPlayerPit();
@@ -521,13 +1210,24 @@ function updateTurnUI() {
   const onBossArena = !inAmbush && game.bossActive && cp && isOnBossArena(cp.position);
   const modalNeedsInput =
     document.body.classList.contains('modal-open')
-    && (activeAmbush !== null || activeBoss !== null || activeEvent !== null);
-  els.moveBtn.disabled = inAmbush || onBossArena || modalNeedsInput;
-  els.diceInput.disabled = inAmbush || onBossArena || modalNeedsInput;
+    && (activeAmbush !== null || activeBossMinion !== null || activeBoss !== null || activeEvent !== null);
+  const inputLocked = tokensAnimating || inAmbush || onBossArena || modalNeedsInput;
+  els.moveBtn.disabled = inputLocked;
+  els.diceInput.disabled = inputLocked;
   updateHpControls();
+
+  if (window.isMultiplayerHost?.() && inAmbush && activeAmbush === null
+      && els.eventModal.classList.contains('hidden')) {
+    showAmbushModal();
+  } else if (window.isMultiplayerHost?.() && onBossArena && activeBoss === null
+      && activeBossMinion === null && els.eventModal.classList.contains('hidden')) {
+    showBossFightModal();
+  }
+
+  updateTokenTurnStates();
 }
 
-function addLog(message, type = '') {
+function prependLogEntry(message, type = '') {
   const li = document.createElement('li');
   li.className = type ? `log-entry log-entry--${type}` : 'log-entry';
   li.textContent = message;
@@ -536,6 +1236,11 @@ function addLog(message, type = '') {
   while (els.gameLog.children.length > 30) {
     els.gameLog.removeChild(els.gameLog.lastChild);
   }
+}
+
+function addLog(message, type = '') {
+  prependLogEntry(message, type);
+  window.syncLastEvent?.(message, type);
 }
 
 function describeEvents(events) {
@@ -560,7 +1265,7 @@ function describeEvents(events) {
       }
       case 'death':
         addLog(
-          `${ev.player} valt uit! Terug naar start · ${ev.hp} HP · +${ev.movementBonus} beweging (catch-up)`,
+          `${ev.player} valt uit! Terug naar start · ${window.DEFAULT_HP} HP · +${ev.movementBonus} beweging (catch-up)`,
           'warn',
         );
         break;
@@ -626,10 +1331,53 @@ function describeEvents(events) {
       case 'finish':
         addLog(`🏆 ${ev.player} bereikt de Draken-schat!`, 'win');
         break;
-      case 'boss-start':
+      case 'boss-reveal-pending':
+        addLog(`⚔️ ${ev.player} bereikt de eindbaas-arena (vak ${ev.spaceNum}) — D12 volgt`, 'special');
+        break;
+      case 'boss-reveal': {
+        const tierLabel = ev.tier === 'epic' ? 'Episch' : ev.tier === 'strong' ? 'Versterkt' : 'Standaard';
+        addLog(`⚔️ D12 eindbaas: ${ev.roll} → ${tierLabel} (×${ev.multiplier})`, 'special');
+        break;
+      }
+      case 'boss-start': {
+        const multNote = ev.multiplier > 1 ? ` · ×${ev.multiplier}` : '';
+        const minionNote = ev.minionCount > 0 ? ` · ${ev.minionCount} beschermers` : '';
         addLog(
-          `⚔️ ${ev.icon} ${ev.name} verschijnt! (${ev.bossHp} schade) — ${ev.player} triggert de eindbaas`,
+          `⚔️ ${ev.icon} ${ev.name} verschijnt! (${ev.bossHp} schade${multNote}${minionNote}) — ${ev.player} triggert de eindbaas`,
           'warn',
+        );
+        break;
+      }
+      case 'boss-minion-start':
+        addLog(
+          `👹 Beschermers verschijnen: ${ev.minions.map((m) => `${m.icon} ${m.name}`).join(' · ')}`,
+          'warn',
+        );
+        break;
+      case 'boss-minion-engage':
+        addLog(
+          `${ev.player} bereikt vak ${ev.spaceNum} — tijd om ${ev.name ?? 'de beschermer'} te verslaan!`,
+          'special',
+        );
+        break;
+      case 'boss-minion-d20': {
+        const nat = ev.nat20 ? ' · Kritiek succes!' : ev.nat1 ? ' · Kritiek mislukking!' : '';
+        addLog(
+          `👹 vs ${ev.minionName}: ${ev.ability} ${ev.roll ?? '—'} vs DC ${ev.effectiveDc} — ${ev.success ? 'Raak!' : 'Mis!'}${nat}`,
+          ev.success ? 'success' : 'fail',
+        );
+        break;
+      }
+      case 'boss-minion-hit':
+        addLog(
+          `${ev.nat20 ? 'Kritiek treffer' : 'Raak'} op ${ev.minionName}! (−${ev.damage ?? 1} HP · nog ${ev.minionHp})`,
+          'success',
+        );
+        break;
+      case 'boss-minion-end':
+        addLog(
+          `👹 ${ev.minionName} is verslagen!${ev.minionsRemaining > 0 ? ` Nog ${ev.minionsRemaining} beschermer(s).` : ' Tijd voor de eindbaas!'}`,
+          'success',
         );
         break;
       case 'boss-guard':
@@ -648,7 +1396,7 @@ function describeEvents(events) {
       }
       case 'boss-hit':
         addLog(
-          `Raak op ${ev.bossName}! Nog ${ev.bossHp} schade nodig`,
+          `${ev.nat20 ? 'Kritiek treffer' : 'Raak'} op ${ev.bossName}! (−${ev.damage ?? 1} HP · nog ${ev.bossHp} nodig)`,
           'success',
         );
         break;
@@ -689,7 +1437,7 @@ function describeEvents(events) {
       }
       case 'ambush-hit':
         addLog(
-          `Treffer op ${ev.ambushName}! Nog ${ev.ambushHp} ambusher-HP · ${ev.player} op ${ev.playerHp} HP`,
+          `${ev.nat20 ? 'Kritiek treffer' : 'Treffer'} op ${ev.ambushName}! (−${ev.damage ?? 1} HP · nog ${ev.ambushHp} ambusher-HP)`,
           'success',
         );
         break;
@@ -709,6 +1457,26 @@ function describeEvents(events) {
           addLog(`🕳️ ${ev.player} valt uit in de put — ${ev.ambushName} wint de ronde`, 'warn');
         }
         break;
+      case 'mystery-pending':
+        addLog(`❓ ${ev.player} landt op onbekend gevaar (vak ${ev.spaceNum})`, 'special');
+        break;
+      case 'mystery-roll':
+        addLog(`❓ ${ev.player} gooit D12 op vak ${ev.spaceNum}: ${ev.roll}`, 'special');
+        break;
+      case 'mystery-reveal': {
+        const label = ev.revealType === 'path'
+          ? `rustig pad — ${ev.name}`
+          : `ambush — ${ev.icon} ${ev.name} (${ev.ambushHp} HP)`;
+        const extra = ev.jackpot ? ' · JACKPOT!' : ev.multiplier > 1 ? ` · ×${ev.multiplier}` : '';
+        addLog(`❓ Onthuld op vak ${ev.spaceNum}: ${label}${extra}`, 'special');
+        break;
+      }
+      case 'dmg-bonus':
+        addLog(`⚔️ ${ev.player} krijgt permanente +1 schade-bonus (totaal +${ev.dmgBonus})`, 'success');
+        break;
+      case 'mystery-reset':
+        addLog(`❓ Vak ${ev.spaceNum} is weer onbekend — wie weet wat er nu loert?`, 'special');
+        break;
       default:
         break;
     }
@@ -716,7 +1484,31 @@ function describeEvents(events) {
 }
 
 function formatDcDisplay(baseDc, player) {
-  return String(getEffectiveDc(player, baseDc));
+  return String(getEffectiveDc(player, baseDc, game.difficultyLevel));
+}
+
+function updateDifficultyUI() {
+  if (!els.difficultySelect) return;
+  const level = String(game.difficultyLevel ?? 1);
+  if (els.difficultySelect.value !== level) {
+    els.difficultySelect.value = level;
+  }
+}
+
+function setDifficultyLevel(level) {
+  const parsed = Number.parseInt(String(level), 10);
+  const clamped = Number.isFinite(parsed)
+    ? Math.max(1, Math.min(window.DC_DIFFICULTY_MAX_LEVEL ?? 5, parsed))
+    : 1;
+  if (game.difficultyLevel === clamped) return;
+
+  game.difficultyLevel = clamped;
+  updateDifficultyUI();
+
+  const dcBonus = getDifficultyDcBonus(clamped);
+  const bonusLabel = dcBonus === 0 ? 'geen DC-bonus' : `DC +${dcBonus}`;
+  addLog(`Moeilijkheidsgraad ${clamped} (${bonusLabel})`);
+  window.syncAfterAction?.();
 }
 
 function formatPlayerDcHint(player) {
@@ -730,15 +1522,307 @@ function formatPlayerDcHint(player) {
 
 let activeEvent = null;
 let activeBoss = null;
+let activeBossMinion = null;
 let activeAmbush = null;
+let activeMystery = null;
+let activeBossReveal = null;
+let syncedActiveModal = null;
+let pathModalCallback = null;
+let pathModalSpaceNum = null;
+
+function serializeModalConfig(config) {
+  if (!config) return null;
+  const out = {
+    name: config.name ?? null,
+    icon: config.icon ?? null,
+    flavor: config.flavor ?? null,
+  };
+  if (config.ability != null) out.ability = config.ability;
+  if (config.dc != null) out.dc = config.dc;
+  if (config.successText != null) out.successText = config.successText;
+  if (config.failText != null) out.failText = config.failText;
+  if (config.revealType != null) out.revealType = config.revealType;
+  if (config.multiplier != null) out.multiplier = config.multiplier;
+  if (config.jackpot != null) out.jackpot = config.jackpot;
+  if (config.ambushHp != null) out.ambushHp = config.ambushHp;
+  if (config.tier != null) out.tier = config.tier;
+  if (config.bossHp != null) out.bossHp = config.bossHp;
+  if (config.bossMaxHp != null) out.bossMaxHp = config.bossMaxHp;
+  if (Array.isArray(config.minions) && config.minions.length > 0) {
+    out.minions = config.minions.map((m) => ({
+      name: m.name ?? null,
+      icon: m.icon ?? null,
+      hp: m.hp ?? null,
+      maxHp: m.maxHp ?? null,
+    }));
+  }
+  return out;
+}
+
+function setSyncedActiveModal(modal) {
+  syncedActiveModal = modal;
+  window.syncActiveModal?.(modal);
+  window.syncAfterAction?.();
+}
+
+function clearSyncedActiveModal() {
+  syncedActiveModal = null;
+  window.syncActiveModal?.(null);
+  window.syncAfterAction?.();
+}
+
+function resetEventModalHostControls() {
+  els.eventModal.classList.remove('event-modal--spectator');
+  els.eventClose.classList.remove('is-hidden');
+  els.eventSubmit.classList.remove('is-hidden');
+}
+
+function syncModalInput(type, config, spaceNum, options = {}) {
+  setSyncedActiveModal({
+    type,
+    phase: 'input',
+    spaceNum: spaceNum ?? null,
+    config: serializeModalConfig(config),
+    submitLabel: options.submitLabel || 'Bevestigen',
+  });
+}
+
+function syncModalOutcome(type, spaceNum, config, outcome) {
+  setSyncedActiveModal({
+    type,
+    phase: 'outcome',
+    spaceNum: spaceNum ?? null,
+    config: serializeModalConfig(config),
+    outcome,
+  });
+}
+
+function closeSpectatorModals() {
+  lastSpectatorModalAnimKey = null;
+  els.eventModal.classList.add('hidden');
+  els.eventModal.classList.remove('event-modal--spectator');
+  els.pathModal.classList.add('hidden');
+  els.pathModal.classList.remove('path-modal--spectator');
+  els.mysteryModal.classList.add('hidden');
+  els.mysteryModal.classList.remove('mystery-modal--spectator');
+  els.mysteryCard?.classList.remove('event-card--jackpot');
+  els.bossRevealModal.classList.add('hidden');
+  els.bossRevealModal.classList.remove('boss-reveal-modal--spectator');
+  els.bossRevealCard?.classList.remove('event-card--epic');
+  els.winModal.classList.add('hidden');
+  els.winModal.classList.remove('win-modal--spectator');
+  syncModalScrollLock();
+}
+
+function populateSpectatorCombatModal(type, config, spaceNum) {
+  const player = game.currentPlayer;
+  updateEventModalTurnPlayer();
+  removeCombatHpBars();
+  removeAmbushModalExtras();
+  els.eventCard?.classList.remove('event-card--ambush');
+
+  if (type === 'ambush') {
+    const pit = game.getCurrentPlayerPit();
+    if (pit && player) {
+      els.eventCard?.classList.add('event-card--ambush');
+      els.eventCard?.style.setProperty('--ambush-fighter-color', player.color);
+      els.eventIcon.textContent = config.icon || '🕳️';
+      els.eventSpace.textContent = `Vak ${spaceNum ?? player.position}`;
+      els.eventTitle.textContent = config.name;
+      els.eventTitle.className = 'event-card__title';
+      els.eventFlavor.textContent = config.flavor;
+      els.eventFlavor.className = 'event-card__flavor';
+      els.eventCheck.insertAdjacentHTML('afterbegin', ambushFighterPanelHtml(player, pit));
+      els.eventAbility.textContent = config.ability;
+      els.eventDc.textContent = formatDcDisplay(config.dc, player);
+      els.eventCheck.insertAdjacentHTML('beforeend', ambushHpBarHtml());
+    }
+  } else if (type === 'boss-minion') {
+    const minion = game.getActiveBossMinion?.();
+    if (player && minion) {
+      els.eventCard?.classList.add('event-card--ambush');
+      els.eventCard?.style.setProperty('--ambush-fighter-color', player.color);
+      els.eventCheck.insertAdjacentHTML('afterbegin', combatFighterPanelHtml(player, minionFighterNote(player)));
+      els.eventCheck.insertAdjacentHTML('beforeend', bossMinionHpBarHtml(minion));
+    }
+    els.eventIcon.textContent = config.icon || '👹';
+    els.eventSpace.textContent = `Vak ${spaceNum ?? player?.position ?? '62 / 63'}`;
+    els.eventTitle.textContent = config.name;
+    els.eventTitle.className = 'event-card__title';
+    els.eventFlavor.textContent = config.flavor;
+    els.eventFlavor.className = 'event-card__flavor';
+    els.eventAbility.textContent = config.ability;
+    els.eventDc.textContent = formatDcDisplay(config.dc, player);
+  } else if (type === 'boss') {
+    if (player) {
+      els.eventCard?.classList.add('event-card--boss');
+      els.eventCard?.style.setProperty('--boss-fighter-color', player.color);
+      els.eventCheck.insertAdjacentHTML('afterbegin', combatFighterPanelHtml(player, bossFighterNote(player)));
+    }
+    els.eventIcon.textContent = config.icon || '🛡️';
+    els.eventSpace.textContent = 'Eindbaas';
+    els.eventTitle.textContent = `⚔️ ${config.name}`;
+    els.eventTitle.className = 'event-card__title';
+    els.eventFlavor.textContent = config.flavor;
+    els.eventFlavor.className = 'event-card__flavor';
+    els.eventAbility.textContent = config.ability;
+    els.eventDc.textContent = formatDcDisplay(config.dc, player);
+    els.eventCheck.insertAdjacentHTML('beforeend', bossHpBarHtml());
+  } else {
+    els.eventIcon.textContent = config.icon || '🎲';
+    els.eventSpace.textContent = `Vak ${spaceNum ?? '?'}`;
+    resetEventHeader(config);
+    els.eventAbility.textContent = config.ability;
+    els.eventDc.textContent = formatDcDisplay(config.dc, player);
+  }
+}
+
+function renderSpectatorModal(activeModal) {
+  if (window.isMultiplayerHost?.()) return;
+
+  closeSpectatorModals();
+  if (!activeModal) return;
+
+  const { type, phase, config, spaceNum, outcome } = activeModal;
+
+  if (type === 'mystery') {
+    els.mysteryModal.classList.add('mystery-modal--spectator');
+    els.mysteryModal.classList.remove('hidden');
+    els.mysteryIcon.textContent = config?.icon || '❓';
+    els.mysterySpace.textContent = `Vak ${spaceNum ?? '?'}`;
+    els.mysteryTitle.textContent = '❓ Onbekend gevaar';
+
+    if (phase === 'input') {
+      els.mysteryFlavor.textContent = config?.flavor || 'Gooi een D12 om te onthullen wat hier loert.';
+      els.mysteryRollArea.classList.remove('hidden');
+      els.mysteryRevealArea.classList.add('hidden');
+      els.mysterySubmit.classList.add('hidden');
+      els.mysteryAction.classList.add('hidden');
+      els.mysteryDiceInput.disabled = true;
+    } else if (phase === 'outcome' && outcome) {
+      els.mysteryFlavor.textContent = 'Dit loerde achter het vraagteken:';
+      els.mysteryRollArea.classList.add('hidden');
+      els.mysteryRevealArea.classList.remove('hidden');
+      els.mysterySubmit.classList.add('hidden');
+      els.mysteryAction.classList.remove('hidden');
+      els.mysteryAction.textContent = outcome.actionLabel || 'Verder';
+      els.mysteryAction.disabled = true;
+      els.mysteryRevealContent.innerHTML = outcome.revealHtml || '';
+      els.mysteryCard?.classList.toggle('event-card--jackpot', Boolean(config?.jackpot));
+    }
+
+    playSpectatorModalEnter(
+      els.mysteryModal,
+      phase === 'outcome' && config?.revealType === 'ambush' ? 'combat' : 'calm',
+      activeModal,
+    );
+    syncModalScrollLock();
+    return;
+  }
+
+  if (type === 'boss-reveal') {
+    els.bossRevealModal.classList.add('boss-reveal-modal--spectator');
+    els.bossRevealModal.classList.remove('hidden');
+    els.bossRevealIcon.textContent = config?.icon || '⚔️';
+    els.bossRevealSpace.textContent = `Vak ${spaceNum ?? '?'}`;
+    els.bossRevealTitle.textContent = '⚔️ De eindbaas wacht';
+
+    if (phase === 'input') {
+      els.bossRevealFlavor.textContent = config?.flavor
+        || 'Gooi een D12 — het lot bepaalt hoe zwaar dit gevecht wordt.';
+      els.bossRevealRollArea.classList.remove('hidden');
+      els.bossRevealResultArea.classList.add('hidden');
+      els.bossRevealSubmit.classList.add('hidden');
+      els.bossRevealAction.classList.add('hidden');
+      els.bossRevealDiceInput.disabled = true;
+    } else if (phase === 'outcome' && outcome) {
+      els.bossRevealFlavor.textContent = 'Het lot is beslist:';
+      els.bossRevealRollArea.classList.add('hidden');
+      els.bossRevealResultArea.classList.remove('hidden');
+      els.bossRevealSubmit.classList.add('hidden');
+      els.bossRevealAction.classList.remove('hidden');
+      els.bossRevealAction.textContent = outcome.actionLabel || 'Gevecht beginnen';
+      els.bossRevealAction.disabled = true;
+      els.bossRevealResultContent.innerHTML = outcome.revealHtml || '';
+      els.bossRevealCard?.classList.toggle('event-card--epic', config?.tier === 'epic');
+    }
+
+    playSpectatorModalEnter(els.bossRevealModal, 'combat', activeModal);
+    syncModalScrollLock();
+    return;
+  }
+
+  if (type === 'path') {
+    els.pathIcon.textContent = config?.icon || '🚶';
+    els.pathSpace.textContent = `Vak ${spaceNum ?? '?'}`;
+    els.pathTitle.textContent = config?.name || '';
+    els.pathFlavor.textContent = config?.flavor || '';
+    els.pathModal.classList.add('path-modal--spectator');
+    els.pathModal.classList.remove('hidden');
+    playSpectatorModalEnter(els.pathModal, 'calm', activeModal);
+    syncModalScrollLock();
+    return;
+  }
+
+  if (type === 'win') {
+    els.winTitle.textContent = outcome?.title ?? '🏆 Overwinning!';
+    els.winText.textContent = outcome?.text ?? '';
+    els.winModal.classList.add('win-modal--spectator');
+    els.winModal.classList.remove('hidden');
+    playSpectatorModalEnter(els.winModal, 'win', activeModal);
+    syncModalScrollLock();
+    return;
+  }
+
+  if (!config) return;
+
+  populateSpectatorCombatModal(type, config, spaceNum);
+  els.eventModal.classList.add('event-modal--spectator');
+  els.eventRollArea.classList.add('is-hidden');
+  els.eventNat20.disabled = true;
+  els.eventNat1.disabled = true;
+  els.eventDiceInput.disabled = true;
+
+  if (phase === 'input') {
+    els.eventCheck.classList.remove('is-hidden');
+    els.eventResult.classList.remove('hidden');
+    els.eventResult.className = 'event-card__result';
+    els.eventResult.innerHTML = '<p class="spectator-wait">Host voert de check uit…</p>';
+  } else if (phase === 'outcome' && outcome) {
+    if (outcome.headerMode === 'outcome') {
+      showEventOutcomeInHeader(outcome.success, config);
+    } else {
+      els.eventTitle.textContent = outcome.title ?? config.name;
+      els.eventTitle.className = outcome.titleClass ?? 'event-card__title';
+      els.eventFlavor.textContent = outcome.flavor ?? '';
+      els.eventFlavor.className = outcome.flavorClass ?? 'event-card__flavor';
+    }
+    els.eventCheck.classList.add('is-hidden');
+    els.eventResult.classList.remove('hidden');
+    els.eventResult.className = outcome.resultClassName ?? 'event-card__result';
+    els.eventResult.innerHTML = outcome.resultHtml ?? '';
+  }
+
+  els.eventModal.classList.remove('hidden');
+  playSpectatorModalEnter(
+    els.eventModal,
+    type === 'ambush' || type === 'boss' || type === 'boss-minion'
+      ? 'combat'
+      : getEventModalEnterTier(config),
+    activeModal,
+  );
+  syncModalScrollLock();
+}
 
 function removeCombatHpBars() {
   els.eventCheck.querySelector('.event-card__boss-hp')?.remove();
 }
 
 function removeAmbushModalExtras() {
-  els.eventCheck.querySelector('.event-card__ambush-fighter-wrap')?.remove();
+  els.eventCheck.querySelector('.event-card__combat-fighter-wrap')?.remove();
   els.eventCard?.style.removeProperty('--ambush-fighter-color');
+  els.eventCard?.style.removeProperty('--boss-fighter-color');
+  els.eventCard?.classList.remove('event-card--ambush', 'event-card--boss');
 }
 
 function updateEventModalTurnPlayer() {
@@ -771,6 +1855,7 @@ function showEventOutcomeInHeader(success, config) {
 }
 
 function populateEventModal(config, spaceNum) {
+  resetEventModalHostControls();
   const player = game.currentPlayer;
   updateEventModalTurnPlayer();
 
@@ -806,12 +1891,20 @@ function closeEventModal() {
   syncModalScrollLock();
   activeEvent = null;
   activeBoss = null;
+  activeBossMinion = null;
   activeAmbush = null;
   els.eventCard?.classList.remove('event-card--ambush');
   removeAmbushModalExtras();
+  if (window.isMultiplayerHost?.()) {
+    const modalType = syncedActiveModal?.type;
+    if (modalType === 'event' || modalType === 'boss' || modalType === 'boss-minion' || modalType === 'ambush') {
+      clearSyncedActiveModal();
+    }
+  }
 }
 
 function populateBossModal() {
+  resetEventModalHostControls();
   const config = game.bossConfig;
   const player = game.currentPlayer;
   if (!config) return;
@@ -820,6 +1913,11 @@ function populateBossModal() {
 
   removeAmbushModalExtras();
   els.eventCard?.classList.remove('event-card--ambush');
+
+  if (!player) return;
+
+  els.eventCard?.classList.add('event-card--boss');
+  els.eventCard?.style.setProperty('--boss-fighter-color', player.color);
 
   els.eventIcon.textContent = config.icon || '🛡️';
   els.eventSpace.textContent = 'Eindbaas';
@@ -848,6 +1946,7 @@ function populateBossModal() {
   els.eventDiceInput.value = '';
 
   removeCombatHpBars();
+  els.eventCheck.insertAdjacentHTML('afterbegin', combatFighterPanelHtml(player, bossFighterNote(player)));
   els.eventCheck.insertAdjacentHTML('beforeend', bossHpBarHtml());
 }
 
@@ -863,6 +1962,54 @@ function ambushHpBarHtml() {
         <div class="boss-hp__fill ambush-hp__fill" style="width:${pct}%"></div>
       </div>
       <p class="boss-hp__label">Ambusher: ${hp} / ${max} HP</p>
+    </div>
+  `;
+}
+
+function bossFighterNote(player) {
+  return `Valt de eindbaas aan op vak ${player.position} · daarna terug naar kamp (56)`;
+}
+
+function minionFighterNote(player) {
+  return `Versla de beschermer op vak ${player.position} · daarna terug naar kamp (56)`;
+}
+
+function bossMinionHpBarHtml(minion) {
+  const max = minion?.maxHp || 1;
+  const hp = minion?.hp ?? 0;
+  const pct = Math.round((hp / max) * 100);
+  return `
+    <div class="event-card__boss-hp">
+      <p class="event-card__boss-hp-label">Beschermer van de eindbaas</p>
+      <div class="boss-hp ambush-hp" role="progressbar" aria-valuenow="${pct}" aria-valuemin="0" aria-valuemax="100">
+        <div class="boss-hp__fill ambush-hp__fill" style="width:${pct}%"></div>
+      </div>
+      <p class="boss-hp__label">Vijand: ${hp} / ${max} HP</p>
+    </div>
+  `;
+}
+
+function combatFighterPanelHtml(player, note, alliesHtml = '') {
+  return `
+    <div class="event-card__combat-fighter-wrap">
+      <div class="ambush-modal__fighter" style="--fighter-color:${player.color}">
+        <div class="ambush-modal__fighter-accent" aria-hidden="true"></div>
+        <div class="ambush-modal__fighter-body">
+          <span class="ambush-modal__turn-badge">Aan de beurt</span>
+          <div class="ambush-modal__fighter-row">
+            <span class="ambush-modal__fighter-dot" aria-hidden="true"></span>
+            <div class="ambush-modal__fighter-meta">
+              <strong class="ambush-modal__fighter-name">${escapeAttr(player.name)}</strong>
+              <span class="ambush-modal__fighter-hp" title="${player.hp} / ${player.maxHp} HP">
+                <span class="ambush-modal__fighter-hearts">${formatPlayerHp(player)}</span>
+                <span class="ambush-modal__fighter-hp-num">${player.hp} / ${player.maxHp} HP</span>
+              </span>
+            </div>
+          </div>
+          <p class="ambush-modal__pit-note">${note}</p>
+        </div>
+      </div>
+      ${alliesHtml}
     </div>
   `;
 }
@@ -888,31 +2035,15 @@ function ambushFighterPanelHtml(player, pit) {
       </div>`
     : '';
 
-  return `
-    <div class="event-card__ambush-fighter-wrap">
-      <div class="ambush-modal__fighter" style="--fighter-color:${player.color}">
-        <div class="ambush-modal__fighter-accent" aria-hidden="true"></div>
-        <div class="ambush-modal__fighter-body">
-          <span class="ambush-modal__turn-badge">Aan de beurt</span>
-          <div class="ambush-modal__fighter-row">
-            <span class="ambush-modal__fighter-dot" aria-hidden="true"></span>
-            <div class="ambush-modal__fighter-meta">
-              <strong class="ambush-modal__fighter-name">${escapeAttr(player.name)}</strong>
-              <span class="ambush-modal__fighter-hp" title="${player.hp} / ${player.maxHp} HP">
-                <span class="ambush-modal__fighter-hearts">${formatPlayerHp(player)}</span>
-                <span class="ambush-modal__fighter-hp-num">${player.hp} / ${player.maxHp} HP</span>
-              </span>
-            </div>
-          </div>
-          <p class="ambush-modal__pit-note">Vecht uit de put op vak ${pit.spaceNum}${allies.length ? ' · samen met je bondgenoten' : ''}</p>
-        </div>
-      </div>
-      ${alliesHtml}
-    </div>
-  `;
+  return combatFighterPanelHtml(
+    player,
+    `Vecht uit de put op vak ${pit.spaceNum}${allies.length ? ' · samen met je bondgenoten' : ''}`,
+    alliesHtml,
+  );
 }
 
 function populateAmbushModal() {
+  resetEventModalHostControls();
   const pit = game.getCurrentPlayerPit();
   const player = game.currentPlayer;
   if (!pit || !player) return;
@@ -965,14 +2096,102 @@ function showAmbushModal(onComplete) {
 
   activeAmbush = { onComplete, submitted: false };
   activeBoss = null;
+  activeBossMinion = null;
   activeEvent = null;
 
   els.eventModal.classList.remove('hidden');
+  els.eventModal.classList.remove('event-modal--spectator');
   syncModalScrollLock();
   populateAmbushModal();
   updateAmbushPanel();
+  syncModalInput('ambush', game.getCurrentPlayerPit()?.config, game.currentPlayer?.position, {
+    submitLabel: 'Vechten',
+  });
+  playModalCardEnter(els.eventModal, 'combat');
 
   setTimeout(() => els.eventDiceInput.focus(), 100);
+}
+
+function populateBossMinionModal() {
+  resetEventModalHostControls();
+  const minion = game.getActiveBossMinion();
+  const player = game.currentPlayer;
+  if (!minion || !player) return;
+
+  updateEventModalTurnPlayer();
+  const { config } = minion;
+
+  removeAmbushModalExtras();
+  els.eventCard?.classList.remove('event-card--boss');
+  els.eventCard?.classList.add('event-card--ambush');
+  els.eventCard?.style.setProperty('--ambush-fighter-color', player.color);
+  els.eventIcon.textContent = config.icon || '👹';
+  els.eventSpace.textContent = `Vak ${player.position}`;
+  els.eventTitle.textContent = config.name;
+  els.eventTitle.className = 'event-card__title';
+  els.eventFlavor.textContent = config.flavor;
+  els.eventFlavor.className = 'event-card__flavor';
+
+  els.eventCheck.insertAdjacentHTML('afterbegin', combatFighterPanelHtml(player, minionFighterNote(player)));
+  els.eventAbility.textContent = config.ability;
+  els.eventDc.textContent = formatDcDisplay(config.dc, player);
+  els.eventCheck.classList.remove('is-hidden');
+
+  els.eventDiceInput.min = '1';
+  els.eventDiceInput.removeAttribute('max');
+  els.eventDiceInput.placeholder = '—';
+  els.eventNat20.checked = false;
+  els.eventNat20.disabled = false;
+  els.eventNat1.checked = false;
+  els.eventNat1.disabled = false;
+  els.eventResult.className = 'event-card__result hidden';
+  els.eventRollArea.classList.remove('is-hidden');
+  els.eventClose.disabled = true;
+  els.eventClose.textContent = 'Doorgaan op avontuur';
+  els.eventSubmit.disabled = false;
+  els.eventSubmit.textContent = 'Vechten';
+  els.eventDiceInput.disabled = false;
+  els.eventDiceInput.value = '';
+
+  removeCombatHpBars();
+  els.eventCheck.insertAdjacentHTML('beforeend', bossMinionHpBarHtml(minion));
+}
+
+function showBossMinionModal(onComplete) {
+  if (!game.bossActive || !game.getActiveBossMinion()) {
+    showBossModal(onComplete);
+    return;
+  }
+
+  closeBossRevealModal();
+  activeBossMinion = { onComplete, submitted: false };
+  activeBoss = null;
+  activeEvent = null;
+  activeAmbush = null;
+
+  const minion = game.getActiveBossMinion();
+  const spaceNum = game.currentPlayer?.position;
+
+  els.eventModal.classList.remove('hidden');
+  els.eventModal.classList.remove('event-modal--spectator');
+  syncModalScrollLock();
+  populateBossMinionModal();
+  updateBossPanel();
+  syncModalInput('boss-minion', {
+    ...serializeModalConfig(minion.config),
+    ambushHp: minion.maxHp,
+  }, spaceNum, { submitLabel: 'Vechten' });
+  playModalCardEnter(els.eventModal, 'combat');
+
+  setTimeout(() => els.eventDiceInput.focus(), 100);
+}
+
+function showBossFightModal(onComplete) {
+  if (game.hasBossMinions?.()) {
+    showBossMinionModal(onComplete);
+  } else {
+    showBossModal(onComplete);
+  }
 }
 
 function showBossModal(onComplete) {
@@ -981,37 +2200,177 @@ function showBossModal(onComplete) {
     return;
   }
 
+  closeBossRevealModal();
   activeBoss = { onComplete, submitted: false };
+  activeBossMinion = null;
   activeEvent = null;
   activeAmbush = null;
 
   els.eventModal.classList.remove('hidden');
+  els.eventModal.classList.remove('event-modal--spectator');
   syncModalScrollLock();
   populateBossModal();
   updateBossPanel();
+  syncModalInput('boss', game.bossConfig, null, { submitLabel: 'Aanvallen' });
+  playModalCardEnter(els.eventModal, 'combat');
 
   setTimeout(() => els.eventDiceInput.focus(), 100);
 }
 
 function finishBossFlow(onClose) {
+  resetEventModalHostControls();
   els.eventSubmit.disabled = true;
   els.eventDiceInput.disabled = true;
   els.eventNat20.disabled = true;
   els.eventNat1.disabled = true;
   els.eventClose.disabled = false;
   els.eventClose.textContent = onClose?.chainLabel ?? 'Doorgaan op avontuur';
-  activeBoss.onClose = onClose?.handler;
+  if (activeBoss) activeBoss.onClose = onClose?.handler;
   els.eventClose.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
 }
 
-function handleAmbushSubmit() {
+function finishBossMinionFlow(onClose) {
+  resetEventModalHostControls();
+  els.eventSubmit.disabled = true;
+  els.eventDiceInput.disabled = true;
+  els.eventNat20.disabled = true;
+  els.eventNat1.disabled = true;
+  els.eventClose.disabled = false;
+  els.eventClose.textContent = onClose?.chainLabel ?? 'Doorgaan op avontuur';
+  if (activeBossMinion) activeBossMinion.onClose = onClose?.handler;
+  els.eventClose.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+}
+
+async function handleBossMinionSubmit() {
+  if (!activeBossMinion || activeBossMinion.submitted || !game.getActiveBossMinion()) return;
+
+  const { onComplete } = activeBossMinion;
+  const player = game.currentPlayer;
+  const minion = game.getActiveBossMinion();
+  const config = minion?.config;
+  const spaceNum = player?.position;
+  if (!config || spaceNum == null) return;
+
+  const nat20 = els.eventNat20.checked;
+  const nat1 = els.eventNat1.checked;
+  const roll = parseCheckTotal(els.eventDiceInput.value);
+
+  if (roll === null && !nat20 && !nat1) {
+    els.eventResult.classList.remove('hidden');
+    els.eventResult.className = 'event-card__result event-card__result--fail';
+    els.eventResult.innerHTML =
+      '<strong>Ongeldige worp</strong><p>Vul een worp in, of kies Kritiek succes / Kritiek mislukking.</p>';
+    return;
+  }
+
+  activeBossMinion.submitted = true;
+
+  const effectiveDc = getEffectiveDc(player, config.dc);
+  const isNat1 = !nat20 && nat1;
+  const success = !isNat1 && (nat20 || (roll !== null && roll >= effectiveDc));
+  const rollLabel = nat20
+    ? (roll != null ? `${roll} — Kritiek succes!` : 'Kritiek succes!')
+    : isNat1
+      ? (roll != null ? `${roll} — Kritiek mislukking!` : 'Kritiek mislukking!')
+      : String(roll ?? '—');
+  const dcDisplay = formatDcDisplay(config.dc, player);
+  const failDmg = Math.ceil(game.bossDmgPerHit ?? 1);
+
+  let result;
+  try {
+    result = game.resolveBossMinionRoll(roll, { nat20, nat1 });
+    describeEvents(result.events);
+    await syncTokensAfterEvents(result.events);
+    renderBoard();
+    renderPlayers();
+    updateBossPanel();
+  } catch (err) {
+    console.error(err);
+    els.eventResult.className = 'event-card__result event-card__result--fail';
+    els.eventResult.innerHTML = '<p>Kon het gevecht niet verwerken.</p>';
+    syncModalOutcome('boss-minion', spaceNum, config, {
+      resultClassName: els.eventResult.className,
+      resultHtml: els.eventResult.innerHTML,
+    });
+    finishBossMinionFlow({
+      handler: () => {
+        closeEventModal();
+        onComplete?.();
+        advanceTurn();
+      },
+    });
+    return;
+  }
+
+  els.eventRollArea.classList.add('is-hidden');
+  els.eventCheck.classList.add('is-hidden');
+  els.eventTitle.textContent = success ? 'Treffer!' : 'Mis!';
+  els.eventTitle.className = `event-card__title event-card__title--${success ? 'success' : 'fail'}`;
+  els.eventFlavor.textContent = success ? (config.successText || '') : (config.failText || '');
+  els.eventFlavor.className = `event-card__flavor event-card__flavor--outcome event-card__flavor--${success ? 'success' : 'fail'}`;
+
+  let effectText = success
+    ? result.nat20
+      ? `Kritiek succes! Beschermer verliest ${2 + (player.dmgBonus ?? 0)} HP — nog ${result.minionHp} / ${result.minionMaxHp}`
+      : `Beschermer verliest ${1 + (player.dmgBonus ?? 0)} HP — nog ${result.minionHp} / ${result.minionMaxHp}`
+    : result.nat1
+      ? `Mislukt + kritieke mislukking — jij verliest ${failDmg + 1} HP`
+      : `Geen schade aan de beschermer · jij verliest ${failDmg} HP`;
+
+  if (hasDeathInEvents(result.events)) {
+    effectText = 'Uitgevallen — terug naar start';
+  } else if (result.minionEnded) {
+    effectText = success
+      ? (game.hasBossMinions()
+        ? 'Beschermer verslagen — nog een te gaan!'
+        : 'Alle beschermers weg — tijd voor de eindbaas!')
+      : effectText;
+  } else if (result.retreatedTo != null) {
+    effectText += ` · terug naar vak ${result.retreatedTo}`;
+  }
+
+  els.eventResult.classList.remove('hidden');
+  setEventResultClass(success, result.events);
+  const hpHtml = buildResultHpHtml(result.events, game.currentPlayer);
+
+  els.eventResult.innerHTML = `
+    <div class="result-roll">🎲 ${rollLabel}</div>
+    <div class="result-vs">vs DC ${dcDisplay}</div>
+    <p class="result-effect">${effectText}</p>
+    ${hpHtml}
+  `;
+
+  syncModalOutcome('boss-minion', spaceNum, {
+    ...serializeModalConfig(config),
+    ambushHp: result.minionMaxHp,
+  }, {
+    title: els.eventTitle.textContent,
+    titleClass: els.eventTitle.className,
+    flavor: els.eventFlavor.textContent,
+    flavorClass: els.eventFlavor.className,
+    resultClassName: els.eventResult.className,
+    resultHtml: els.eventResult.innerHTML,
+  });
+  window.syncAfterAction?.();
+
+  finishBossMinionFlow({
+    handler: () => {
+      closeEventModal();
+      onComplete?.();
+      advanceTurn();
+    },
+  });
+}
+
+async function handleAmbushSubmit() {
   if (!activeAmbush || activeAmbush.submitted || !game.isCurrentPlayerInAmbush()) return;
 
   const { onComplete } = activeAmbush;
   const player = game.currentPlayer;
   const pit = game.getCurrentPlayerPit();
   const config = pit?.config;
-  if (!config) return;
+  const spaceNum = player?.position;
+  if (!config || spaceNum == null) return;
 
   const nat20 = els.eventNat20.checked;
   const nat1 = els.eventNat1.checked;
@@ -1028,7 +2387,7 @@ function handleAmbushSubmit() {
   activeAmbush.submitted = true;
 
   const effectiveDc = getEffectiveDc(player, config.dc);
-  const isNat1 = !nat20 && (nat1 || roll === 1);
+  const isNat1 = !nat20 && nat1;
   const success = !isNat1 && (nat20 || (roll !== null && roll >= effectiveDc));
   const rollLabel = nat20
     ? (roll != null ? `${roll} — Kritiek succes!` : 'Kritiek succes!')
@@ -1041,16 +2400,25 @@ function handleAmbushSubmit() {
   try {
     result = game.resolveAmbushRoll(roll, { nat20, nat1 });
     describeEvents(result.events);
-    renderTokens();
+    await syncTokensAfterEvents(result.events);
+    renderBoard();
+    playMysteryResetFromEvents(result.events);
     renderPlayers();
     updateAmbushPanel();
-    if (game.isCurrentPlayerInAmbush()) populateAmbushModal();
   } catch (err) {
     console.error(err);
     els.eventResult.className = 'event-card__result event-card__result--fail';
     els.eventResult.innerHTML = '<p>Kon de put niet verwerken.</p>';
-    finishAmbushFight(onComplete);
-    advanceTurn();
+    syncModalOutcome('ambush', spaceNum, config, {
+      resultClassName: els.eventResult.className,
+      resultHtml: els.eventResult.innerHTML,
+    });
+    finishAmbushFlow({
+      handler: () => {
+        finishAmbushFight(onComplete);
+        advanceTurn();
+      },
+    });
     return;
   }
 
@@ -1062,13 +2430,17 @@ function handleAmbushSubmit() {
   els.eventFlavor.className = `event-card__flavor event-card__flavor--outcome event-card__flavor--${success ? 'success' : 'fail'}`;
 
   let effectText = success
-    ? `Ambusher verliest 1 HP — nog ${result.ambushHp} / ${result.ambushMaxHp}`
+    ? result.nat20
+      ? `Kritiek succes! Ambusher verliest 2 HP — nog ${result.ambushHp} / ${result.ambushMaxHp}`
+      : `Ambusher verliest 1 HP — nog ${result.ambushHp} / ${result.ambushMaxHp}`
     : result.nat1
       ? 'Mislukt + kritieke mislukking — jij verliest 2 HP'
       : 'Geen schade aan de ambusher · jij verliest 1 HP';
 
   if (hasDeathInEvents(result.events)) {
-    effectText = 'Uitgevallen — terug naar start';
+    effectText = result.ambushEnded
+      ? 'Uitgevallen — terug naar start · de put gaat verder voor de anderen'
+      : 'Uitgevallen — terug naar start';
   } else if (result.ambushEnded) {
     effectText = success
       ? 'De put is opgeheven — je mag weer dobbelstenen op dit vak!'
@@ -1086,8 +2458,22 @@ function handleAmbushSubmit() {
     ${hpHtml}
   `;
 
-  finishAmbushFight(onComplete);
-  advanceTurn();
+  syncModalOutcome('ambush', spaceNum, config, {
+    title: els.eventTitle.textContent,
+    titleClass: els.eventTitle.className,
+    flavor: els.eventFlavor.textContent,
+    flavorClass: els.eventFlavor.className,
+    resultClassName: els.eventResult.className,
+    resultHtml: els.eventResult.innerHTML,
+  });
+  window.syncAfterAction?.();
+
+  finishAmbushFlow({
+    handler: () => {
+      finishAmbushFight(onComplete);
+      advanceTurn();
+    },
+  });
 }
 
 /** Sluit put-modal van vorige speler; daarna advanceTurn opent zo nodig gevecht voor volgende speler in de put. */
@@ -1096,7 +2482,19 @@ function finishAmbushFight(onComplete) {
   onComplete?.();
 }
 
-function handleBossSubmit() {
+function finishAmbushFlow(onClose) {
+  resetEventModalHostControls();
+  els.eventSubmit.disabled = true;
+  els.eventDiceInput.disabled = true;
+  els.eventNat20.disabled = true;
+  els.eventNat1.disabled = true;
+  els.eventClose.disabled = false;
+  els.eventClose.textContent = onClose?.chainLabel ?? 'Doorgaan op avontuur';
+  if (activeAmbush) activeAmbush.onClose = onClose?.handler;
+  els.eventClose.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+}
+
+async function handleBossSubmit() {
   if (!activeBoss || activeBoss.submitted || !game.bossActive) return;
 
   const { onComplete } = activeBoss;
@@ -1117,7 +2515,7 @@ function handleBossSubmit() {
   activeBoss.submitted = true;
 
   const effectiveDc = getEffectiveDc(player, config.dc);
-  const isNat1 = !nat20 && (nat1 || roll === 1);
+  const isNat1 = !nat20 && nat1;
   const success = !isNat1 && (nat20 || (roll !== null && roll >= effectiveDc));
   const rollLabel = nat20
     ? (roll != null ? `${roll} — Kritiek succes!` : 'Kritiek succes!')
@@ -1130,7 +2528,7 @@ function handleBossSubmit() {
   try {
     result = game.resolveBoss(roll, { nat20, nat1 });
     describeEvents(result.events);
-    renderTokens();
+    await syncTokensAfterEvents(result.events);
     renderPlayers();
     updateBossPanel();
     populateBossModal();
@@ -1138,6 +2536,14 @@ function handleBossSubmit() {
     console.error(err);
     els.eventResult.className = 'event-card__result event-card__result--fail';
     els.eventResult.innerHTML = '<p>Kon de aanval niet verwerken.</p>';
+    syncModalOutcome('boss', null, config, {
+      title: els.eventTitle.textContent,
+      titleClass: els.eventTitle.className,
+      flavor: els.eventFlavor.textContent,
+      flavorClass: els.eventFlavor.className,
+      resultClassName: els.eventResult.className,
+      resultHtml: els.eventResult.innerHTML,
+    });
     finishBossFlow({ handler: () => endBossTurn(onComplete) });
     return;
   }
@@ -1150,7 +2556,9 @@ function handleBossSubmit() {
   els.eventFlavor.className = `event-card__flavor event-card__flavor--outcome event-card__flavor--${success ? 'success' : 'fail'}`;
 
   let effectText = success
-    ? `De eindbaas verliest 1 schade — nog ${game.bossHp} / ${game.bossMaxHp}`
+    ? result.nat20
+      ? `Kritiek succes! De eindbaas verliest 2 schade — nog ${game.bossHp} / ${game.bossMaxHp}`
+      : `De eindbaas verliest 1 schade — nog ${game.bossHp} / ${game.bossMaxHp}`
     : result.nat1
       ? 'Mislukt + kritieke mislukking — jij verliest 2 HP'
       : 'Geen schade aan de baas · jij verliest 1 HP';
@@ -1178,6 +2586,15 @@ function handleBossSubmit() {
     ${bossHpHtml}
   `;
 
+  syncModalOutcome('boss', null, config, {
+    title: els.eventTitle.textContent,
+    titleClass: els.eventTitle.className,
+    flavor: els.eventFlavor.textContent,
+    flavorClass: els.eventFlavor.className,
+    resultClassName: els.eventResult.className,
+    resultHtml: els.eventResult.innerHTML,
+  });
+
   if (result.winner) {
     finishBossFlow({ handler: () => showWinModal(result.winner) });
     return;
@@ -1191,28 +2608,417 @@ function endBossTurn(onComplete) {
   onComplete?.();
 }
 
+function closePathModal() {
+  if (els.pathModal.classList.contains('hidden')) return;
+  els.pathModal.classList.add('hidden');
+  els.pathModal.classList.remove('path-modal--spectator');
+  syncModalScrollLock();
+  clearSyncedActiveModal();
+
+  const spaceNum = pathModalSpaceNum;
+  pathModalSpaceNum = null;
+  const cb = pathModalCallback;
+  pathModalCallback = null;
+
+  if (spaceNum != null) {
+    const events = game.resetMysteryPathAfterRest(spaceNum);
+    if (events.length > 0) {
+      describeEvents(events);
+      renderBoard();
+      playMysteryResetFromEvents(events);
+      window.syncAfterAction?.();
+    }
+  }
+
+  cb?.();
+}
+
 function showPathModal(config, spaceNum, onComplete) {
+  closeEventModal();
   els.pathIcon.textContent = config.icon || '🚶';
   els.pathSpace.textContent = `Vak ${spaceNum ?? '?'}`;
   els.pathTitle.textContent = config.name;
   els.pathFlavor.textContent = config.flavor;
 
+  pathModalCallback = onComplete ?? null;
+  pathModalSpaceNum = spaceNum ?? game.currentPlayer?.position ?? null;
   els.pathModal.classList.remove('hidden');
+  els.pathModal.classList.remove('path-modal--spectator');
+  els.pathClose.textContent = 'Rust even uit';
+  els.pathClose.disabled = false;
   syncModalScrollLock();
 
-  const onClose = () => {
-    els.pathModal.classList.add('hidden');
-    syncModalScrollLock();
-    onComplete?.();
-  };
+  try {
+    syncModalInput('path', config, spaceNum);
+  } catch (err) {
+    console.error('Path modal sync mislukt:', err);
+  }
+  playModalCardEnter(els.pathModal, 'calm');
 
-  els.pathClose.onclick = onClose;
   setTimeout(() => els.pathClose.focus(), 100);
+}
+
+function formatMysteryMultiplierBadge(multiplier, jackpot) {
+  if (jackpot) {
+    return '<span class="mystery-badge mystery-badge--danger">Gevaarlijk</span>'
+      + '<p class="mystery-jackpot">✨ Jackpot! Versla de vijand voor permanente +1 schade-bonus.</p>';
+  }
+  if (multiplier >= 2) {
+    return '<span class="mystery-badge mystery-badge--danger">Gevaarlijk</span>';
+  }
+  if (multiplier >= 1.5) {
+    return '<span class="mystery-badge mystery-badge--strong">Versterkte vijand</span>';
+  }
+  return '';
+}
+
+function buildMysteryRevealHtml(revelation) {
+  if (!revelation) return '';
+  const cfg = revelation.config ?? {};
+
+  if (revelation.type === 'path') {
+    return `
+      <div class="mystery-reveal-card">
+        <div class="mystery-reveal-card__head">
+          <span class="mystery-reveal-card__icon">${cfg.icon ?? '🚶'}</span>
+          <div>
+            <p class="mystery-reveal-card__name">Rustig pad — ${cfg.name ?? 'Pad'}</p>
+            <p class="mystery-reveal-card__flavor">${cfg.flavor ?? ''}</p>
+          </div>
+        </div>
+      </div>`;
+  }
+
+  const hp = Math.ceil((cfg.ambushHp ?? 3) * (revelation.multiplier ?? 1));
+  return `
+    <div class="mystery-reveal-card">
+      <div class="mystery-reveal-card__head">
+        <span class="mystery-reveal-card__icon">${cfg.icon ?? '🕳️'}</span>
+        <div>
+          <p class="mystery-reveal-card__name">${cfg.name ?? 'Ambush'}</p>
+          <p class="mystery-reveal-card__flavor">${cfg.flavor ?? ''}</p>
+        </div>
+      </div>
+      <p class="mystery-reveal-card__flavor">Vijand-HP: ${hp}</p>
+      ${formatMysteryMultiplierBadge(revelation.multiplier ?? 1, revelation.jackpot)}
+    </div>`;
+}
+
+function formatBossTierBadge(tier, multiplier) {
+  if (tier === 'epic' || multiplier >= 2) {
+    return '<span class="mystery-badge mystery-badge--danger">Episch ×2</span>';
+  }
+  if (tier === 'strong' || multiplier >= 1.5) {
+    return '<span class="mystery-badge mystery-badge--strong">Versterkt ×1.5</span>';
+  }
+  return '<span class="mystery-badge">Standaard</span>';
+}
+
+function buildBossRevealHtml(reveal) {
+  if (!reveal) return '';
+  const cfg = reveal.config ?? {};
+  const failDmg = Math.ceil(reveal.multiplier ?? 1);
+  return `
+    <div class="mystery-reveal-card">
+      <div class="mystery-reveal-card__head">
+        <span class="mystery-reveal-card__icon">${cfg.icon ?? '⚔️'}</span>
+        <div>
+          <p class="mystery-reveal-card__name">${cfg.name ?? 'Eindbaas'}</p>
+          <p class="mystery-reveal-card__flavor">${cfg.flavor ?? ''}</p>
+        </div>
+      </div>
+      <p class="mystery-reveal-card__flavor">Boss-HP: ${reveal.bossHp ?? '?'} / ${reveal.bossMaxHp ?? '?'}</p>
+      <p class="mystery-reveal-card__flavor">Mislukte check: ${failDmg} schade per hit</p>
+      ${formatBossTierBadge(reveal.tier, reveal.multiplier ?? 1)}
+      ${(reveal.minions?.length ?? 0) > 0 ? `
+        <div class="boss-reveal-minions">
+          <p class="mystery-reveal-card__flavor">Beschermers:</p>
+          ${reveal.minions.map((m) => `
+            <div class="boss-reveal-minion">
+              <span class="boss-reveal-minion__icon">${m.icon ?? '👹'}</span>
+              <span class="boss-reveal-minion__name">${escapeAttr(m.name ?? 'Beschermer')}</span>
+              <span class="boss-reveal-minion__hp">${m.hp ?? '?'} HP</span>
+            </div>
+          `).join('')}
+        </div>` : ''}
+    </div>`;
+}
+
+function closeBossRevealModal() {
+  if (els.bossRevealModal.classList.contains('hidden')) return;
+  els.bossRevealModal.classList.add('hidden');
+  els.bossRevealModal.classList.remove('boss-reveal-modal--spectator');
+  els.bossRevealCard?.classList.remove('event-card--epic');
+  syncModalScrollLock();
+  activeBossReveal = null;
+  if (window.isMultiplayerHost?.() && syncedActiveModal?.type === 'boss-reveal') {
+    clearSyncedActiveModal();
+  }
+}
+
+function closeMysteryModal() {
+  if (els.mysteryModal.classList.contains('hidden')) return;
+  els.mysteryModal.classList.add('hidden');
+  els.mysteryModal.classList.remove('mystery-modal--spectator');
+  els.mysteryCard?.classList.remove('event-card--jackpot');
+  syncModalScrollLock();
+  activeMystery = null;
+  if (window.isMultiplayerHost?.() && syncedActiveModal?.type === 'mystery') {
+    clearSyncedActiveModal();
+  }
+}
+
+function showMysteryRevealPhase(revelation) {
+  if (!activeMystery) return;
+  activeMystery.phase = 'reveal';
+  activeMystery.revelation = revelation;
+
+  els.mysteryFlavor.textContent = 'Dit loerde achter het vraagteken:';
+  els.mysteryRollArea.classList.add('hidden');
+  els.mysteryRevealArea.classList.remove('hidden');
+  els.mysterySubmit.classList.add('hidden');
+  els.mysteryAction.classList.remove('hidden');
+  els.mysteryAction.disabled = false;
+
+  if (revelation.type === 'path') {
+    els.mysteryAction.textContent = 'Verder lopen';
+  } else {
+    els.mysteryAction.textContent = 'Gevecht beginnen';
+    els.mysteryCard?.classList.toggle('event-card--jackpot', Boolean(revelation.jackpot));
+  }
+
+  els.mysteryRevealContent.innerHTML = buildMysteryRevealHtml(revelation);
+
+  const cfg = revelation.config ?? {};
+  syncModalOutcome('mystery', activeMystery.spaceNum, {
+    ...serializeModalConfig(cfg),
+    revealType: revelation.type,
+    multiplier: revelation.multiplier ?? null,
+    jackpot: revelation.jackpot ?? false,
+    ambushHp: revelation.type === 'ambush'
+      ? Math.ceil((cfg.ambushHp ?? 3) * (revelation.multiplier ?? 1))
+      : null,
+  }, {
+    revealHtml: els.mysteryRevealContent.innerHTML,
+    actionLabel: els.mysteryAction.textContent,
+  });
+  playModalCardEnter(
+    els.mysteryModal,
+    revelation.type === 'ambush' ? 'combat' : 'calm',
+  );
+}
+
+function showMysteryModal(spaceNum, onComplete) {
+  closeEventModal();
+  closePathModal();
+  closeBossRevealModal();
+  activeMystery = { spaceNum, onComplete, phase: 'roll', revelation: null };
+  activeEvent = null;
+  activeBoss = null;
+  activeBossMinion = null;
+  activeAmbush = null;
+
+  els.mysteryModal.classList.remove('hidden');
+  els.mysteryModal.classList.remove('mystery-modal--spectator');
+  els.mysteryIcon.textContent = '❓';
+  els.mysterySpace.textContent = `Vak ${spaceNum}`;
+  els.mysteryTitle.textContent = '❓ Onbekend gevaar';
+  els.mysteryFlavor.textContent = 'Gooi een D12 om te onthullen wat hier loert.';
+  els.mysteryRollArea.classList.remove('hidden');
+  els.mysteryRevealArea.classList.add('hidden');
+  els.mysteryAction.classList.add('hidden');
+  els.mysterySubmit.classList.remove('hidden');
+  els.mysterySubmit.disabled = false;
+  els.mysteryDiceInput.disabled = false;
+  els.mysteryDiceInput.value = '';
+  els.mysteryCard?.classList.remove('event-card--jackpot');
+  syncModalScrollLock();
+
+  syncModalInput('mystery', {
+    name: 'Onbekend gevaar',
+    icon: '❓',
+    flavor: 'Gooi een D12 om te onthullen wat hier loert.',
+  }, spaceNum, { submitLabel: 'Onthullen' });
+  playModalCardEnter(els.mysteryModal, 'calm');
+
+  setTimeout(() => els.mysteryDiceInput.focus(), 100);
+}
+
+function handleMysterySubmit() {
+  if (!activeMystery || activeMystery.phase !== 'roll') return;
+  const roll = parseDiceRoll(els.mysteryDiceInput.value, 1, 12);
+  if (roll === null) {
+    addLog('Vul een D12-worp in (1–12).', 'warn');
+    return;
+  }
+
+  const result = game.resolveMysteryRoll(activeMystery.spaceNum, roll);
+  describeEvents(result.events);
+  renderBoard();
+  renderPlayers();
+  if (result.revelation) {
+    playMysteryCellEffect(activeMystery.spaceNum, 'reveal');
+    window.syncAfterAction?.();
+  }
+
+  if (!result.revelation) {
+    const onDone = activeMystery.onComplete;
+    closeMysteryModal();
+    advanceTurn();
+    window.syncAfterAction?.();
+    onDone?.();
+    return;
+  }
+
+  showMysteryRevealPhase(result.revelation);
+}
+
+function handleMysteryAction() {
+  if (!activeMystery || activeMystery.phase !== 'reveal') return;
+  const { revelation, spaceNum, onComplete } = activeMystery;
+
+  if (revelation.type === 'path') {
+    closeMysteryModal();
+    showPathModal(revelation.config, spaceNum, () => {
+      advanceTurn();
+      onComplete?.();
+    });
+    return;
+  }
+
+  const player = game.currentPlayer;
+  const ambushResult = game.startRevealedAmbush(player, spaceNum);
+  if (!ambushResult) {
+    closeMysteryModal();
+    advanceTurn();
+    onComplete?.();
+    return;
+  }
+
+  describeEvents(ambushResult.events);
+  closeMysteryModal();
+  updateAmbushPanel();
+  if (ambushResult.needsAmbush) {
+    showAmbushModal(onComplete);
+  } else {
+    advanceTurn();
+    onComplete?.();
+  }
+}
+
+function showBossRevealRevealPhase(reveal) {
+  if (!activeBossReveal) return;
+  activeBossReveal.phase = 'reveal';
+  activeBossReveal.reveal = reveal;
+
+  els.bossRevealFlavor.textContent = 'Het lot is beslist:';
+  els.bossRevealRollArea.classList.add('hidden');
+  els.bossRevealResultArea.classList.remove('hidden');
+  els.bossRevealSubmit.classList.add('hidden');
+  els.bossRevealAction.classList.remove('hidden');
+  els.bossRevealAction.disabled = false;
+  els.bossRevealAction.textContent = 'Gevecht beginnen';
+  els.bossRevealResultContent.innerHTML = buildBossRevealHtml(reveal);
+  els.bossRevealCard?.classList.toggle('event-card--epic', reveal.tier === 'epic');
+
+  const cfg = reveal.config ?? {};
+  syncModalOutcome('boss-reveal', activeBossReveal.spaceNum, {
+    ...serializeModalConfig(cfg),
+    tier: reveal.tier ?? null,
+    multiplier: reveal.multiplier ?? null,
+    bossHp: reveal.bossHp ?? null,
+    bossMaxHp: reveal.bossMaxHp ?? null,
+    minions: reveal.minions?.map((m) => ({
+      name: m.name ?? null,
+      icon: m.icon ?? null,
+      hp: m.hp ?? null,
+      maxHp: m.maxHp ?? null,
+    })) ?? null,
+  }, {
+    revealHtml: els.bossRevealResultContent.innerHTML,
+    actionLabel: els.bossRevealAction.textContent,
+  });
+  playModalCardEnter(els.bossRevealModal, 'combat');
+}
+
+function showBossRevealModal(spaceNum, onComplete) {
+  closeEventModal();
+  closePathModal();
+  closeMysteryModal();
+  activeBossReveal = { spaceNum, onComplete, phase: 'roll', reveal: null };
+  activeEvent = null;
+  activeBoss = null;
+  activeAmbush = null;
+
+  els.bossRevealModal.classList.remove('hidden');
+  els.bossRevealModal.classList.remove('boss-reveal-modal--spectator');
+  els.bossRevealIcon.textContent = '⚔️';
+  els.bossRevealSpace.textContent = `Vak ${spaceNum}`;
+  els.bossRevealTitle.textContent = '⚔️ De eindbaas wacht';
+  els.bossRevealFlavor.textContent = 'Gooi een D12 — het lot bepaalt hoe zwaar dit gevecht wordt.';
+  els.bossRevealRollArea.classList.remove('hidden');
+  els.bossRevealResultArea.classList.add('hidden');
+  els.bossRevealAction.classList.add('hidden');
+  els.bossRevealSubmit.classList.remove('hidden');
+  els.bossRevealSubmit.disabled = false;
+  els.bossRevealDiceInput.disabled = false;
+  els.bossRevealDiceInput.value = '';
+  els.bossRevealCard?.classList.remove('event-card--epic');
+  syncModalScrollLock();
+
+  syncModalInput('boss-reveal', {
+    name: 'De eindbaas wacht',
+    icon: '⚔️',
+    flavor: 'Gooi een D12 — het lot bepaalt hoe zwaar dit gevecht wordt.',
+  }, spaceNum, { submitLabel: 'Onthullen' });
+  playModalCardEnter(els.bossRevealModal, 'combat');
+
+  setTimeout(() => els.bossRevealDiceInput.focus(), 100);
+}
+
+function handleBossRevealSubmit() {
+  if (!activeBossReveal || activeBossReveal.phase !== 'roll') return;
+  const roll = parseDiceRoll(els.bossRevealDiceInput.value, 1, 12);
+  if (roll === null) {
+    addLog('Vul een D12-worp in (1–12).', 'warn');
+    return;
+  }
+
+  const result = game.resolveBossReveal(activeBossReveal.spaceNum, roll);
+  describeEvents(result.events);
+  renderBoard();
+  renderPlayers();
+  updateBossPanel();
+
+  if (!result.reveal) {
+    const onDone = activeBossReveal.onComplete;
+    closeBossRevealModal();
+    advanceTurn();
+    window.syncAfterAction?.();
+    onDone?.();
+    return;
+  }
+
+  showBossRevealRevealPhase(result.reveal);
+}
+
+function handleBossRevealAction() {
+  if (!activeBossReveal || activeBossReveal.phase !== 'reveal') return;
+  const { onComplete } = activeBossReveal;
+  closeBossRevealModal();
+  updateBossPanel();
+  showBossFightModal(onComplete);
 }
 
 function continueAfterLand(result, onComplete) {
   if (result.winner) {
     showWinModal(result.winner);
+    return;
+  }
+
+  if (result.needsMysteryRoll) {
+    const spaceNum = result.mysterySpaceNum ?? game.currentPlayer?.position;
+    showMysteryModal(spaceNum, onComplete);
     return;
   }
 
@@ -1222,9 +3028,21 @@ function continueAfterLand(result, onComplete) {
     return;
   }
 
+  if (result.needsBossReveal) {
+    const spaceNum = result.bossRevealSpaceNum ?? game.currentPlayer?.position;
+    showBossRevealModal(spaceNum, onComplete);
+    return;
+  }
+
+  if (result.needsBossMinion) {
+    updateBossPanel();
+    showBossMinionModal(onComplete);
+    return;
+  }
+
   if (result.needsBoss) {
     updateBossPanel();
-    showBossModal(onComplete);
+    showBossFightModal(onComplete);
     return;
   }
 
@@ -1253,25 +3071,31 @@ function continueAfterLand(result, onComplete) {
 }
 
 function showEventModal(config, spaceNum, onComplete) {
+  closeBossRevealModal();
   activeEvent = { config, spaceNum, onComplete, submitted: false, phase: 'd20' };
   activeBoss = null;
+  activeBossMinion = null;
   activeAmbush = null;
 
   els.eventModal.classList.remove('hidden');
+  els.eventModal.classList.remove('event-modal--spectator');
   syncModalScrollLock();
   populateEventModal(config, spaceNum);
+  syncModalInput('event', config, spaceNum, { submitLabel: 'Bevestigen' });
+  playModalCardEnter(els.eventModal, getEventModalEnterTier(config));
 
   setTimeout(() => els.eventDiceInput.focus(), 100);
 }
 
 function finishEventFlow(onClose) {
+  resetEventModalHostControls();
   els.eventSubmit.disabled = true;
   els.eventDiceInput.disabled = true;
   els.eventNat20.disabled = true;
   els.eventNat1.disabled = true;
   els.eventClose.disabled = false;
   els.eventClose.textContent = onClose?.chainLabel ?? 'Doorgaan op avontuur';
-  activeEvent.onClose = onClose?.handler;
+  if (activeEvent) activeEvent.onClose = onClose?.handler;
   els.eventClose.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
 }
 
@@ -1301,6 +3125,9 @@ function formatEventMoveResult(result, events) {
   if (result.needsEvent) text += ' · nog een event!';
   if (result.needsPath) text += ' · rustig pad!';
   if (result.needsBoss) text += ' · eindbaas!';
+  if (result.needsBossMinion) text += ' · beschermer!';
+  if (result.needsBossReveal) text += ' · eindbaas D12!';
+  if (result.needsMysteryRoll) text += ' · onbekend gevaar!';
   if (result.needsAmbush) text += ' · ambush-put!';
 
   return text;
@@ -1319,18 +3146,24 @@ function advanceTurn() {
     if (game.isCurrentPlayerInAmbush()) {
       showAmbushModal();
     } else if (game.bossActive && isOnBossArena(cp.position)) {
-      showBossModal();
+      showBossFightModal();
     }
   }
+
+  window.syncAfterAction?.();
 }
 
-function handleEventSubmit() {
+async function handleEventSubmit() {
   if (activeAmbush) {
-    handleAmbushSubmit();
+    await handleAmbushSubmit();
+    return;
+  }
+  if (activeBossMinion) {
+    await handleBossMinionSubmit();
     return;
   }
   if (activeBoss) {
-    handleBossSubmit();
+    await handleBossSubmit();
     return;
   }
   if (!activeEvent || activeEvent.submitted) return;
@@ -1365,12 +3198,16 @@ function handleEventSubmit() {
   try {
     result = game.resolveEvent(roll, config, { nat20, nat1 });
     describeEvents(result.events);
-    renderTokens();
+    await syncTokensAfterEvents(result.events);
     renderPlayers();
   } catch (err) {
     console.error(err);
     els.eventResult.className = 'event-card__result event-card__result--fail';
     els.eventResult.innerHTML = '<p>Kon het effect niet toepassen. Je kunt toch doorgaan.</p>';
+    syncModalOutcome('event', activeEvent.spaceNum, config, {
+      resultClassName: els.eventResult.className,
+      resultHtml: els.eventResult.innerHTML,
+    });
     finishEventFlow({ handler: () => endEventTurn(onComplete) });
     return;
   }
@@ -1388,6 +3225,13 @@ function handleEventSubmit() {
     <p class="result-effect">${formatEventMoveResult(result, result.events)}</p>
     ${hpHtml}
   `;
+
+  syncModalOutcome('event', activeEvent.spaceNum, config, {
+    headerMode: 'outcome',
+    success,
+    resultClassName: els.eventResult.className,
+    resultHtml: els.eventResult.innerHTML,
+  });
 
   if (result.winner) {
     finishEventFlow({ handler: () => showWinModal(result.winner) });
@@ -1418,6 +3262,18 @@ function handleEventSubmit() {
     return;
   }
 
+  if (result.needsMysteryRoll) {
+    const nextSpace = result.mysterySpaceNum ?? game.currentPlayer?.position;
+    finishEventFlow({
+      chainLabel: 'Onbekend gevaar →',
+      handler: () => {
+        closeEventModal();
+        showMysteryModal(nextSpace, onComplete);
+      },
+    });
+    return;
+  }
+
   if (result.needsAmbush) {
     finishEventFlow({
       chainLabel: 'Ambush-put →',
@@ -1430,13 +3286,37 @@ function handleEventSubmit() {
     return;
   }
 
+  if (result.needsBossReveal) {
+    const nextSpace = result.bossRevealSpaceNum ?? game.currentPlayer?.position;
+    finishEventFlow({
+      chainLabel: 'Eindbaas D12 →',
+      handler: () => {
+        closeEventModal();
+        showBossRevealModal(nextSpace, onComplete);
+      },
+    });
+    return;
+  }
+
+  if (result.needsBossMinion) {
+    finishEventFlow({
+      chainLabel: 'Beschermer →',
+      handler: () => {
+        closeEventModal();
+        updateBossPanel();
+        showBossMinionModal(onComplete);
+      },
+    });
+    return;
+  }
+
   if (result.needsBoss) {
     finishEventFlow({
       chainLabel: 'Eindbaas →',
       handler: () => {
         closeEventModal();
         updateBossPanel();
-        showBossModal(onComplete);
+        showBossFightModal(onComplete);
       },
     });
     return;
@@ -1458,21 +3338,51 @@ els.eventDiceInput.addEventListener('keydown', (e) => {
 });
 els.eventClose.addEventListener('click', () => {
   if (els.eventClose.disabled) return;
-  const handler = activeAmbush?.onClose ?? activeBoss?.onClose ?? activeEvent?.onClose;
+  const handler = activeAmbush?.onClose ?? activeBossMinion?.onClose ?? activeBoss?.onClose ?? activeEvent?.onClose;
   closeEventModal();
   handler?.();
 });
 
+els.pathClose.addEventListener('click', closePathModal);
+els.pathClose.addEventListener('keydown', (e) => {
+  if (e.key === 'Enter' && !els.pathModal.classList.contains('hidden')) closePathModal();
+});
+
+els.mysterySubmit.addEventListener('click', handleMysterySubmit);
+els.mysteryDiceInput.addEventListener('keydown', (e) => {
+  if (e.key === 'Enter') handleMysterySubmit();
+});
+els.mysteryAction.addEventListener('click', handleMysteryAction);
+
+els.bossRevealSubmit.addEventListener('click', handleBossRevealSubmit);
+els.bossRevealDiceInput.addEventListener('keydown', (e) => {
+  if (e.key === 'Enter') handleBossRevealSubmit();
+});
+els.bossRevealAction.addEventListener('click', handleBossRevealAction);
+
 function showWinModal(winner) {
   els.winModal.classList.remove('hidden');
+  els.winModal.classList.remove('win-modal--spectator');
   syncModalScrollLock();
   els.winTitle.textContent = '🏆 Overwinning!';
   els.winText.textContent = `${winner.name} heeft de Draken-schat bereikt en wint het avontuur!`;
+  playModalCardEnter(els.winModal, 'win');
+  setSyncedActiveModal({
+    type: 'win',
+    phase: 'outcome',
+    spaceNum: null,
+    config: null,
+    outcome: {
+      title: '🏆 Overwinning!',
+      text: `${winner.name} heeft de Draken-schat bereikt en wint het avontuur!`,
+    },
+  });
 }
 
-function handleMoveResult(result) {
+async function handleMoveResult(result) {
   describeEvents(result.events);
-  renderTokens();
+  await syncTokensAfterEvents(result.events);
+  renderPlayers();
   continueAfterLand(result);
 }
 
@@ -1489,10 +3399,15 @@ els.addBtn.addEventListener('click', () => {
   renderBoard();
   renderPlayers();
   addLog(`${name} voegt zich bij het avontuur!`);
+  window.syncAfterAction?.();
 });
 
 els.playerName.addEventListener('keydown', (e) => {
   if (e.key === 'Enter') els.addBtn.click();
+});
+
+els.difficultySelect?.addEventListener('change', () => {
+  setDifficultyLevel(els.difficultySelect.value);
 });
 
 function clearDiceInput() {
@@ -1500,7 +3415,7 @@ function clearDiceInput() {
   els.diceInput.focus();
 }
 
-els.moveBtn.addEventListener('click', () => {
+els.moveBtn.addEventListener('click', async () => {
   const steps = parse2d6Total(els.diceInput.value);
   if (steps === null) {
     addLog('Vul het totaal van 2× D6 in (2–12).', 'warn');
@@ -1508,7 +3423,7 @@ els.moveBtn.addEventListener('click', () => {
   }
 
   const result = game.move(steps);
-  handleMoveResult(result);
+  await handleMoveResult(result);
   clearDiceInput();
 });
 
@@ -1527,18 +3442,82 @@ els.rulesModal?.addEventListener('click', (e) => {
   if (e.target === els.rulesModal) closeRulesModal();
 });
 
-els.winClose.addEventListener('click', () => {
-  els.winModal.classList.add('hidden');
-  syncModalScrollLock();
-  game.reset();
-  if (typeof rebuildBoard === 'function') rebuildBoard();
-  els.gameLog.innerHTML = '';
-  updateBossPanel();
-  updateAmbushPanel();
-  renderBoard();
-  renderPlayers();
-  addLog('Nieuw avontuur — het bord is opnieuw geschud!');
+els.newAdventureBtn?.addEventListener('click', showNewAdventureConfirm);
+els.confirmCancel?.addEventListener('click', closeNewAdventureConfirm);
+els.confirmOk?.addEventListener('click', () => {
+  closeNewAdventureConfirm();
+  startNewAdventure();
+});
+els.confirmModal?.addEventListener('click', (e) => {
+  if (e.target === els.confirmModal) closeNewAdventureConfirm();
 });
 
+els.winClose.addEventListener('click', startNewAdventure);
+
+window.getGame = () => game;
+window.getActiveModal = () => syncedActiveModal;
+window.renderSpectatorModal = renderSpectatorModal;
+window.resyncActiveModalIfOpen = () => {
+  if (syncedActiveModal) {
+    window.syncActiveModal?.(syncedActiveModal);
+    if (window.isMultiplayerHost?.()) window.syncAfterAction?.();
+  }
+};
+window.refreshGameUI = () => {
+  renderBoard();
+  renderPlayers();
+  updateCombatRail();
+  updateDifficultyUI();
+};
+
+async function refreshGameUIFromRemote({ prevPositions, prevSpecialSpaces, isGuest = false } = {}) {
+  renderBoard();
+
+  if (prevSpecialSpaces) {
+    playMysteryCellChanges(detectMysteryCellChanges(prevSpecialSpaces, snapshotSpecialSpaces()));
+  }
+
+  const shouldAnimate = isGuest
+    && hasTokenPositionChanges(prevPositions)
+    && !isLikelyGameReset(prevPositions);
+
+  if (shouldAnimate) {
+    repositionTokensToSnapshot(prevPositions);
+    await animateFromPositionDiff(prevPositions);
+  }
+
+  renderTokens();
+  renderPlayers();
+  updateCombatRail();
+  updateDifficultyUI();
+}
+
+window.refreshGameUIFromRemote = refreshGameUIFromRemote;
+window.snapshotTokenPositions = snapshotTokenPositions;
+window.snapshotSpecialSpaces = snapshotSpecialSpaces;
+window.appendRemoteLogEntry = (message, type = '') => {
+  prependLogEntry(message, type);
+};
+window.clearGameLog = () => {
+  els.gameLog.innerHTML = '';
+};
+window.setMultiplayerReadOnly = (readOnly) => {
+  document.querySelector('.app')?.classList.toggle('app--spectator', readOnly);
+  els.playerName.disabled = readOnly;
+  els.addBtn.disabled = readOnly;
+  if (els.difficultySelect) els.difficultySelect.disabled = readOnly;
+  if (els.newAdventureBtn) els.newAdventureBtn.disabled = readOnly;
+  if (readOnly) {
+    els.moveBtn.disabled = true;
+    els.diceInput.disabled = true;
+    els.hpMinusBtn.disabled = true;
+    els.hpPlusBtn.disabled = true;
+  } else {
+    updateTurnUI();
+  }
+};
+
+updateDifficultyUI();
 renderBoard();
 renderPlayers();
+window.initMultiplayer?.();

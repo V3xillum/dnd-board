@@ -8,6 +8,7 @@ Handleiding voor **nieuwe tegels** in `events-data.js`. Spelregels (put, boss, N
 | Normale D20-events | `MD/sessie-2-nat-overshoot.md` |
 | Boss | `MD/sessie-3-boss-win.md` |
 | Ambush / put | `MD/sessie-4-ambush.md` |
+| Mystery `?`-vakjes | `MD/sessie-7-mystery-vakjes.md` |
 
 ---
 
@@ -15,7 +16,7 @@ Handleiding voor **nieuwe tegels** in `events-data.js`. Spelregels (put, boss, N
 
 | Bestand | Jij wijzigt hier… |
 |---------|------------------|
-| `events-data.js` | `EVENT_POOL`, `PATH_TILES`, optioneel `PATH_RATIO` / `AMBUSH_RATIO` |
+| `events-data.js` | `EVENT_POOL_RAW`, `PATH_TILES`, optioneel `PATH_RATIO` / `AMBUSH_RATIO` |
 | `game.js` | Alleen als je **nieuw gedrag** wilt (niet voor een extra kaart in de pool) |
 | `ui.js` | Alleen bij nieuwe `category` (nieuwe bordkleur in `EVENT_CATEGORY_CLASS`) |
 
@@ -23,24 +24,82 @@ Na **Nieuw avontuur** draait `rebuildBoard()` → `buildSpecialSpaces()` opnieuw
 
 ---
 
-## Normaal D20-event
+## Pool-structuur
 
-Object in `EVENT_POOL`:
+Events staan genest in **`EVENT_POOL_RAW`**: `category → ability → [events]`.
 
 ```javascript
+const EVENT_POOL_RAW = {
+  trap: {
+    Acrobatics: [
+      {
+        name: 'Valput',
+        icon: '🕳️',
+        dc: 10,
+        flavor: 'Tekst bij landen.',
+        successText: 'Bij slagen.',
+        failText: 'Bij falen.',
+      },
+    ],
+  },
+  ambush: {
+    Perception: [
+      {
+        name: 'Goblin in de struiken',
+        icon: '👺',
+        dc: 9,
+        ambushHp: 2,
+        flavor: '…',
+        successText: '…',
+        failText: '…',
+      },
+    ],
+  },
+  boss: {
+    Combat: [
+      {
+        name: GUARDIAN_EVENT_NAME, // of een vaste string
+        icon: '🛡️',
+        dc: 14,
+        flavor: '…',
+        successText: '…',
+        failText: '…',
+      },
+    ],
+  },
+};
+
+const EVENT_POOL = flattenEventPool(EVENT_POOL_RAW);
+```
+
+**Belangrijk:**
+
+- **`category`** = top-level key (`trap`, `combat`, `ambush`, `boss`, …)
+- **`ability`** = key onder die category (`Acrobatics`, `Combat`, …)
+- Zet **`category` en `ability` niet** op het event-object zelf — `flattenEventPool()` voegt die toe
+- Abilities met spaties of `OR` (bijv. `"Athletics OR Acrobatics"`) als quoted key schrijven
+
+De engine (`game.js`, bordgeneratie, UI) gebruikt de platte **`EVENT_POOL`**. Die hoef je niet handmatig aan te passen.
+
+---
+
+## Normaal D20-event
+
+Voeg een object toe in de juiste bucket van `EVENT_POOL_RAW`:
+
+```javascript
+// EVENT_POOL_RAW.trap.Investigation
 {
-  name: 'Naam op kaart',
-  icon: '🕳️',
-  ability: 'Stealth',
-  dc: 12,
-  category: 'trap',
+  name: 'Mimic-kist',
+  icon: '🗃️',
+  dc: 11,
   flavor: 'Tekst bij landen.',
   successText: 'Bij slagen.',
   failText: 'Bij falen.',
 }
 ```
 
-**Verplicht voor generatie:** `category` is **niet** `boss` of `ambush`. DC bepaalt op welk deel van het bord het kan landen:
+**Verplicht voor generatie:** category is **niet** `boss` of `ambush`. DC bepaalt op welk deel van het bord het kan landen:
 
 - vak 2–21 → DC ≤ 10
 - vak 22–42 → DC 11–12
@@ -54,24 +113,29 @@ Filter: `eventsExceptBosses()` → `eventsByDc(...)`.
 
 ## Nieuwe ambusher
 
-Zelfde velden als een event, plus:
+Zelfde velden als een normaal event, plus `ambushHp`. Plaats onder `EVENT_POOL_RAW.ambush.<ability>`:
 
 ```javascript
+// EVENT_POOL_RAW.ambush.Combat
 {
-  // …
-  category: 'ambush',
-  ambushHp: 3,
+  name: 'Orc-patrouille',
+  icon: '⚔️',
+  dc: 11,
+  ambushHp: 4,
+  flavor: '…',
+  successText: '…',
+  failText: '…',
 }
 ```
 
 **Checklist**
 
-1. Object toevoegen aan `EVENT_POOL` met `category: 'ambush'` en `ambushHp` (gedeelde vijand-HP in de put).
-2. Niets extra’s: `AMBUSH_POOL` = filter op `category === 'ambush'`.
-3. Bord: een deel van de event-slots wordt na de shuffle overschreven (`AMBUSH_RATIO`, default `0.08`, min. 1 slot).
+1. Object toevoegen onder `ambush` in `EVENT_POOL_RAW` met `ambushHp` (gedeelde vijand-HP in de put).
+2. Niets extra’s: `AMBUSH_POOL` = filter op `category === 'ambush'` na flatten.
+3. Bord: een deel van de event-slots wordt na de shuffle **`?`-mystery-vakjes** (`AMBUSH_RATIO`, default `0.08`, min. 1 slot). Bij D12-onthulling komt de vijand uit `pickRandomAmbush()`.
 4. Pas **Nieuw avontuur** toe om het bord te verversen.
 
-**Gedrag in het spel** (niet in deze file): put-modus, `pickRandomAmbush()`, tegel vs actieve vijand → `MD/sessie-4-ambush.md`.
+**Gedrag in het spel** (niet in deze file): put-modus, mystery-D12, multiplier → `MD/sessie-4-ambush.md` en `MD/sessie-7-mystery-vakjes.md`.
 
 `flavor` / `successText` / `failText` worden in de put-modal gebruikt zoals bij events.
 
@@ -79,17 +143,23 @@ Zelfde velden als een event, plus:
 
 ## Nieuwe eindbaas
 
+Plaats onder `EVENT_POOL_RAW.boss.<ability>` — **geen** `ambushHp`:
+
 ```javascript
+// EVENT_POOL_RAW.boss.Intimidation
 {
-  // …
-  category: 'boss',
-  // geen ambushHp
+  name: 'Oude rode draak',
+  icon: '🐲',
+  dc: 15,
+  flavor: '…',
+  successText: '…',
+  failText: '…',
 }
 ```
 
 **Checklist**
 
-1. Toevoegen aan `EVENT_POOL` met `category: 'boss'`.
+1. Toevoegen onder `boss` in `EVENT_POOL_RAW`.
 2. `BOSS_POOL` volgt automatisch; vak **62** krijgt bij build `pickRandomBoss()`.
 3. Spelregels boss-fight → `MD/sessie-3-boss-win.md`.
 
@@ -116,7 +186,7 @@ Vak 56 zit **niet** in de shuffle van 2–61.
 ## Bord vullen (kort)
 
 1. 2–61 (excl. 56) schudden → ~`PATH_RATIO` pad, rest events uit DC-decks (uniek per ronde zolang de pool groot genoeg is).
-2. Daarna: random event-slots → ambush uit `AMBUSH_POOL`.
+2. Daarna: een deel van de event-slots → **`?`-mystery-vakjes** (niet vaste ambush-tegels). Ambush-inhoud komt pas bij D12-onthulling uit `AMBUSH_POOL`.
 
 Boss en ambush komen **niet** in de easy/mid/late decks.
 
@@ -126,18 +196,18 @@ Boss en ambush komen **niet** in de easy/mid/late decks.
 
 - `icon` = emoji op bord **en** in de modal (`SPECIAL_SPACES[n]`).
 - Liever **uniek** icoon per kaart; dubbele emoji’s verwarren op het bord.
-- Bij ambush: tegel op het vak kan een **andere** vijand tonen dan de actieve put (random bij nieuwe put) — dat is normaal.
+- Mystery-ambush: de onthulde vijand komt uit `pickRandomAmbush()` bij een **nieuwe** D12-roll — kan afwijken van eerdere onthullingen op hetzelfde vak.
 
 ---
 
 ## Pool vergroten
 
-Meer objecten in `EVENT_POOL` (of `PATH_TILES`). Geen code-change nodig tenzij je ratio’s wilt tunen:
+Meer objecten in `EVENT_POOL_RAW` (of `PATH_TILES`). Geen code-change nodig tenzij je ratio’s wilt tunen:
 
 | Constante | Effect |
 |-----------|--------|
 | `PATH_RATIO` | Meer/minder rustige vakjes |
-| `AMBUSH_RATIO` | Meer/minder ambush-tegels op het bord |
+| `AMBUSH_RATIO` | Meer/minder mystery-`?`-vakjes op het bord |
 
 Optioneel later: JSON + `fetch()` i.p.v. één groot bestand.
 

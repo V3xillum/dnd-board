@@ -28,16 +28,16 @@ Het bord toont per ambush-vak een tegel uit `AMBUSH_POOL` (bij generatie). De **
 ### Elke beurt van een speler in de put
 - Geen 2× D6, geen normaal vak-event.
 - Event-modal (put-styling): **één D20-check** vs `config.dc` (`getEffectiveDc`).
-- **Succes:** gedeelde `pit.hp -= 1`.
-- **Falen:** `mutateHp(player, -1)`.
+- **Succes:** gedeelde `pit.hp -= 1` (Nat 20: **−2 HP**).
+- **Falen:** `mutateHp(player, -1)` (Nat 1: **−2 HP** via `applyCombatCheckFail`).
 - Geen beweging (geen sessie 2-overshoot).
 - **Beurt direct voorbij** na de worp (`advanceTurn()`); modal sluit daarna.
 
 ### Nat 20 / Nat 1 in de put
 | | Gedrag |
 |---|--------|
-| **Nat 20** | Gegarandeerd slagen → ambusher −1 HP. Geen +1 HP speler, geen movement. |
-| **Nat 1** | Mislukt (−1 HP speler) **plus** kritieke mislukking (−1 HP extra, `nat1`-event). Totaal −2 HP. Geen `skipNextTurn`. Checkbox of worp totaal = 1. |
+| **Nat 20** | Gegarandeerd slagen → ambusher **−2 HP**. Geen speler-heal, geen movement. |
+| **Nat 1** | Mislukt (−1 HP speler) **plus** kritieke mislukking (−1 HP extra, `nat1`-event). Totaal −2 HP. Geen `skipNextTurn`. Alleen via checkbox (totale worp = 1 telt niet automatisch). |
 
 Geen DC-streak-updates in `resolveAmbushRoll` (zoals boss).
 

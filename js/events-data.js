@@ -30,6 +30,22 @@ const PATH_TILES = [
   { name: 'Gedraaide trap', icon: '🪜', flavor: 'Een smalle wenteltrap daalt af naar diepere gewelven, omgeven door kaarsarmpjes en onbekende beloftes. Jouw doel ligt niet naar beneden — nu recht vooruit, de trap links latend.' },
   { name: 'Vogelnest', icon: '🪺', flavor: 'In een hoek herbergt een rommelig vogelnest met zorgvuldig gerangschikte eitjes. De moeder staart je aan met kleine kralenogen, paraat maar wachtend. Je passeert zo breed mogelijk — ze laat je door.' },
   { name: 'Warme tocht', icon: '♨️', flavor: 'Een aangenaam warme luchtstroom welt op uit een spleet in de vloer, verrassend in de koele gang. Vulcanisch, magisch of gnomisch vakmanschap — vandaag maakt het niet uit. Je geniet even en loopt verder.' },
+  { name: 'Rode ader', icon: '🌱', flavor: 'Tussen gezond mos loopt een enkele rode ader door de grond. Niet dikker dan een touwtje. Hij pulseert één keer terwijl je kijkt, en blijft daarna stil alsof er nooit iets was.' },
+  { name: 'Wolvengehuil', icon: '🐺', flavor: 'In de verte klinkt een enkele wolvenroep. Geen dreiging. Geen antwoord. Alleen een eenzame stem ergens diep in het woud.' },
+  { name: 'Vergeten kring', icon: '🪨', flavor: 'Een oude cirkel van stenen ligt verborgen tussen varens en wortels. Het mos erop is onaangeroerd. Wat hier ooit gebeurde, is al lang voorbij.' },
+  { name: 'Zwarte veer', icon: '🪶', flavor: 'Een enkele zwarte veer rust op een boomstronk. Onbeschadigd. Alsof iemand hem daar bewust heeft achtergelaten.' },
+  { name: 'Helder water', icon: '💧', flavor: 'Een smalle bron stroomt tussen stenen door. Het water is ijskoud en verrassend helder. Zelfs het bos lijkt hier even rustiger te ademen.' },
+  { name: 'Oude wortels', icon: '🌳', flavor: 'Een enorme wortel steekt boven de grond uit en vormt bijna vanzelf een bankje. De boom zelf moet ouder zijn dan de meeste koninkrijken.' },
+  { name: 'Dansend stuifmeel', icon: '✨', flavor: 'Gouden stuifmeel dwarrelt tussen de zonnestralen door. Heel even lijkt het alsof de lucht zelf licht geeft.' },
+  { name: 'Gebroken altaar', icon: '🪦', flavor: 'De resten van een oud stenen altaar liggen verspreid tussen de struiken. Geen symbolen zijn nog leesbaar. Alleen tijd heeft hier gewonnen.' },
+  { name: 'Verwaaide pagina', icon: '📜', flavor: 'Een enkele pagina ligt vastgeklemd onder een steen. De inkt is vervaagd tot onleesbare vlekken, maar iemand heeft ooit moeite gedaan deze woorden op te schrijven.' },
+  { name: 'Paddenstoelencirkel', icon: '🍄', flavor: 'Een perfecte ring van kleine paddenstoelen groeit rond een jonge berk. Zelfs de vogels lijken deze plek te vermijden.' },
+  { name: 'Groene stilte', icon: '🌿', flavor: 'Plotseling valt alle wind weg. Geen bladeren bewegen. Geen vogels zingen. Het bos kijkt alleen maar toe.' },
+  { name: 'Hertenspoor', icon: '🦌', flavor: 'Verse hoefafdrukken kruisen het pad. Ze verdwijnen tussen de bomen zonder haast, alsof hun eigenaar zich nergens zorgen over hoeft te maken.' },
+  { name: 'Ochtendmist', icon: '🌫️', flavor: 'Lage mist hangt tussen de stammen. Zonlicht breekt in lange banen door het wit. Voor een moment lijkt het bos oneindig groot.' },
+  { name: 'Rustplaats', icon: '🪵', flavor: 'Een omgevallen boom vormt een natuurlijke zitplaats. Iemand heeft hier ooit gezeten, gegeten en weer verder gereisd.' },
+  { name: 'Verre klokken', icon: '🔔 ', flavor: 'Heel in de verte hoor je een enkele klok luiden. Te ver weg om te plaatsen. Het geluid draagt verrassend lang door het woud.' },
+  { name: 'Hartslag onder de aarde', icon: '❤️', flavor: 'Wanneer je even stilstaat, denk je iets te voelen onder je voeten. Niet een trilling. Niet een aardbeving. Meer alsof de grond zelf één langzame hartslag geeft voordat alles weer stil wordt.' },
 ];
 
 /** Vast rustig vak — boss-retreat en even bijkomen vóór de volgende aanval */

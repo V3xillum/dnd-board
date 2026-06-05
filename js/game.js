@@ -654,7 +654,7 @@ class Game {
 
     if (player.hp <= 0) {
       player.position = 0;
-      player.hp = player.maxHp;
+      player.hp = DEFAULT_HP;
       player.movementBonus = (player.movementBonus ?? 0) + 1;
       events.push({
         type: 'death',

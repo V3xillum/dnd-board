@@ -80,6 +80,14 @@
       bossHp: game.bossHp,
       bossMaxHp: game.bossMaxHp,
       bossConfig: game.bossConfig ? cloneSpecialSpaces(game.bossConfig) : null,
+      bossMultiplier: game.bossMultiplier ?? 1,
+      bossDmgPerHit: game.bossDmgPerHit ?? 1,
+      bossRevealRoll: game.bossRevealRoll ?? null,
+      bossMinions: (game.bossMinions ?? []).map((m) => ({
+        config: m.config ? cloneSpecialSpaces(m.config) : null,
+        hp: m.hp ?? 0,
+        maxHp: m.maxHp ?? 0,
+      })),
       ambushPits: cloneSpecialSpaces(normalizeAmbushPits(game.ambushPits)),
       revealedSpaces: cloneSpecialSpaces(normalizeAmbushPits(game.revealedSpaces)),
       specialSpaces: cloneSpecialSpaces(window.SPECIAL_SPACES),
@@ -103,6 +111,14 @@
     game.bossHp = data.bossHp ?? 0;
     game.bossMaxHp = data.bossMaxHp ?? 0;
     game.bossConfig = data.bossConfig ? cloneSpecialSpaces(data.bossConfig) : null;
+    game.bossMultiplier = data.bossMultiplier ?? 1;
+    game.bossDmgPerHit = data.bossDmgPerHit ?? 1;
+    game.bossRevealRoll = data.bossRevealRoll ?? null;
+    game.bossMinions = (data.bossMinions ?? []).map((m) => ({
+      config: m.config ? cloneSpecialSpaces(m.config) : null,
+      hp: m.hp ?? 0,
+      maxHp: m.maxHp ?? 0,
+    }));
     game.ambushPits = normalizeAmbushPits(data.ambushPits);
     game.revealedSpaces = normalizeAmbushPits(data.revealedSpaces);
 

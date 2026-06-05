@@ -1,50 +1,91 @@
 # Sessie 7 — Mystery vakjes & moeilijkheidsgraad
 
-**Status:** nog te bouwen
+**Status:** geïmplementeerd (naslag)
 
 ## Doel
-Ambush- en boss-vakjes worden vervangen door `?`-vakjes. De eerste speler die landt gooit een D12 — de uitkomst bepaalt wat er achter zit én hoe zwaar het is. Niemand weet van tevoren wat er op een vakje staat.
+Vaste ambush-tegels op het bord (sessie 4) zijn vervangen door **`?`-vakjes**. De eerste speler die landt gooit een **D12** — de uitkomst bepaalt wat er achter zit én hoe zwaar een ambush is. Niemand weet van tevoren wat er op een `?`-vakje staat.
+
+Boss blijft op **vak 62** (preview-tegel); boss zit **niet** in de D12-tabel.
 
 ---
 
-## Spelregel: de D12 onthullingstabel
+## Spelregels (zoals gebouwd)
+
+### D12 onthullingstabel
 
 | Roll | Uitkomst | Modifier |
 |------|----------|----------|
-| 1–2 | Rustig pad | — |
-| 3–8 | Ambush × 1 | normaal (HP en dmg uit event) |
-| 9–11 | Ambush × 1.5 | HP en dmg afgerond naar boven |
-| 12 | Ambush × 2 | HP en dmg verdubbeld + permanente +1 `dmgBonus` bij winst |
+| 1–2 | Rustig pad (`pickRandomPath()` uit `PATH_TILES`) | — |
+| 3–8 | Ambush × 1 | normale HP en fail-dmg |
+| 9–11 | Ambush × 1.5 | HP en fail-dmg afgerond naar boven |
+| 12 | Ambush × 2 + **jackpot** | zware ambush; bij winst permanente +1 `dmgBonus` |
 
-Boss preview zit bewust **niet** in deze tabel — boss blijft op vak 62.
+### Levenscyclus van een `?`-vak (belangrijk)
+
+Een onthulling is **tijdelijk** — niet permanent voor het hele spel.
+
+```
+❓ onbekend
+  → landen → D12-modal
+  → onthulling (pad of ambush)
+  → afhandelen
+  → vak terug naar ❓
+  → volgende landing = opnieuw D12
+```
+
+| Uitkomst | Afhandeling | Daarna |
+|----------|-------------|--------|
+| **Rustig pad** | Path-modal → knop **Rust even uit** | `resetMysteryPathAfterRest()` → weer `❓` |
+| **Ambush** | Put-flow (sessie 4) → vijand op 0 HP | `resetMysterySpace()` → weer `❓` |
+
+**Tijdens een actieve onthulling** (nog niet afgehandeld):
+- Opnieuw landen op hetzelfde vak → **geen D12**, direct pad of ambush uit `revealedSpaces`.
+- Bord toont tussentijds de onthulde kleur (pad / ambush).
+
+**Gewone pad-vakjes** (via `PATH_RATIO`, niet via mystery) resetten **niet** — die staan niet in `revealedSpaces`.
+
+### `dmgBonus` (speler)
+
+| Veld | Start | Gedrag |
+|------|-------|--------|
+| `dmgBonus` | `0` | +1 bij jackpot-ambush winst (D12 = 12, vijand verslagen) |
+
+Schade aan vijand bij succesvolle hit (ambush + boss):
+
+| Worp | Schade |
+|------|--------|
+| Normaal succes | `1 + dmgBonus` |
+| Nat 20 | `2 + dmgBonus` |
+
+Jackpot-bonus: bij `ambushDefeated` check `revealedSpaces[spaceNum]?.jackpot` → `grantDmgBonus()` op de speler die de kill deed (vóór reset van het vak).
+
+Sidebar toont `+N schade` via `formatPlayerDmgHint()`.
+
+### Ambush-multiplier in de put
+
+Bij start put op mystery-ambush (`joinOrStartPit`):
+
+```javascript
+hp = maxHp = Math.ceil(config.ambushHp * multiplier)
+pit.dmgPerHit = multiplier
+```
+
+| Check | Gedrag |
+|-------|--------|
+| Succes | `pit.hp -= (1 + dmgBonus)` of `-(2 + dmgBonus)` bij Nat 20 |
+| Falen | `Math.ceil(dmgPerHit)` × `mutateHp(-1)`; Nat 1 = +1 extra HP-verlies |
+
+Vijand-config komt uit de D12-onthulling (`revealedSpaces`), niet opnieuw `pickRandomAmbush()` tijdens dezelfde onthulling.
 
 ---
 
-## Nieuwe speler-velden
+## Bord & data (`events-data.js`)
 
-Voeg toe aan `addPlayer()` naast de bestaande velden uit sessie 1:
+- **`AMBUSH_RATIO`** (`0.08`) bepaalt nog steeds het aantal slots — maar die worden **`?`-vakjes**, geen vaste ambush-tegels meer.
+- `pickRandomPath()` toegevoegd voor D12-roll 1–2.
+- `AMBUSH_POOL` / `pickRandomAmbush()` blijven bestaan voor D12-ambush-onthullingen.
 
-| Veld | Startwaarde | Gedrag |
-|------|-------------|--------|
-| `dmgBonus` | `0` | Permanente schade-bonus; +1 bij × 2 ambush winst |
-
-`dmgBonus` bepaalt hoeveel schade een speler doet per succesvolle hit in een ambush of boss-check. Standaard is schade 1 per succes — met `dmgBonus` wordt dat `1 + dmgBonus`.
-
-Verwerk `dmgBonus` in `resolveAmbushRoll()` en `resolveBoss()`:
-```
-schade aan vijand bij succes = 1 + player.dmgBonus
-```
-
----
-
-## Mystery vakjes
-
-### Bordgeneratie (`events-data.js`)
-
-Vervang de huidige ambush-slots in `buildSpecialSpaces()`:
-- Waar nu `AMBUSH_RATIO` ambush-tegels worden geplaatst, komen `?`-vakjes
-- Een `?`-vakje heeft `type: 'mystery'`, `category: 'mystery'`, `icon: '❓'`
-- Geen `ambushConfig` bij generatie — die wordt bepaald bij onthulling
+Mystery-tegel bij generatie:
 
 ```javascript
 {
@@ -56,116 +97,99 @@ Vervang de huidige ambush-slots in `buildSpecialSpaces()`:
 }
 ```
 
-Aantal `?`-vakjes = zelfde ratio als huidige `AMBUSH_RATIO`.
+---
 
-### Onthulling bij landing (`game.js`)
+## Code-overzicht
 
-`resolveSpace()` bij `type: 'mystery'`:
-1. Als het vakje al onthuld is (`revealedSpaces[spaceNum]` bestaat) → gebruik bestaande onthulling
-2. Anders → `needsMysteryRoll: true` teruggeven aan UI
+### `game.js`
 
-De D12-worp gebeurt in de UI (modal), resultaat komt terug via `resolveMysteryRoll(spaceNum, roll)`.
+| Onderdeel | Functie |
+|-----------|---------|
+| State | `revealedSpaces` — tijdelijke onthulling per vak |
+| Speler | `dmgBonus` in `addPlayer()`, `grantDmgBonus()` |
+| Onthulling | `resolveMysteryRoll(spaceNum, roll)` |
+| Bord update | `applyRevealToBoard()`, `getMysteryTile()` |
+| Reset | `resetMysterySpace()`, `resetMysteryPathAfterRest()` |
+| Landing | `resolveSpace()` → `needsMysteryRoll` of pad/ambush uit `revealedSpaces` |
+| Put start | `startRevealedAmbush()` (na mystery-modal fase 2) |
+| Put | `joinOrStartPit()` leest `revealedSpaces` voor config + multiplier |
+| Gevecht | `resolveAmbushRoll()` — `dmgBonus`, `dmgPerHit`, jackpot, reset na kill |
+| Boss | `resolveBoss()` — `dmgBonus` op hit damage |
+| Reset spel | `revealedSpaces = {}` in `reset()` |
 
-### `resolveMysteryRoll(spaceNum, roll)` (`game.js`)
+**Events (log):** `mystery-pending`, `mystery-roll`, `mystery-reveal`, `mystery-reset`, `dmg-bonus`
 
-Bepaalt uitkomst op basis van tabel:
+### `ui.js`
 
-```javascript
-if (roll <= 2) → onthulling: { type: 'path', config: random uit PATH_TILES }
-if (roll <= 8) → onthulling: { type: 'ambush', config: pickRandomAmbush(), multiplier: 1 }
-if (roll <= 11) → onthulling: { type: 'ambush', config: pickRandomAmbush(), multiplier: 1.5 }
-if (roll === 12) → onthulling: { type: 'ambush', config: pickRandomAmbush(), multiplier: 2, jackpot: true }
+| Onderdeel | Beschrijving |
+|-----------|--------------|
+| **Mystery-modal** | `#mystery-modal` — eigen kaart `event-card--mystery` |
+| Fase 1 | D12-invoer (1–12), knop **Onthullen** |
+| Fase 2 | Onthulling + badge (Versterkte vijand / Gevaarlijk / jackpot) |
+| Pad | Knop **Verder lopen** → `showPathModal()` |
+| Ambush | Knop **Gevecht beginnen** → `startRevealedAmbush()` → ambush-modal |
+| Path reset | `closePathModal()` → `resetMysteryPathAfterRest()` als mystery-pad |
+| Bord | `cell--mystery-unrevealed` voor `type: 'mystery'` |
+| Flow | `continueAfterLand()` → `needsMysteryRoll` vóór ambush/boss/event |
+| Sync | `activeModal` type `mystery`; `serializeModalConfig()` zonder `undefined` |
+| Spectator | `renderSpectatorModal()` — mystery fase input/outcome |
+
+### `multiplayer.js`
+
+| Onderdeel | Beschrijving |
+|-----------|--------------|
+| Serialize | `revealedSpaces` in `serializeGame()` |
+| Firebase | `stripUndefined()` — Firebase weigert `undefined` in writes |
+
+### `index.html` + `css/styles.css`
+
+- Mystery-modal markup
+- Legenda: **❓ Onbekend gevaar** (`legend-swatch--mystery-unrevealed`)
+- `cell--mystery-unrevealed`, jackpot-gloed (`event-card--jackpot`)
+- Globale utility `.hidden { display: none !important; }`
+
+---
+
+## UI-flow mystery-modal
+
+```
+Land op ❓
+  → showMysteryModal()
+  → Fase 1: D12 + "Onthullen"
+  → resolveMysteryRoll() + bordkleur update
+  → Fase 2: onthulling tonen
+       pad   → "Verder lopen" → path-modal → "Rust even uit" → ❓ reset
+       ambush → "Gevecht beginnen" → put-modal (sessie 4) → kill → ❓ reset
 ```
 
-Sla op in `game.revealedSpaces[spaceNum]` — persistent voor de rest van het spel.
-
-Bij ambush: pas multiplier toe op `ambushHp` en `dmg` (initieel 1):
-```javascript
-pit.hp = Math.ceil(config.ambushHp * multiplier)
-pit.dmgPerHit = multiplier  // basis schade die ambusher doet bij falen
-```
-
-Bij path: toon path-modal, geen gevecht.
-
-Bij jackpot (roll 12): na afloop ambush-winst → `mutateHp` niet, maar `dmgBonus += 1` via centrale helper.
-
-### `revealedSpaces` op `Game`
-
-```javascript
-this.revealedSpaces = {}  // spaceNum → { type, config, multiplier, jackpot }
-```
-
-Reset in `reset()`. Meeserialiseren in `serializeGame()` voor multiplayer-sync.
+Multiplayer (sessie 5-patroon): host voert in, guests zien modal via `renderSpectatorModal`. `revealedSpaces` + `specialSpaces` syncen via game state.
 
 ---
 
-## Mystery modal (UI)
+## Verschil met oorspronkelijk plan
 
-Nieuwe modal of hergebruik event-modal met `mystery`-styling:
-
-**Fase 1 — D12 worp:**
-- Titel: `❓ Onbekend gevaar`
-- Flavor: *"Gooi een D12 om te onthullen wat hier loert."*
-- Invoer: D12 (1–12), knop **Onthuld**
-- Geen ability check, geen DC
-
-**Fase 2 — Onthulling:**
-- Toon wat erachter zat (rustig pad, ambush normaal/zwaar/jackpot)
-- Bij rustig pad: toon path-kaart, knop **Verder lopen**
-- Bij ambush: toon ambusher naam/icon/HP (inclusief multiplier), knop **Gevecht beginnen** → start put-flow zoals sessie 4
-- Bij jackpot: extra visuele indicator (bijv. ✨ of rode gloed)
-
-**Multiplier zichtbaar maken:**
-- × 1: normaal
-- × 1.5: *"Versterkte vijand"* badge
-- × 2: *"Gevaarlijk"* badge + jackpot-beloning zichtbaar
-
----
-
-## Bordvisualisatie
-
-- `?`-vakjes: eigen kleur (`cell--mystery-unrevealed`) tot onthulling
-- Na onthulling: vakje krijgt de kleur van wat erachter zat (`cell--ambush`, `cell--path`, etc.)
-- `SPECIAL_SPACES[n]` updaten na onthulling zodat het bord de nieuwe kleur toont
-- Legenda: vermelding `❓ Onbekend gevaar`
-
----
-
-## Multiplayer
-
-`revealedSpaces` zit in `serializeGame()` — alle clients zien dezelfde onthullingen. Na onthulling door speler A ziet speler B het onthuld vakje bij zijn volgende move.
-
-Mystery-modal sync via `activeModal` (sessie 5-patroon):
-- Fase 1 (D12 invoer): host/actieve speler heeft invoer, guests zien modal mee
-- Fase 2 (onthulling): iedereen ziet wat erachter zat
-
----
-
-## Wat de agent concreet moet doen
-
-| Bestand | Wijziging |
-|---------|-----------|
-| `js/game.js` | `revealedSpaces`, `resolveMysteryRoll()`, `dmgBonus` op speler, schade via `dmgBonus` in `resolveAmbushRoll` + `resolveBoss` |
-| `js/events-data.js` | `?`-vakjes i.p.v. ambush-tegels in `buildSpecialSpaces()` |
-| `js/ui.js` | Mystery-modal (D12 + onthulling), bordkleur update na reveal, sync-hooks |
-| `index.html` | Mystery-modal markup, legenda |
-| `css/styles.css` | `cell--mystery-unrevealed`, jackpot-styling |
+| Oorspronkelijk plan | Zoals gebouwd |
+|---------------------|---------------|
+| Onthulling permanent tot `reset()` | Onthulling **tijdelijk**; na pad-rust of ambush-kill weer `❓` |
+| Knop **Onthuld** | Knop **Onthullen** |
+| `revealedSpaces` blijft hele spel | Alleen tijdens actief bezoek; daarna gewist |
 
 ---
 
 ## Handmatige testchecklist
 
-- [ ] `?`-vakjes zichtbaar op bord (eigen kleur, `❓` icoon)
-- [ ] Landing → D12-modal verschijnt
-- [ ] Roll 1–2 → rustig pad kaart, geen gevecht
-- [ ] Roll 3–8 → normale ambush start
-- [ ] Roll 9–11 → ambush met hogere HP (× 1.5 afgerond)
-- [ ] Roll 12 → zware ambush + jackpot badge; na winst `dmgBonus +1`
-- [ ] Al onthuld vakje → direct ambush/path, geen D12 opnieuw
-- [ ] `dmgBonus` verhoogt schade op ambusher en boss
-- [ ] Bord toont onthuld vakje met juiste kleur na reveal
-- [ ] Multiplayer: onthulling van speler A zichtbaar voor speler B
-- [ ] `reset()` → `revealedSpaces` leeg, alles weer `?`
+- [x] `?`-vakjes zichtbaar op bord (eigen kleur, `❓` icoon)
+- [x] Landing → D12-modal verschijnt
+- [x] Roll 1–2 → rustig pad, geen gevecht
+- [x] Roll 3–8 → normale ambush (×1 HP)
+- [x] Roll 9–11 → ambush met hogere HP (×1.5 afgerond)
+- [x] Roll 12 → zware ambush + jackpot-badge; na winst `dmgBonus +1`
+- [x] Tijdens actieve onthulling: opnieuw landen → direct pad/ambush, geen D12
+- [x] Na pad-rust of ambush-kill: vak weer `❓`, volgende landing = nieuwe D12
+- [x] `dmgBonus` verhoogt schade op ambusher en boss
+- [x] Bord toont onthuld vakje met juiste kleur tot reset
+- [x] Multiplayer: onthulling + reset syncen tussen clients
+- [x] `reset()` / nieuw avontuur → `revealedSpaces` leeg, bord opnieuw geschud
 
 ---
 
@@ -173,23 +197,30 @@ Mystery-modal sync via `activeModal` (sessie 5-patroon):
 
 | Sessie | Nodig voor |
 |--------|------------|
-| 1 | `dmgBonus` op speler, centrale mutatie |
-| 4 | Ambush put-flow, `resolveAmbushRoll` |
+| 1 | `dmgBonus`, `mutateHp`, death-flow |
+| 4 | Ambush put-flow, `resolveAmbushRoll`, `joinOrStartPit` |
 | 5 | Multiplayer modal-sync, `revealedSpaces` in serialize |
 
 ---
 
 ## Bewust buiten scope
 
-- Boss in mystery pool (bewuste keuze — boss blijft op vak 62)
-- Verschillende D12-tabellen per bord-zone (early/mid/late)
+- Boss in mystery pool (boss blijft vak 62)
+- Zone-gebaseerde D12-tabellen (early/mid/late)
 - Animatie bij onthulling
-- Speler kan `?`-vakje verkennen zonder te landen (scouting mechanic)
+- Scouting (`?` onthullen zonder te landen)
+- Sessie 6 (turn-based multiplayer per device)
 
 ---
 
-## Na sessie 7
-Mogelijke polish:
-- Zone-gebaseerde tabellen (vroeg spel minder zwaar dan laat spel)
-- Scouting check (Perception DC X → onthul `?` zonder te landen)
-- Meer jackpot-beloningen naast `dmgBonus`
+## Bekende beperkingen / polish later
+
+- Geen visuele animatie bij onthulling of reset naar `❓`
+- Jackpot-bonus alleen naar speler die de kill deed (niet alle bevrijde spelers)
+- Zelfde D12-tabel op elk `?`-vak (geen zone-variatie)
+
+## Gerelateerd
+
+- Ambush put: `MD/sessie-4-ambush.md`
+- Multiplayer sync: `MD/sessie-5-multiplayer.md`
+- HP / death: `MD/hp-systeem.md`

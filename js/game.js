@@ -145,6 +145,11 @@ class Game {
     this.bossHp = 0;
     this.bossMaxHp = 0;
     this.bossConfig = null;
+    this.bossMultiplier = 1;
+    this.bossDmgPerHit = 1;
+    this.bossRevealRoll = null;
+    /** Beschermers vóór de eindbaas (roll 12); niet op het bord als putten */
+    this.bossMinions = [];
     /** Per vak: actieve put met gedeelde vijand en lijst vastzittende spelers */
     this.ambushPits = {};
     /** Per vak: onthulde mystery-inhoud (path of ambush + multiplier) */
@@ -296,11 +301,118 @@ class Game {
     if (!config) return null;
 
     const playerCount = Math.max(1, this.players.length);
+    const mult = this.bossMultiplier ?? 1;
     this.bossConfig = config;
-    this.bossMaxHp = BOSS_HP_PER_PLAYER * playerCount;
+    this.bossMaxHp = Math.ceil(BOSS_HP_PER_PLAYER * playerCount * mult);
     this.bossHp = this.bossMaxHp;
     this.bossActive = true;
     return config;
+  }
+
+  spawnBossMinions(events) {
+    this.bossMinions = [];
+    for (let i = 0; i < 2; i += 1) {
+      const raw = typeof pickRandomAmbush === 'function' ? pickRandomAmbush() : null;
+      const config = this.copyAmbushConfig(raw);
+      if (!config) continue;
+      const hp = config.ambushHp ?? 3;
+      this.bossMinions.push({ config, hp, maxHp: hp });
+    }
+
+    if (this.bossMinions.length > 0) {
+      events.push({
+        type: 'boss-minion-start',
+        minions: this.bossMinions.map((m, index) => ({
+          index,
+          name: m.config.name,
+          icon: m.config.icon,
+          hp: m.hp,
+          maxHp: m.maxHp,
+        })),
+      });
+    }
+  }
+
+  getActiveBossMinion() {
+    return this.bossMinions.find((m) => m.hp > 0) ?? null;
+  }
+
+  hasBossMinions() {
+    return this.getActiveBossMinion() !== null;
+  }
+
+  getBossRevealFromRoll(roll) {
+    const clamped = Math.max(1, Math.min(12, roll));
+    if (clamped <= 8) {
+      return { roll: clamped, multiplier: 1, tier: 'standard' };
+    }
+    if (clamped <= 11) {
+      return { roll: clamped, multiplier: 1.5, tier: 'strong' };
+    }
+    return { roll: clamped, multiplier: 2, tier: 'epic' };
+  }
+
+  resolveBossReveal(landedSpace, roll) {
+    const player = this.currentPlayer;
+    const { roll: clamped, multiplier, tier } = this.getBossRevealFromRoll(roll);
+
+    this.bossMultiplier = multiplier;
+    this.bossDmgPerHit = multiplier;
+    this.bossRevealRoll = clamped;
+
+    const events = [{
+      type: 'boss-reveal',
+      roll: clamped,
+      tier,
+      multiplier,
+      player: player?.name,
+      spaceNum: landedSpace,
+    }];
+
+    const config = this.activateBoss(landedSpace);
+    if (!config) {
+      return { events, reveal: null, needsBoss: false };
+    }
+
+    if (tier === 'epic') {
+      this.spawnBossMinions(events);
+    }
+
+    events.push({
+      type: 'boss-start',
+      name: config.name,
+      icon: config.icon,
+      flavor: config.flavor,
+      bossHp: this.bossHp,
+      bossMaxHp: this.bossMaxHp,
+      multiplier,
+      tier,
+      minionCount: this.bossMinions.length,
+      player: player?.name,
+      spaceNum: landedSpace,
+    });
+
+    const minionPreview = this.bossMinions.map((m) => ({
+      name: m.config.name,
+      icon: m.config.icon,
+      hp: m.hp,
+      maxHp: m.maxHp,
+    }));
+
+    return {
+      events,
+      reveal: {
+        roll: clamped,
+        tier,
+        multiplier,
+        config,
+        bossHp: this.bossHp,
+        bossMaxHp: this.bossMaxHp,
+        minions: minionPreview,
+      },
+      needsBoss: true,
+      needsBossMinion: this.hasBossMinions(),
+    };
   }
 
   /** Eerste speler op vak 63 na boss-kill wint. */
@@ -614,30 +726,24 @@ class Game {
     const onBossSpace = player.position === BOSS_SPACE || player.position === FINISH_SPACE;
 
     if (!this.bossActive && onBossSpace) {
-      const config = this.activateBoss(player.position);
-      if (config) {
-        events.push({
-          type: 'boss-start',
-          name: config.name,
-          icon: config.icon,
-          flavor: config.flavor,
-          bossHp: this.bossHp,
-          bossMaxHp: this.bossMaxHp,
-          player: player.name,
-          spaceNum: player.position,
-        });
-        return {
-          events,
-          winner: null,
-          needsEvent: false,
-          needsPath: false,
-          needsBoss: true,
-        };
-      }
+      events.push({
+        type: 'boss-reveal-pending',
+        player: player.name,
+        spaceNum: player.position,
+      });
+      return {
+        events,
+        winner: null,
+        needsEvent: false,
+        needsPath: false,
+        needsBossReveal: true,
+        bossRevealSpaceNum: player.position,
+      };
     }
 
     if (player.position === FINISH_SPACE) {
       if (this.bossActive) {
+        const hasMinions = this.hasBossMinions();
         events.push({
           type: 'boss-guard',
           player: player.name,
@@ -648,7 +754,8 @@ class Game {
           winner: null,
           needsEvent: false,
           needsPath: false,
-          needsBoss: true,
+          needsBossMinion: hasMinions,
+          needsBoss: !hasMinions,
         };
       }
 
@@ -660,18 +767,22 @@ class Game {
     }
 
     if (this.bossActive && isOnBossArena(player.position)) {
+      const hasMinions = this.hasBossMinions();
       events.push({
-        type: 'boss-engage',
+        type: hasMinions ? 'boss-minion-engage' : 'boss-engage',
         player: player.name,
         spaceNum: player.position,
-        name: this.bossConfig?.name,
+        name: hasMinions
+          ? this.getActiveBossMinion()?.config?.name
+          : this.bossConfig?.name,
       });
       return {
         events,
         winner: null,
         needsEvent: false,
         needsPath: false,
-        needsBoss: true,
+        needsBossMinion: hasMinions,
+        needsBoss: !hasMinions,
       };
     }
 
@@ -932,6 +1043,9 @@ class Game {
       needsEvent: chain.needsEvent ?? false,
       needsPath: chain.needsPath ?? false,
       needsBoss: chain.needsBoss ?? false,
+      needsBossMinion: chain.needsBossMinion ?? false,
+      needsBossReveal: chain.needsBossReveal ?? false,
+      bossRevealSpaceNum: chain.bossRevealSpaceNum ?? null,
       needsAmbush: chain.needsAmbush ?? false,
       needsMysteryRoll: chain.needsMysteryRoll ?? false,
       mysterySpaceNum: chain.mysterySpaceNum ?? null,
@@ -1068,9 +1182,123 @@ class Game {
     };
   }
 
+  resolveBossMinionRoll(roll, options = {}) {
+    const minion = this.getActiveBossMinion();
+    const config = minion?.config;
+    const player = this.currentPlayer;
+
+    if (!player || !minion || !config || !isOnBossArena(player.position)) {
+      return {
+        events: [],
+        passTurn: true,
+        success: false,
+        effectiveDc: null,
+      };
+    }
+
+    const { nat20 = false, nat1 = false } = options;
+    const dcModApplied = player.nextDcMod ?? 0;
+    player.nextDcMod = 0;
+
+    const effectiveDc = getEffectiveDc(player, config.dc);
+    const isNat1 = !nat20 && nat1;
+    const success = !isNat1 && (nat20 || (roll != null && roll >= effectiveDc));
+
+    const events = [{
+      type: 'boss-minion-d20',
+      roll: roll ?? null,
+      dc: config.dc,
+      effectiveDc,
+      dcBonus: getDcBonus(player),
+      dcMod: dcModApplied,
+      ability: config.ability,
+      success,
+      nat20,
+      nat1: isNat1,
+      player: player.name,
+      minionName: config.name,
+      minionHp: minion.hp,
+      spaceNum: player.position,
+    }];
+
+    if (success) {
+      const dmgBonus = player.dmgBonus ?? 0;
+      const hitDamage = nat20 ? 2 + dmgBonus : 1 + dmgBonus;
+      minion.hp = Math.max(0, minion.hp - hitDamage);
+      if (nat20) {
+        events.push({ type: 'nat20', player: player.name });
+      }
+      events.push({
+        type: 'boss-minion-hit',
+        minionHp: minion.hp,
+        minionMaxHp: minion.maxHp,
+        player: player.name,
+        minionName: config.name,
+        damage: hitDamage,
+        nat20,
+        spaceNum: player.position,
+      });
+    } else {
+      const failHits = Math.ceil(this.bossDmgPerHit ?? 1);
+      for (let i = 0; i < failHits; i += 1) {
+        events.push(...this.mutateHp(player, -1));
+      }
+      if (isNat1) {
+        events.push({ type: 'nat1', player: player.name });
+        events.push(...this.mutateHp(player, -1));
+      }
+    }
+
+    const d20Event = events.find((e) => e.type === 'boss-minion-d20');
+    d20Event.minionHp = minion.hp;
+
+    const died = events.some((e) => e.type === 'death');
+    const minionDefeated = minion.hp <= 0;
+
+    if (minionDefeated) {
+      events.push({
+        type: 'boss-minion-end',
+        success: true,
+        minionName: config.name,
+        player: player.name,
+        spaceNum: player.position,
+        minionsRemaining: this.bossMinions.filter((m) => m.hp > 0).length,
+      });
+    }
+
+    const skipRetreat = died;
+    if (!skipRetreat) {
+      const from = player.position;
+      player.position = BOSS_RETREAT_SPACE;
+      events.push({
+        type: 'boss-retreat',
+        player: player.name,
+        from,
+        to: BOSS_RETREAT_SPACE,
+      });
+    }
+
+    if (!this.gameOver) {
+      events.push({ type: 'pass-turn', player: player.name });
+    }
+
+    return {
+      events,
+      passTurn: !this.gameOver,
+      success,
+      effectiveDc,
+      nat20,
+      nat1: isNat1,
+      minionHp: minionDefeated ? 0 : minion.hp,
+      minionMaxHp: minion.maxHp,
+      minionEnded: minionDefeated,
+      retreatedTo: skipRetreat ? null : BOSS_RETREAT_SPACE,
+    };
+  }
+
   resolveBoss(roll, options = {}) {
     const config = this.bossConfig;
-    if (!this.bossActive || !config || !this.currentPlayer) {
+    if (!this.bossActive || !config || !this.currentPlayer || this.hasBossMinions()) {
       return {
         events: [],
         winner: null,
@@ -1123,12 +1351,20 @@ class Game {
         nat20,
       });
     } else {
-      this.applyCombatCheckFail(player, events, isNat1);
+      const failHits = Math.ceil(this.bossDmgPerHit ?? 1);
+      for (let i = 0; i < failHits; i += 1) {
+        events.push(...this.mutateHp(player, -1));
+      }
+      if (isNat1) {
+        events.push({ type: 'nat1', player: player.name });
+        events.push(...this.mutateHp(player, -1));
+      }
     }
 
     if (this.bossHp <= 0) {
       this.bossActive = false;
       this.bossHp = 0;
+      this.bossMinions = [];
       events.push({ type: 'boss-defeated', bossName: config.name });
       winner = this.checkWinAfterBoss();
       if (winner) {
@@ -1252,6 +1488,9 @@ class Game {
         needsEvent: moveResult.needsEvent,
         needsPath: moveResult.needsPath,
         needsBoss: moveResult.needsBoss ?? false,
+        needsBossMinion: moveResult.needsBossMinion ?? false,
+        needsBossReveal: moveResult.needsBossReveal ?? false,
+        bossRevealSpaceNum: moveResult.bossRevealSpaceNum ?? null,
         needsAmbush: moveResult.needsAmbush ?? false,
         needsMysteryRoll: moveResult.needsMysteryRoll ?? false,
         mysterySpaceNum: moveResult.mysterySpaceNum ?? null,
@@ -1327,6 +1566,10 @@ class Game {
     this.bossHp = 0;
     this.bossMaxHp = 0;
     this.bossConfig = null;
+    this.bossMultiplier = 1;
+    this.bossDmgPerHit = 1;
+    this.bossRevealRoll = null;
+    this.bossMinions = [];
     this.ambushPits = {};
     this.revealedSpaces = {};
   }

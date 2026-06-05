@@ -122,6 +122,11 @@ body {
 .mystery-modal--spectator #mystery-dice-input {
   pointer-events: none;
 }
+.boss-reveal-modal--spectator #boss-reveal-submit,
+.boss-reveal-modal--spectator #boss-reveal-action,
+.boss-reveal-modal--spectator #boss-reveal-dice-input {
+  pointer-events: none;
+}
 .path-modal--spectator #path-close,
 .win-modal--spectator #win-close {
   display: none !important;
@@ -551,6 +556,29 @@ body {
 .combat-card--pit.combat-card--your-turn {
   border-color: rgba(240, 208, 96, 0.95);
   box-shadow: 0 0 14px rgba(240, 160, 48, 0.28);
+}
+.combat-card--minion {
+  background: linear-gradient(145deg, rgba(100, 40, 120, 0.32) 0%, rgba(40, 16, 56, 0.45) 100%);
+  border-color: rgba(200, 140, 240, 0.4);
+}
+.combat-card--minion.combat-card--minion-active {
+  border-color: rgba(220, 160, 255, 0.75);
+}
+.combat-card--minion.combat-card--your-turn {
+  border-color: rgba(220, 160, 255, 0.95);
+  box-shadow: 0 0 14px rgba(180, 80, 220, 0.3);
+}
+.combat-card--minion.combat-card--defeated {
+  opacity: 0.55;
+  border-color: rgba(120, 120, 120, 0.35);
+}
+.combat-card--minion .combat-card__name {
+  color: #e0b8ff;
+}
+.combat-card__badge--minion {
+  color: #f4e4ff;
+  background: rgba(160, 80, 200, 0.35);
+  border: 1px solid rgba(200, 140, 240, 0.35);
 }
 .combat-card__badge {
   display: inline-block;
@@ -1366,6 +1394,46 @@ body.modal-open {
 }
 .event-card--mystery.event-card--jackpot .event-card__frame {
   box-shadow: 0 0 24px rgba(201, 162, 39, 0.35), inset 0 0 20px rgba(220, 60, 60, 0.15);
+}
+.event-card--boss-reveal .event-card__frame {
+  background: linear-gradient(165deg, #5a2020, #3a1414, #2a0f0f);
+  color: #f8e8c8;
+  text-align: center;
+}
+.event-card--boss-reveal .event-card__title,
+.event-card--boss-reveal .event-card__flavor {
+  color: #f8e8c8;
+}
+.event-card--boss-reveal .event-card__badge {
+  background: rgba(201, 162, 39, 0.2);
+  color: #f0d878;
+}
+.event-card--boss-reveal.event-card--epic .event-card__frame {
+  box-shadow: 0 0 24px rgba(201, 162, 39, 0.4), inset 0 0 18px rgba(180, 40, 40, 0.2);
+}
+.boss-reveal-minions {
+  margin-top: 0.75rem;
+  text-align: left;
+}
+.boss-reveal-minion {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin-top: 0.35rem;
+  padding: 0.4rem 0.55rem;
+  border-radius: 8px;
+  background: rgba(0, 0, 0, 0.2);
+}
+.boss-reveal-minion__icon {
+  font-size: 1.25rem;
+}
+.boss-reveal-minion__name {
+  flex: 1;
+  font-weight: bold;
+}
+.boss-reveal-minion__hp {
+  font-size: 0.85rem;
+  opacity: 0.85;
 }
 .event-card__header {
   display: flex;

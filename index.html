@@ -120,6 +120,10 @@
           <p class="combat-rail__tagline">Actieve vijanden op het bord</p>
         </header>
         <div id="combat-rail-boss" class="combat-rail__boss"></div>
+        <section id="combat-rail-minions-section" class="combat-rail__section hidden">
+          <h3 class="combat-rail__subtitle">Beschermers</h3>
+          <div id="boss-minions-list" class="combat-rail__list"></div>
+        </section>
         <section id="combat-rail-pits-section" class="combat-rail__section hidden">
           <h3 class="combat-rail__subtitle">Putten</h3>
           <div id="ambush-pits-list" class="combat-rail__list"></div>
@@ -216,6 +220,33 @@
     </div>
   </div>
 
+  <div id="boss-reveal-modal" class="event-modal hidden" role="dialog" aria-modal="true">
+    <div class="event-card event-card--boss-reveal">
+      <div class="event-card__frame">
+        <header class="event-card__header">
+          <span class="event-card__icon" id="boss-reveal-icon">⚔️</span>
+          <span class="event-card__badge" id="boss-reveal-space">Vak 0</span>
+        </header>
+        <h2 class="event-card__title" id="boss-reveal-title">De eindbaas wacht</h2>
+        <p class="event-card__flavor" id="boss-reveal-flavor">Gooi een D12 — het lot bepaalt hoe zwaar dit gevecht wordt.</p>
+
+        <div id="boss-reveal-roll-area" class="mystery-roll-area">
+          <label class="event-card__roll-field" for="boss-reveal-dice-input">
+            <span class="event-card__roll-label">D12 worp</span>
+            <input type="number" id="boss-reveal-dice-input" class="event-card__roll-value" min="1" max="12" placeholder="1–12" inputmode="numeric">
+          </label>
+          <button type="button" id="boss-reveal-submit" class="btn btn--d20 btn--roll-submit">Onthullen</button>
+        </div>
+
+        <div id="boss-reveal-result-area" class="mystery-reveal-area hidden">
+          <div id="boss-reveal-result-content"></div>
+        </div>
+
+        <button type="button" id="boss-reveal-action" class="btn btn--primary btn--wide hidden">Gevecht beginnen</button>
+      </div>
+    </div>
+  </div>
+
   <div id="path-modal" class="event-modal hidden" role="dialog" aria-modal="true">
     <div class="event-card event-card--path">
       <div class="event-card__frame">
@@ -242,7 +273,7 @@
 
         <section class="rules-section">
           <h3 class="rules-section__title">Basisbeurt</h3>
-          <p>Gooi <strong>2× D6</strong>, vul het totaal in (2–12) en verplaats. Op event-vakjes, in de put of bij de eindbaas gebruik je de ability check in plaats van dobbelstenen.</p>
+          <p>Gooi <strong>2× D6</strong>, vul het totaal in (2–12) en verplaats. Op event-vakjes, ❓-vakjes (D12), in de put, bij beschermers of bij de eindbaas gebruik je een ability check in plaats van dobbelstenen.</p>
         </section>
 
         <section class="rules-section">
@@ -263,34 +294,67 @@
         </section>
 
         <section class="rules-section">
+          <h3 class="rules-section__title">Onbekend gevaar (❓)</h3>
+          <p>Eerste landing op een <strong>❓-vakje</strong>: gooi een <strong>D12</strong> (1–12) om te onthullen wat er schuilgaat.</p>
+          <ul>
+            <li><strong>1–2:</strong> rustig pad — loop door zonder check.</li>
+            <li><strong>3–8:</strong> ambush (normale vijand-HP).</li>
+            <li><strong>9–11:</strong> versterkte ambush (×1,5 HP en zwaardere mislukking).</li>
+            <li><strong>12:</strong> zware ambush (×2) + <strong>jackpot</strong> — versla de vijand voor permanente <strong>+1 schade-bonus</strong> op gevechts-hits.</li>
+          </ul>
+          <p>Na het pad of na verslaan van de ambush wordt het vak weer <strong>❓</strong> — volgende keer opnieuw D12.</p>
+        </section>
+
+        <section class="rules-section">
+          <h3 class="rules-section__title">Schade-bonus</h3>
+          <p>Permanente bonus van een mystery-jackpot (D12 = 12). Telt mee bij succesvolle hits op ambushers, beschermers en de eindbaas:</p>
+          <ul>
+            <li>Normale hit: <strong>1 + bonus</strong> schade</li>
+            <li><strong>Nat 20:</strong> <strong>2 + bonus</strong> schade</li>
+          </ul>
+        </section>
+
+        <section class="rules-section">
           <h3 class="rules-section__title">Kritiek succes / mislukking — ambush-put</h3>
           <ul>
-            <li><strong>Nat 20:</strong> gegarandeerd slagen → ambusher <strong>−2 HP</strong> (geen beweging, geen speler-heal).</li>
+            <li><strong>Nat 20:</strong> gegarandeerd slagen → ambusher <strong>−2</strong> (+ schade-bonus) HP (geen beweging, geen speler-heal).</li>
             <li><strong>Nat 1:</strong> mis → speler <strong>−2 HP</strong> (geen overslaan van volgende beurt).</li>
+            <li>Normale hit: <strong>−1</strong> (+ schade-bonus); mislukken: schade afhankelijk van mystery-multiplier (×1, ×1,5 of ×2).</li>
           </ul>
           <p>1 worp per beurt, geen normale verplaatsing zolang je in de put zit. Kritiek succes/mislukking alleen via checkbox — totale worp 20 of 1 telt niet automatisch (D20 + modifiers).</p>
         </section>
 
         <section class="rules-section">
-          <h3 class="rules-section__title">Kritiek succes / mislukking — eindbaas</h3>
+          <h3 class="rules-section__title">Eindbaas D12</h3>
+          <p>Eerste landing op <strong>vak 62 of 63</strong> (zolang de eindbaas nog niet actief is): gooi een <strong>D12</strong> — het lot bepaalt hoe zwaar het eindgevecht wordt. Daarna <strong>geen tweede D12</strong> in dezelfde fight.</p>
           <ul>
-            <li><strong>Nat 20:</strong> gegarandeerd slagen → eindbaas <strong>−2 HP</strong> (geen beweging, geen speler-heal).</li>
-            <li><strong>Nat 1:</strong> mis → speler <strong>−2 HP</strong>.</li>
-            <li>Normale hit of miss: −1 HP aan de baas of −1 HP aan de speler.</li>
+            <li><strong>1–8:</strong> standaard eindbaas — boss-HP = <strong>3 × aantal spelers</strong>.</li>
+            <li><strong>9–11:</strong> versterkt (×1,5 HP, zwaardere mislukking).</li>
+            <li><strong>12:</strong> episch (×2 HP, zwaardere mislukking) + <strong>2 beschermers</strong> vóór de baas.</li>
+          </ul>
+          <p>Beschermers gebruiken normale ambush-checks; versla ze allemaal voordat je de eindbaas kunt raken.</p>
+        </section>
+
+        <section class="rules-section">
+          <h3 class="rules-section__title">Kritiek succes / mislukking — eindbaas &amp; beschermers</h3>
+          <ul>
+            <li><strong>Nat 20:</strong> gegarandeerd slagen → <strong>−2</strong> (+ schade-bonus) schade (geen beweging, geen speler-heal).</li>
+            <li><strong>Nat 1:</strong> mis → speler <strong>−2 HP</strong> bovenop normale misluk-schade.</li>
+            <li>Normale hit: <strong>−1</strong> (+ schade-bonus); mislukken: <strong>1 HP</strong> (standaard) of <strong>2 HP</strong> (versterkt/episch).</li>
             <li>Kritiek alleen via checkbox — totale worp 20 of 1 telt niet automatisch (D20 + modifiers).</li>
           </ul>
         </section>
 
         <section class="rules-section">
           <h3 class="rules-section__title">Ambush (de put)</h3>
-          <p>Je blijft op het vak tot <strong>jij of de ambusher op 0 HP</strong> is. Daarna normaal verder. Geen tweede put op hetzelfde vak.</p>
+          <p>Je blijft op het vak tot <strong>jij of de ambusher op 0 HP</strong> is. Daarna normaal verder. Geen tweede put op hetzelfde vak (behalve via een nieuwe ❓-onthulling).</p>
         </section>
 
         <section class="rules-section">
           <h3 class="rules-section__title">Eindbaas &amp; winnen</h3>
           <ul>
-            <li>Eerste landing op <strong>vak 62 of 63</strong> start de eindbaas (gedeelde schade).</li>
-            <li>Op 62/63: <strong>1 aanval per beurt</strong> (D20-check), daarna terug naar <strong>vak 56</strong> (kamp), tenzij je wint of uitvalt.</li>
+            <li>Na de D12-onthulling vecht je op <strong>62/63</strong>: eerst eventuele <strong>beschermers</strong>, dan de eindbaas (gedeelde boss-schade).</li>
+            <li><strong>1 aanval per beurt</strong> (D20-check), daarna terug naar <strong>vak 56</strong> (kamp), tenzij je wint of uitvalt.</li>
             <li><strong>Geen win</strong> tot de baas verslagen is; daarna wint wie op <strong>vak 63</strong> staat.</li>
           </ul>
         </section>

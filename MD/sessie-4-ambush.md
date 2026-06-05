@@ -37,7 +37,7 @@ Het bord toont per ambush-vak een tegel uit `AMBUSH_POOL` (bij generatie). De **
 | | Gedrag |
 |---|--------|
 | **Nat 20** | Gegarandeerd slagen → ambusher **−2 HP**. Geen speler-heal, geen movement. |
-| **Nat 1** | Mislukt (−1 HP speler) **plus** kritieke mislukking (−1 HP extra, `nat1`-event). Totaal −2 HP. Geen `skipNextTurn`. Checkbox of worp totaal = 1. |
+| **Nat 1** | Mislukt (−1 HP speler) **plus** kritieke mislukking (−1 HP extra, `nat1`-event). Totaal −2 HP. Geen `skipNextTurn`. Alleen via checkbox (totale worp = 1 telt niet automatisch). |
 
 Geen DC-streak-updates in `resolveAmbushRoll` (zoals boss).
 

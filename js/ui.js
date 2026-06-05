@@ -279,7 +279,7 @@ function buildResultHpHtml(events, player) {
       <div class="result-death">
         <span class="result-death__icon" aria-hidden="true">💀</span>
         <p class="result-death__title">Je bent uitgevallen!</p>
-        <p class="result-death__detail">Terug naar start · ${deathEv.hp} / ${player?.maxHp ?? deathEv.hp} HP${bonusNote}</p>
+        <p class="result-death__detail">Terug naar start · ${window.DEFAULT_HP} HP${bonusNote}</p>
       </div>
     `;
   }
@@ -582,7 +582,7 @@ function describeEvents(events) {
       }
       case 'death':
         addLog(
-          `${ev.player} valt uit! Terug naar start · ${ev.hp} HP · +${ev.movementBonus} beweging (catch-up)`,
+          `${ev.player} valt uit! Terug naar start · ${window.DEFAULT_HP} HP · +${ev.movementBonus} beweging (catch-up)`,
           'warn',
         );
         break;
@@ -841,6 +841,11 @@ function populateSpectatorCombatModal(type, config, spaceNum) {
       els.eventCheck.insertAdjacentHTML('beforeend', ambushHpBarHtml());
     }
   } else if (type === 'boss') {
+    if (player) {
+      els.eventCard?.classList.add('event-card--boss');
+      els.eventCard?.style.setProperty('--boss-fighter-color', player.color);
+      els.eventCheck.insertAdjacentHTML('afterbegin', combatFighterPanelHtml(player, bossFighterNote(player)));
+    }
     els.eventIcon.textContent = config.icon || '🛡️';
     els.eventSpace.textContent = 'Eindbaas';
     els.eventTitle.textContent = `⚔️ ${config.name}`;
@@ -925,8 +930,10 @@ function removeCombatHpBars() {
 }
 
 function removeAmbushModalExtras() {
-  els.eventCheck.querySelector('.event-card__ambush-fighter-wrap')?.remove();
+  els.eventCheck.querySelector('.event-card__combat-fighter-wrap')?.remove();
   els.eventCard?.style.removeProperty('--ambush-fighter-color');
+  els.eventCard?.style.removeProperty('--boss-fighter-color');
+  els.eventCard?.classList.remove('event-card--ambush', 'event-card--boss');
 }
 
 function updateEventModalTurnPlayer() {
@@ -1017,6 +1024,11 @@ function populateBossModal() {
   removeAmbushModalExtras();
   els.eventCard?.classList.remove('event-card--ambush');
 
+  if (!player) return;
+
+  els.eventCard?.classList.add('event-card--boss');
+  els.eventCard?.style.setProperty('--boss-fighter-color', player.color);
+
   els.eventIcon.textContent = config.icon || '🛡️';
   els.eventSpace.textContent = 'Eindbaas';
   els.eventTitle.textContent = `⚔️ ${config.name}`;
@@ -1044,6 +1056,7 @@ function populateBossModal() {
   els.eventDiceInput.value = '';
 
   removeCombatHpBars();
+  els.eventCheck.insertAdjacentHTML('afterbegin', combatFighterPanelHtml(player, bossFighterNote(player)));
   els.eventCheck.insertAdjacentHTML('beforeend', bossHpBarHtml());
 }
 
@@ -1059,6 +1072,35 @@ function ambushHpBarHtml() {
         <div class="boss-hp__fill ambush-hp__fill" style="width:${pct}%"></div>
       </div>
       <p class="boss-hp__label">Ambusher: ${hp} / ${max} HP</p>
+    </div>
+  `;
+}
+
+function bossFighterNote(player) {
+  return `Valt de eindbaas aan op vak ${player.position} · daarna terug naar kamp (56)`;
+}
+
+function combatFighterPanelHtml(player, note, alliesHtml = '') {
+  return `
+    <div class="event-card__combat-fighter-wrap">
+      <div class="ambush-modal__fighter" style="--fighter-color:${player.color}">
+        <div class="ambush-modal__fighter-accent" aria-hidden="true"></div>
+        <div class="ambush-modal__fighter-body">
+          <span class="ambush-modal__turn-badge">Aan de beurt</span>
+          <div class="ambush-modal__fighter-row">
+            <span class="ambush-modal__fighter-dot" aria-hidden="true"></span>
+            <div class="ambush-modal__fighter-meta">
+              <strong class="ambush-modal__fighter-name">${escapeAttr(player.name)}</strong>
+              <span class="ambush-modal__fighter-hp" title="${player.hp} / ${player.maxHp} HP">
+                <span class="ambush-modal__fighter-hearts">${formatPlayerHp(player)}</span>
+                <span class="ambush-modal__fighter-hp-num">${player.hp} / ${player.maxHp} HP</span>
+              </span>
+            </div>
+          </div>
+          <p class="ambush-modal__pit-note">${note}</p>
+        </div>
+      </div>
+      ${alliesHtml}
     </div>
   `;
 }
@@ -1084,28 +1126,11 @@ function ambushFighterPanelHtml(player, pit) {
       </div>`
     : '';
 
-  return `
-    <div class="event-card__ambush-fighter-wrap">
-      <div class="ambush-modal__fighter" style="--fighter-color:${player.color}">
-        <div class="ambush-modal__fighter-accent" aria-hidden="true"></div>
-        <div class="ambush-modal__fighter-body">
-          <span class="ambush-modal__turn-badge">Aan de beurt</span>
-          <div class="ambush-modal__fighter-row">
-            <span class="ambush-modal__fighter-dot" aria-hidden="true"></span>
-            <div class="ambush-modal__fighter-meta">
-              <strong class="ambush-modal__fighter-name">${escapeAttr(player.name)}</strong>
-              <span class="ambush-modal__fighter-hp" title="${player.hp} / ${player.maxHp} HP">
-                <span class="ambush-modal__fighter-hearts">${formatPlayerHp(player)}</span>
-                <span class="ambush-modal__fighter-hp-num">${player.hp} / ${player.maxHp} HP</span>
-              </span>
-            </div>
-          </div>
-          <p class="ambush-modal__pit-note">Vecht uit de put op vak ${pit.spaceNum}${allies.length ? ' · samen met je bondgenoten' : ''}</p>
-        </div>
-      </div>
-      ${alliesHtml}
-    </div>
-  `;
+  return combatFighterPanelHtml(
+    player,
+    `Vecht uit de put op vak ${pit.spaceNum}${allies.length ? ' · samen met je bondgenoten' : ''}`,
+    alliesHtml,
+  );
 }
 
 function populateAmbushModal() {
@@ -1233,7 +1258,7 @@ function handleAmbushSubmit() {
   activeAmbush.submitted = true;
 
   const effectiveDc = getEffectiveDc(player, config.dc);
-  const isNat1 = !nat20 && (nat1 || roll === 1);
+  const isNat1 = !nat20 && nat1;
   const success = !isNat1 && (nat20 || (roll !== null && roll >= effectiveDc));
   const rollLabel = nat20
     ? (roll != null ? `${roll} — Kritiek succes!` : 'Kritiek succes!')
@@ -1359,7 +1384,7 @@ function handleBossSubmit() {
   activeBoss.submitted = true;
 
   const effectiveDc = getEffectiveDc(player, config.dc);
-  const isNat1 = !nat20 && (nat1 || roll === 1);
+  const isNat1 = !nat20 && nat1;
   const success = !isNat1 && (nat20 || (roll !== null && roll >= effectiveDc));
   const rollLabel = nat20
     ? (roll != null ? `${roll} — Kritiek succes!` : 'Kritiek succes!')

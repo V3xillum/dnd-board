@@ -107,7 +107,7 @@ Geen aparte bonussen voor “DC+5” / “DC+10” — alleen basis + overshoot-
 
 ## Nat 1
 
-**Voorwaarde:** `!nat20 && (nat1-checkbox || roll === 1)`.
+**Voorwaarde:** `!nat20 && nat1-checkbox` (totale worp = 1 telt niet automatisch — spelers vullen D20 + modifiers in).
 
 **Effect:**
 

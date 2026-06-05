@@ -692,7 +692,7 @@ class Game {
     player.nextDcMod = 0;
 
     const effectiveDc = getEffectiveDc(player, config.dc);
-    const isNat1 = !nat20 && (nat1 || roll === 1);
+    const isNat1 = !nat20 && nat1;
     const success = !isNat1 && (nat20 || (roll != null && roll >= effectiveDc));
 
     const events = [{
@@ -802,7 +802,7 @@ class Game {
     player.nextDcMod = 0;
 
     const effectiveDc = getEffectiveDc(player, config.dc);
-    const isNat1 = !nat20 && (nat1 || roll === 1);
+    const isNat1 = !nat20 && nat1;
     const success = !isNat1 && (nat20 || (roll != null && roll >= effectiveDc));
 
     const events = [{

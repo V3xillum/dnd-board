@@ -12,10 +12,10 @@ Elk spelerspoppetje heeft HP. Spelers kunnen schade krijgen en doodgaan. Dood = 
 | Veld | Startwaarde | Gedrag |
 |------|-------------|--------|
 | `hp` | `3` (`DEFAULT_HP`) | Huidige HP |
-| `maxHp` | `3` | Plafond voor heal |
+| `maxHp` | `5` (`DEFAULT_MAX_HP`) | Plafond voor heal / genezer vak 56 |
 | `movementBonus` | `0` | +1 bij elke death; verbruikt bij finish of overshoot-bounce |
 
-Constante: `DEFAULT_HP = 3` in `game.js` (ook op `window` geëxporteerd).
+Constanten: `DEFAULT_HP = 3`, `DEFAULT_MAX_HP = 5` in `game.js` (ook op `window` geëxporteerd).
 
 ---
 
@@ -27,8 +27,12 @@ Alle HP-wijzigingen in het project lopen hierdoor (sessie 2+ roept dit aan voor 
 - HP wordt geklemd tussen `0` en `maxHp`
 - Bij `hp <= 0` na mutatie (**death**):
   - `position = 0` (startvak, in UI “vak 0”)
-  - `hp = maxHp` (volledig hersteld)
+  - `hp = DEFAULT_HP` (3 — niet automatisch `maxHp`)
   - `movementBonus += 1`
+
+### Meerdere hits in één aanval
+
+Combat/special attack gebruiken `applyRepeatedHpDamage(player, events, hits)` — stopt de loop zodra `death` optreedt, zodat overflow-schade **niet** op respawn-HP wordt toegepast (sessie 10).
 
 **Events** (voor `describeEvents()` in `ui.js`):
 

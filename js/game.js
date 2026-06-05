@@ -9,7 +9,7 @@ function isOnBossArena(position) {
 }
 const BOARD_SIZE = 9;
 const DEFAULT_HP = 3;
-const DEFAULT_MAX_HP = 5;
+const DEFAULT_MAX_HP = 6;
 
 /** Geslaagde event-check: basisstappen + overshoot (alleen tunen in code) */
 const BASE_SUCCESS_STEPS = 1;
@@ -549,10 +549,8 @@ class Game {
         damage += 1;
         events.push({ type: 'nat1', player: player.name });
       }
-      for (let i = 0; i < damage; i += 1) {
-        events.push(...this.mutateHp(player, -1));
-      }
-      attackEvent.damage = damage;
+      const { applied } = this.applyRepeatedHpDamage(player, events, damage);
+      attackEvent.damage = applied;
       attackEvent.playerHp = player.hp;
 
       if (ctx.type === 'boss' && config.specialAttack && Math.random() < 0.25) {
@@ -593,9 +591,8 @@ class Game {
       bossName: ctx.config.name,
     }];
 
-    for (let i = 0; i < damage; i += 1) {
-      events.push(...this.mutateHp(player, -1));
-    }
+    const { applied } = this.applyRepeatedHpDamage(player, events, damage);
+    events[0].damage = applied;
 
     return {
       events,
@@ -1086,13 +1083,32 @@ class Game {
     };
   }
 
-  /** Mislukte gevechts-check: −1 HP; bij Nat 1 nog eens −1 HP + `nat1`-event. */
+  /** Mislukte gevechts-check: −1 HP; bij Nat 1 nog eens −1 HP + `nat1`-event (niet na dood). */
   applyCombatCheckFail(player, events, isNat1) {
-    events.push(...this.mutateHp(player, -1));
-    if (isNat1) {
+    const first = this.mutateHp(player, -1);
+    events.push(...first);
+    if (isNat1 && !first.some((e) => e.type === 'death')) {
       events.push({ type: 'nat1', player: player.name });
       events.push(...this.mutateHp(player, -1));
     }
+  }
+
+  /** Meerdere −1 hits; stopt zodra de speler sterft (overflow na respawn voorkomen). */
+  applyRepeatedHpDamage(player, events, hits) {
+    const count = Math.max(0, Math.floor(hits));
+    if (!player || count === 0) return { died: false, applied: 0 };
+
+    let applied = 0;
+    for (let i = 0; i < count; i += 1) {
+      const batch = this.mutateHp(player, -1);
+      if (batch.length === 0) break;
+      events.push(...batch);
+      applied += 1;
+      if (batch.some((e) => e.type === 'death')) {
+        return { died: true, applied };
+      }
+    }
+    return { died: false, applied };
   }
 
   /**

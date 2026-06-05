@@ -17,30 +17,27 @@ Een eindbaas blokkeert de overwinning. Alle spelers moeten samen de boss verslaa
 - Geen win op dat moment, ook niet op 63.
 
 ### Tijdens de fight
-- **Gedeelde boss-HP:** succesvolle aanval → `bossHp -= 1`; mislukt → −1 HP speler via `mutateHp()`.
-- Check: D20-totaal vs `getEffectiveDc(player, bossConfig.dc)` (zelfde modifiers als events; geen DC-streak-updates in `resolveBoss`).
-- Nat 20 / Nat 1 checkboxes in de boss-modal werken (geen beweging/overshoot). **Nat 20:** gegarandeerd slagen → **−2 HP** boss. **Nat 1:** −1 HP (mislukt) + −1 HP (kritiek) = **−2 HP** speler, geen beurt overslaan.
-- **Eén aanval per beurt:** na succes of falen → beurt voorbij, speler naar **vak 56** (kamp), tenzij:
-  - uitval door HP (death → start), of
-  - dezelfde speler wint direct op 63 na de laatste hit (`winner.id === player.id` → geen retreat).
+- **Gedeelde boss-HP:** succesvolle aanval → schade op boss; mislukt → vijand-aanvalsfase (attack rolls, zie `MD/sessie-10-attack-roll-combat.md`).
+- **Eén gevechtsronde per beurt:** na succes of falen → `pass-turn`; speler **blijft op 62/63** (zelfde patroon als ambush — **geen retreat** naar vak 56 meer).
+- Uitval door HP → death → start met `DEFAULT_HP`.
 
 ### Beurt-flow
 | Positie speler | Wat kan |
 |----------------|---------|
 | Niet op 62/63 | Normaal **2× D6** verplaatsen (boss-fight loopt door) |
-| Op 62 of 63 | Geen dobbelsteen → **boss-modal** (event-modal hergebruikt) |
+| Op 62 of 63 | Geen dobbelsteen → **boss/minion combat-modal** |
 
-Na verplaatsing naar 62/63 tijdens actieve fight: `needsBoss` / event `boss-engage` → aanval-modal.
+Na verplaatsing naar 62/63 tijdens actieve fight: `needsBossMinion` / `needsBoss` → gevecht-modal.
 
 ### Win
 - Vak **63** telt alleen als `bossActive === false`.
 - Bij `bossHp === 0`: `checkWinAfterBoss()` — eerste speler **op vak 63** wint.
-- Sta je op 62 na de kill: loop alsnog naar 63 (geen win op 62).
+- Sta je op 62 na de kill: loop alsnog naar 63 (geen win op 62). Geen tweede D12 (`hasBossReveal()`).
 
 ### Vaste vakjes op het bord
 | Vak | Inhoud |
 |-----|--------|
-| **56** | Altijd **Kamp bij de drempel** (`ENCAMPMENT_TILE`) — rustig pad, `encampment: true`, `cell--encampment`. Uitgesloten van shuffle. Boss-retreat + flavor “hergroeperen”. |
+| **56** | **Genezerhutje** (`HEALER_TILE`, `type: 'healer'`) — landing herstelt naar `player.maxHp`. Uitgesloten van shuffle. `cell--healer`. |
 | **62** | Willekeurige boss uit `BOSS_POOL` (preview, `cell--boss`). |
 | **63** | Draken-schat (finish). |
 
@@ -58,40 +55,40 @@ Na verplaatsing naar 62/63 tijdens actieve fight: `needsBoss` / event `boss-enga
 | Gevallen paladijn | 13 | Combat |
 
 - Bosses zitten **niet** in easy/mid/late decks (`eventsExceptBosses()` i.p.v. oude `eventsExceptGuardian`).
-- Exports: `BOSS_POOL`, `pickRandomBoss()`, `getDefaultBoss()`, `ENCAMPMENT_SPACE`, `ENCAMPMENT_TILE`.
+- Exports: `BOSS_POOL`, `pickRandomBoss()`, `getDefaultBoss()`, `HEALER_SPACE`, `HEALER_TILE` (aliases `ENCAMPMENT_*` deprecated).
 
 ---
 
 ## Code-overzicht
 
 ### `game.js`
-- Constanten: `BOSS_SPACE` (62), `BOSS_RETREAT_SPACE` (56), `BOSS_HP_PER_PLAYER` (3), `isOnBossArena()`.
-- State: `bossActive`, `bossHp`, `bossMaxHp`, `bossConfig`.
-- Methodes: `activateBoss()`, `resolveBoss()`, `checkWinAfterBoss()`, `copyBossConfig()`.
-- `resolveSpace()`: activatie, `boss-guard` op 63, `boss-engage` op 62/63 tijdens fight.
+- Constanten: `BOSS_SPACE` (62), `BOSS_HP_PER_PLAYER` (3), `isOnBossArena()`, `HEALER_SPACE` (56).
+- State: `bossActive`, `bossHp`, `bossMaxHp`, `bossConfig`, `bossRevealRoll`, `bossMinions`.
+- Methodes: `activateBoss()`, `resolveBossReveal()`, `finalizeCombatRound()`, `checkWinAfterBoss()`, `healPlayerToFull()`, `copyBossConfig()`.
+- `resolveSpace()`: D12-reveal (`hasBossReveal()`), `boss-guard` op 63, `boss-engage` / minion op 62/63, `healer` op 56, `boss-cleared` na boss-kill op 62.
 - `reset()` wist boss-state.
 
 ### `ui.js`
-- Combat-rail rechts: eindbaas-kaart + putten (`updateCombatRail()` / `updateBossPanel()`).
-- Boss-modal: titel `⚔️ ${name}`, HP in modal, knop “Aanvallen”.
-- `advanceTurn()`: boss-modal alleen als speler op 62/63 staat.
-- Log-events: `boss-start`, `boss-guard`, `boss-engage`, `boss-d20`, `boss-hit`, `boss-defeated`, `boss-retreat`.
+- Combat-rail rechts: eindbaas-kaart + putten + beschermers (`updateCombatRail()` / `updateBossPanel()`).
+- Boss/minion-modal: attack-roll flow (sessie 10).
+- `advanceTurn()`: combat-modal als speler op 62/63 of in put.
+- Log-events: `boss-start`, `boss-guard`, `boss-engage`, `boss-defeated`, `healer-visit`, `boss-cleared`, …
 
 ### `index.html` + `css/styles.css`
-- Legenda: eindbaas (62), kamp (56), korte spelregel boss + retreat.
-- Classes: `cell--boss`, `cell--encampment`, `--tile-boss`, `--tile-encampment`.
+- Legenda: eindbaas (62), genezer (56).
+- Classes: `cell--boss`, `cell--healer`, `--tile-boss`, `--tile-healer`.
 
 ---
 
 ## Handmatige testchecklist
 
-- [x] Nieuw avontuur → vak 62 toont willekeurige boss; vak 56 = kamp
-- [x] Boss activeert op 62 of 63; DC uit `bossConfig`
-- [x] Zelfde `bossConfig` gedurende hele fight
+- [x] Nieuw avontuur → vak 62 toont willekeurige boss; vak 56 = genezer
+- [x] Boss activeert via D12 op 62/63 (sessie 8)
 - [x] Speler op 63 terwijl boss leeft → geen win (`boss-guard`)
 - [x] `bossHp === 0` + speler op 63 → win
 - [x] Dobbelsteen uit op 62/63; wel aan tussen beurten
-- [x] Na aanval → vak 56 (tenzij death/win op 63)
+- [x] Na gevechtsronde op arena → **blijf op 62/63** (geen retreat)
+- [x] Genezer 56 → vol HP
 - [x] `reset()` / nieuw avontuur → boss weg
 
 ---
@@ -105,5 +102,7 @@ Na verplaatsing naar 62/63 tijdens actieve fight: `needsBoss` / event `boss-enga
 
 ## Gerelateerd
 - HP-mutatie: `MD/hp-systeem.md`
+- Attack-roll combat: `MD/sessie-10-attack-roll-combat.md`
+- Boss D12: `MD/sessie-8-boss-d12.md`
 - Nat 20/1 in modals: `MD/sessie-2-nat-overshoot.md`
 - Vervolg: `MD/sessie-4-ambush.md`

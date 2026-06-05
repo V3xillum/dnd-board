@@ -193,7 +193,7 @@ In `PATH_TILES` — alleen `name`, `icon`, `flavor`. Geen `dc` / `category`.
 | Vak | Bron in `events-data.js` |
 |-----|---------------------------|
 | 1, 63 | In `buildSpecialSpaces()` ingebakken |
-| 56 | `ENCAMPMENT_TILE` (kamp, rustig pad) |
+| 56 | `HEALER_TILE` (genezerhutje — vol HP bij landing) |
 | 62 | Random uit `BOSS_POOL` |
 
 Vak 56 zit **niet** in de shuffle van 2–61.

@@ -33,18 +33,31 @@ Modal toont **AC** (niet Attack +X). Geen host Hit/Miss voor de speler.
 5. Bij hit: schade `ceil(dmg × multiplier)` op speler (×2 bij vijand-Nat 20, zie punt 2).
 6. Speler had **Nat 1** op eigen aanval → bij vijand-hit extra **+1 HP** bovenop berekende schade.
 
+**Meerdere HP-verlies:** schade loopt via `applyRepeatedHpDamage()` — stopt zodra de speler **sterft** (geen overflow op respawn-HP).
+
 ### Special attack (boss only)
 - **25% kans** na succesvolle vijand-hit op eindbaas (niet minions/ambush).
 - Speler rolt saving throw, vult totaal in.
 - **Automatische** vergelijking vs `specialAttack.dc`.
-- Slagen → `specialAttack.dmgSuccess` HP; falen → `specialAttack.dmgFail` HP.
+- Slagen → `specialAttack.dmgSuccess` HP; falen → `specialAttack.dmgFail` HP (ook via `applyRepeatedHpDamage`).
 
 ### Mystery-ambush reset
 - Verslaat een speler een ambush die via **❓-D12** is onthuld, dan wordt het vak na `finalizeCombatRound` weer **❓** (`resetMysterySpace`).
 - `flow.wasMysteryAmbush` wordt bij gevechtsstart opgeslagen (fallback als `revealedSpaces` intussen wijzigt).
 
+### Boss/minion: blijven op de arena (geen retreat)
+- Na elke gevechtsronde op **62/63**: `pass-turn`, speler **blijft op vak** (zelfde patroon als ambush-put).
+- **Geen** teleport naar vak 56 meer (`boss-retreat` is uit `finalizeCombatRound` gehaald).
+- Volgende beurt op 62/63 → `advanceTurn()` opent automatisch weer het gevecht.
+
+### Genezer vak 56
+- Vast vak **`HEALER_TILE`** (`type: 'healer'`) — geen shuffle.
+- Landing → `healPlayerToFull()` zet HP naar `player.maxHp` → path-modal als genezer (`showHealerModal`).
+- Al vol HP → geen mutatie, wel flavor-modal.
+- Zie `events-data.js`: `HEALER_SPACE`, `HEALER_TILE` (aliases `ENCAMPMENT_*` deprecated).
+
 ### Wat blijft hetzelfde
-- Gedeelde HP (put / boss), retreat naar vak 56, death-flow, jackpot `dmgBonus`, D12 boss-reveal, combat-rail, beurt-prioriteit.
+- Gedeelde HP (put / boss), death-flow, jackpot `dmgBonus`, D12 boss-reveal (één keer per fight), combat-rail, beurt-prioriteit.
 - `getEffectiveDc` voor speler-AC; DC-streak / `nextDcMod` worden bij speler-aanval wel verbruikt (`nextDcMod = 0` na worp).
 
 ---
@@ -60,6 +73,7 @@ Modal toont **AC** (niet Attack +X). Geen host Hit/Miss voor de speler.
 | Nat 20/1 speler | Op check | Op speler-aanval |
 | Nat 20/1 vijand | — | Dubbele dmg op speler / **1 HP** self damage op vijand |
 | Boss extra | — | Special attack + saving throw |
+| Na ronde boss/minion | (was: retreat 56) | **Blijf op 62/63** |
 
 ---
 
@@ -155,15 +169,20 @@ Zie ook `js/EVENTS.md` voor auteur-checklist.
 | Vijand roll | `rollCombatEnemyAttack(ctx)` → `{ roll, total, attackBonus, nat20, nat1 }` |
 | Vijand hit | `resolveCombatEnemyAttack(ctx, { hit, enemyRoll, playerNat1 })` |
 | Special | `resolveCombatSpecialSave(ctx, saveRoll)` |
-| Afronding | `finalizeCombatRound(ctx, events, { wasMysteryAmbush })` — pit-clear, mystery-reset, retreat, boss-defeated |
+| Schade-loop | `applyRepeatedHpDamage(player, events, hits)` — stopt bij `death` |
+| Heal vak 56 | `healPlayerToFull(player, events)` |
+| Afronding | `finalizeCombatRound(ctx, events, { wasMysteryAmbush })` — pit-clear, mystery-reset, `pass-turn`, boss-defeated (geen retreat) |
+| Minion lookup | `resolveBossMinionForContext({ minionIndex, combatConfig })` — finalize na one-shot minion |
 
-Events: `ambush-player-attack`, `ambush-enemy-attack`, `boss-player-attack`, `boss-enemy-attack`, `boss-minion-player-attack`, `boss-minion-enemy-attack`, `boss-special-save`, `mystery-reset`.
+Events: `ambush-player-attack`, `ambush-enemy-attack`, `boss-player-attack`, `boss-enemy-attack`, `boss-minion-player-attack`, `boss-minion-enemy-attack`, `boss-special-save`, `mystery-reset`, `healer-visit`, `full-heal`.
+
+Legacy log-type `boss-retreat` kan nog in oude logs voorkomen; wordt niet meer geëmit.
 
 ### `ui.js`
 
 | Onderdeel | Beschrijving |
 |-----------|--------------|
-| Flow state | `createCombatFlowState(onComplete, combatConfig, spaceNum)` — bewaart `combatConfig`, `spaceNum`, `wasMysteryAmbush`, `eventsAppliedCount` |
+| Flow state | `createCombatFlowState(onComplete, combatConfig, spaceNum, minionIndex)` — bewaart `combatConfig`, `spaceNum`, `wasMysteryAmbush`, `minionIndex`, `eventsAppliedCount` |
 | Config lookup | `getCombatConfig()` — fallback `getPitAt` / `flow.combatConfig` (nodig na kill op 0 HP) |
 | Fases | `player-roll` → `player-outcome` → `enemy-hit` → `enemy-outcome` → `special-save` → `outcome` |
 | Tussenknop | `#event-close` herlabeld per fase (niet `#event-combat-action` als primair pad) |
@@ -171,6 +190,7 @@ Events: `ambush-player-attack`, `ambush-enemy-attack`, `boss-player-attack`, `bo
 | Vijand-worp | `#event-enemy-roll-display` — formaat `roll + bonus = total To hit` |
 | Special save | `#event-special-save` — saving throw vs DC (auto) |
 | Samenvatting | `buildCombatOutcomeHtml` — **geen** speler-aanvalsworp; wel beide fases in tekst |
+| Genezer | `showHealerModal()` — hergebruikt `#path-modal` |
 | MP sync | `syncCombatModalPhase` / `combatPhase` in `activeModal` |
 
 #### `eventsAppliedCount` (meerfasige UI)
@@ -179,7 +199,7 @@ Combat past game state **per fase** toe (`applyNewCombatEvents` na speler-hit, v
 
 `flow.eventsAppliedCount` telt hoeveel events uit `flow.pendingEvents` al via `applyCombatEvents` (log + tokens + board) zijn verwerkt.
 
-Bij **Samenvatting →** roept `finishCombatRound` `finalizeCombatRound` aan; die voegt alleen afrond-events toe (`pass-turn`, `ambush-end`, retreat, …). Daarna:
+Bij **Samenvatting →** roept `finishCombatRound` `finalizeCombatRound` aan; die voegt alleen afrond-events toe (`pass-turn`, `ambush-end`, …). Daarna:
 
 ```javascript
 const newEvents = finalResult.events.slice(flow.eventsAppliedCount);
@@ -192,7 +212,7 @@ Zo worden speler-/vijand-events **niet dubbel** gelogd of dubbel op HP toegepast
 
 ### `index.html` + `css/styles.css`
 - Combat-blokken in event-modal (`event-enemy-roll`, `event-special-save`)
-- Regels-panel: attack rolls vs AC + vijand host-adjudicate
+- Regels-panel: attack rolls vs AC + vijand host-adjudicate + genezer (56)
 
 ---
 
@@ -205,9 +225,13 @@ Zo worden speler-/vijand-events **niet dubbel** gelogd of dubbel op HP toegepast
 - [ ] Vijand Nat 20 → auto-hit, dubbele schade op speler
 - [ ] Vijand Nat 1 → **1 HP** self damage op vijand, geen schade speler
 - [ ] Vijand dood op speler-hit (o.a. crit) → geen vijand-fase → **Samenvatting →** werkt
+- [ ] Meerdere dmg hits + dood → respawn op start met vol `DEFAULT_HP` (geen overflow)
 - [ ] Mystery-ambush verslagen → vak wordt weer ❓
-- [ ] Boss minion: zelfde flow + retreat naar 56
+- [ ] Boss minion: zelfde flow; **blijf op 62/63** na ronde
 - [ ] Boss: special attack ~25% na vijand-hit; save auto vs DC
+- [ ] Laatste minion one-shot → **Samenvatting →** werkt (`minionIndex` + `resolveBossMinionForContext`)
+- [ ] Boss verslagen op 62 → geen tweede D12; doorlopen naar 63 voor win
+- [ ] Genezer vak 56 → vol HP; al vol → geen HP-change
 - [ ] Mystery multiplier: vijand-dmg schaalt met `pit.dmgPerHit`
 - [ ] Boss D12 multiplier: vijand-dmg schaalt met `bossDmgPerHit`
 - [ ] Multiplayer: gast ziet fases via `renderSpectatorModal`; host bedient knoppen
@@ -221,4 +245,5 @@ Zo worden speler-/vijand-events **niet dubbel** gelogd of dubbel op HP toegepast
 - Boss: `MD/sessie-3-boss-win.md`, `MD/sessie-8-boss-d12.md`
 - Nat 20/1: `MD/sessie-2-nat-overshoot.md`
 - Mystery / ❓: `MD/sessie-7-mystery-vakjes.md`
+- HP / death: `MD/hp-systeem.md`
 - Data-schema: `js/EVENTS.md`

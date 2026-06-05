@@ -21,6 +21,8 @@ const els = {
   pathTitle: document.getElementById('path-title'),
   pathFlavor: document.getElementById('path-flavor'),
   pathClose: document.getElementById('path-close'),
+  pathTag: document.querySelector('#path-modal .path-card__tag'),
+  pathNote: document.querySelector('#path-modal .path-card__note'),
   mysteryModal: document.getElementById('mystery-modal'),
   mysteryCard: document.querySelector('#mystery-modal .event-card'),
   mysteryIcon: document.getElementById('mystery-icon'),
@@ -208,6 +210,7 @@ function forceCloseAllModals() {
   els.pathModal.classList.remove('path-modal--spectator');
   pathModalCallback = null;
   pathModalSpaceNum = null;
+  pathModalSkipMysteryReset = false;
 
   els.mysteryModal.classList.add('hidden');
   els.mysteryModal.classList.remove('mystery-modal--spectator');
@@ -294,6 +297,8 @@ function applyCellStyle(cell, special, num) {
     cell.classList.add(EVENT_CATEGORY_CLASS[special.category] || 'cell--event');
   } else if (special.type === 'mystery') {
     cell.classList.add('cell--mystery-unrevealed');
+  } else if (special.type === 'healer') {
+    cell.classList.add('cell--healer');
   } else if (special.type === 'path') {
     cell.classList.add('cell--quiet');
   } else {
@@ -301,7 +306,6 @@ function applyCellStyle(cell, special, num) {
   }
 
   if (num === 1) cell.classList.add('cell--start');
-  if (special.encampment || num === ENCAMPMENT_SPACE) cell.classList.add('cell--encampment');
 }
 
 function escapeAttr(text) {
@@ -1322,6 +1326,16 @@ function describeEvents(events) {
       case 'path':
         addLog(`${ev.player}: ${ev.icon} ${ev.name} — rustig pad`, 'special');
         break;
+      case 'healer-visit': {
+        if (ev.healed) {
+          addLog(`${ev.player}: ${ev.icon} ${ev.name} — volledig hersteld (${ev.from} → ${ev.to} HP)`, 'success');
+        } else {
+          addLog(`${ev.player}: ${ev.icon} ${ev.name} — al vol HP`, 'special');
+        }
+        break;
+      }
+      case 'full-heal':
+        break;
       case 'event-move': {
         const dir = ev.direction === 'back' ? 'terug' : 'vooruit';
         const bonusNote =
@@ -1357,7 +1371,8 @@ function describeEvents(events) {
         break;
       case 'boss-reveal': {
         const tierLabel = ev.tier === 'epic' ? 'Episch' : ev.tier === 'strong' ? 'Versterkt' : 'Standaard';
-        addLog(`⚔️ D12 eindbaas: ${ev.roll} → ${tierLabel} (×${ev.multiplier})`, 'special');
+        const minionNote = ev.minionCount > 0 ? ` · ${ev.minionCount} beschermer(s)` : '';
+        addLog(`⚔️ D12 eindbaas: ${ev.roll} → ${tierLabel} (×${ev.multiplier})${minionNote}`, 'special');
         break;
       }
       case 'boss-start': {
@@ -1602,6 +1617,7 @@ let activeBossReveal = null;
 let syncedActiveModal = null;
 let pathModalCallback = null;
 let pathModalSpaceNum = null;
+let pathModalSkipMysteryReset = false;
 
 function formatEnemyAttackLogEffect(ev) {
   if (ev.nat1 && ev.selfDamage) {
@@ -2024,8 +2040,8 @@ function buildCombatOutcomeHtml(flow, config, finalResult) {
     effectParts.push('De schat is vrij!');
   } else if (type === 'boss' && !game.bossActive) {
     effectParts.push('De eindbaas is verslagen! Wie op vak 63 staat wint — anders loop naar de schat.');
-  } else if (finalResult.retreatedTo != null) {
-    effectParts.push(`Terug naar vak ${finalResult.retreatedTo}`);
+  } else if ((type === 'boss' || type === 'boss-minion') && game.bossActive) {
+    effectParts.push('Je blijft op de arena — volgende beurt vecht je verder');
   }
 
   const hpHtml = buildResultHpHtml(finalResult.events, player);
@@ -2573,11 +2589,22 @@ function renderSpectatorModal(activeModal) {
     return;
   }
 
-  if (type === 'path') {
-    els.pathIcon.textContent = config?.icon || '🚶';
+  if (type === 'path' || type === 'healer') {
+    els.pathIcon.textContent = config?.icon || (type === 'healer' ? '✨' : '🚶');
     els.pathSpace.textContent = `Vak ${spaceNum ?? '?'}`;
     els.pathTitle.textContent = config?.name || '';
     els.pathFlavor.textContent = config?.flavor || '';
+    if (els.pathTag) {
+      els.pathTag.textContent = type === 'healer' ? 'Genezer' : 'Rustig pad';
+    }
+    if (els.pathNote) {
+      const healInfo = activeModal?.outcome?.healInfo;
+      els.pathNote.textContent = type === 'healer'
+        ? (healInfo?.healed
+          ? `Hersteld: ${healInfo.from} → ${healInfo.to} HP`
+          : 'Al vol HP')
+        : 'Geen ability check — even ademhalen en doorlopen.';
+    }
     els.pathModal.classList.add('path-modal--spectator');
     els.pathModal.classList.remove('hidden');
     playSpectatorModalEnter(els.pathModal, 'calm', activeModal);
@@ -2819,11 +2846,11 @@ function ambushHpBarHtml(pitOverride) {
 }
 
 function bossFighterNote(player) {
-  return `Valt de eindbaas aan op vak ${player.position} · daarna terug naar kamp (56)`;
+  return `Valt de eindbaas aan op vak ${player.position} · blijf vechten tot winst of uitval`;
 }
 
 function minionFighterNote(player) {
-  return `Versla de beschermer op vak ${player.position} · daarna terug naar kamp (56)`;
+  return `Versla de beschermer op vak ${player.position} · blijf vechten tot winst of uitval`;
 }
 
 function bossMinionHpBarHtml(minion) {
@@ -3155,10 +3182,12 @@ function closePathModal() {
 
   const spaceNum = pathModalSpaceNum;
   pathModalSpaceNum = null;
+  const skipMysteryReset = pathModalSkipMysteryReset;
+  pathModalSkipMysteryReset = false;
   const cb = pathModalCallback;
   pathModalCallback = null;
 
-  if (spaceNum != null) {
+  if (spaceNum != null && !skipMysteryReset) {
     const events = game.resetMysteryPathAfterRest(spaceNum);
     if (events.length > 0) {
       describeEvents(events);
@@ -3177,9 +3206,14 @@ function showPathModal(config, spaceNum, onComplete) {
   els.pathSpace.textContent = `Vak ${spaceNum ?? '?'}`;
   els.pathTitle.textContent = config.name;
   els.pathFlavor.textContent = config.flavor;
+  if (els.pathTag) els.pathTag.textContent = 'Rustig pad';
+  if (els.pathNote) {
+    els.pathNote.textContent = 'Geen ability check — even ademhalen en doorlopen.';
+  }
 
   pathModalCallback = onComplete ?? null;
   pathModalSpaceNum = spaceNum ?? game.currentPlayer?.position ?? null;
+  pathModalSkipMysteryReset = false;
   els.pathModal.classList.remove('hidden');
   els.pathModal.classList.remove('path-modal--spectator');
   els.pathClose.textContent = 'Rust even uit';
@@ -3190,6 +3224,44 @@ function showPathModal(config, spaceNum, onComplete) {
     syncModalInput('path', config, spaceNum);
   } catch (err) {
     console.error('Path modal sync mislukt:', err);
+  }
+  playModalCardEnter(els.pathModal, 'calm');
+
+  setTimeout(() => els.pathClose.focus(), 100);
+}
+
+function showHealerModal(config, spaceNum, healInfo, onComplete) {
+  closeEventModal();
+  els.pathIcon.textContent = config.icon || '✨';
+  els.pathSpace.textContent = `Vak ${spaceNum ?? '?'}`;
+  els.pathTitle.textContent = config.name;
+  els.pathFlavor.textContent = config.flavor;
+  if (els.pathTag) els.pathTag.textContent = 'Genezer';
+  if (els.pathNote) {
+    els.pathNote.textContent = healInfo?.healed
+      ? `De cleric herstelt je volledig: ${healInfo.from} → ${healInfo.to} HP.`
+      : 'Je voelt je al topfit — de cleric knikt begripvol en zegent je verder.';
+  }
+
+  pathModalCallback = onComplete ?? null;
+  pathModalSpaceNum = spaceNum ?? game.currentPlayer?.position ?? null;
+  pathModalSkipMysteryReset = true;
+  els.pathModal.classList.remove('hidden');
+  els.pathModal.classList.remove('path-modal--spectator');
+  els.pathClose.textContent = 'Bedankt, zuster';
+  els.pathClose.disabled = false;
+  syncModalScrollLock();
+
+  try {
+    setSyncedActiveModal({
+      type: 'healer',
+      phase: 'outcome',
+      spaceNum: spaceNum ?? null,
+      config: serializeModalConfig(config),
+      outcome: { healInfo },
+    });
+  } catch (err) {
+    console.error('Healer modal sync mislukt:', err);
   }
   playModalCardEnter(els.pathModal, 'calm');
 
@@ -3592,11 +3664,16 @@ function continueAfterLand(result, onComplete) {
   }
 
   if (result.needsPath && result.pathConfig) {
-    const spaceNum = result.events.find((e) => e.type === 'path')?.spaceNum
-      ?? game.currentPlayer?.position;
-    showPathModal(result.pathConfig, spaceNum, onComplete ?? (() => {
+    const visitEvent = result.events.find((e) => e.type === 'healer-visit' || e.type === 'path');
+    const spaceNum = visitEvent?.spaceNum ?? game.currentPlayer?.position;
+    const onDone = onComplete ?? (() => {
       advanceTurn();
-    }));
+    });
+    if (result.pathConfig.type === 'healer') {
+      showHealerModal(result.pathConfig, spaceNum, visitEvent, onDone);
+    } else {
+      showPathModal(result.pathConfig, spaceNum, onDone);
+    }
     return;
   }
 
@@ -3663,7 +3740,7 @@ function formatEventMoveResult(result, events) {
   if (mod) text += ` · volgende check ${mod} DC`;
 
   if (result.needsEvent) text += ' · nog een event!';
-  if (result.needsPath) text += ' · rustig pad!';
+  if (result.needsPath) text += result.pathConfig?.type === 'healer' ? ' · genezer!' : ' · rustig pad!';
   if (result.needsBoss) text += ' · eindbaas!';
   if (result.needsBossMinion) text += ' · beschermer!';
   if (result.needsBossReveal) text += ' · eindbaas D12!';
@@ -3792,11 +3869,16 @@ async function handleEventSubmit() {
 
   if (result.needsPath && result.pathConfig) {
     const nextSpace = game.currentPlayer?.position;
+    const visitEvent = result.events.find((e) => e.type === 'healer-visit' || e.type === 'path');
     finishEventFlow({
-      chainLabel: 'Rustig pad →',
+      chainLabel: result.pathConfig.type === 'healer' ? 'Genezer →' : 'Rustig pad →',
       handler: () => {
         closeEventModal();
-        showPathModal(result.pathConfig, nextSpace, () => endEventTurn(onComplete));
+        if (result.pathConfig.type === 'healer') {
+          showHealerModal(result.pathConfig, nextSpace, visitEvent, () => endEventTurn(onComplete));
+        } else {
+          showPathModal(result.pathConfig, nextSpace, () => endEventTurn(onComplete));
+        }
       },
     });
     return;

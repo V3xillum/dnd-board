@@ -22,6 +22,7 @@
   --tile-fey: linear-gradient(135deg, #f0c8e8, #d898c8);
   --tile-boss: linear-gradient(135deg, #8b1a1a, #c9a227);
   --tile-ambush: linear-gradient(135deg, #e8a030, #f0d060);
+  --tile-healer: linear-gradient(135deg, #3d6b4a, #7cb88a);
   --tile-encampment: linear-gradient(135deg, #6b5b45, #a89070);
 }
 
@@ -578,6 +579,11 @@ body {
   background: var(--tile-ambush);
   border-color: rgba(232, 160, 48, 0.85);
   box-shadow: inset 0 0 10px rgba(0, 0, 0, 0.2);
+}
+.cell--healer {
+  background: var(--tile-healer);
+  border-color: rgba(124, 184, 138, 0.85);
+  box-shadow: inset 0 0 10px rgba(255, 255, 255, 0.12);
 }
 .cell--encampment {
   background: var(--tile-encampment);
@@ -1228,6 +1234,7 @@ body {
 .legend-swatch--fey { background: var(--tile-fey); }
 .legend-swatch--ambush { background: var(--tile-ambush); }
 .legend-swatch--boss { background: var(--tile-boss); }
+.legend-swatch--healer { background: var(--tile-healer); }
 .legend-swatch--encampment { background: var(--tile-encampment); }
 .legend-swatch--event { background: var(--tile-event); }
 

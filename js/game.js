@@ -1,7 +1,6 @@
 const TOTAL_SPACES = 63;
 const FINISH_SPACE = 63;
 const BOSS_SPACE = 62;
-const BOSS_RETREAT_SPACE = 56;
 const PATH_SPACES = 62;
 const BOSS_HP_PER_PLAYER = 3;
 
@@ -159,7 +158,7 @@ class Game {
     this.bossMultiplier = 1;
     this.bossDmgPerHit = 1;
     this.bossRevealRoll = null;
-    /** Beschermers vóór de eindbaas (roll 12); niet op het bord als putten */
+    /** Beschermers vóór de eindbaas (D12); niet op het bord als putten */
     this.bossMinions = [];
     /** Per vak: actieve put met gedeelde vijand en lijst vastzittende spelers */
     this.ambushPits = {};
@@ -685,18 +684,6 @@ class Game {
         });
       }
 
-      const skipRetreat = died;
-      if (!skipRetreat) {
-        const from = player.position;
-        player.position = BOSS_RETREAT_SPACE;
-        events.push({
-          type: 'boss-retreat',
-          player: player.name,
-          from,
-          to: BOSS_RETREAT_SPACE,
-        });
-      }
-
       if (!this.gameOver) {
         events.push({ type: 'pass-turn', player: player.name });
       }
@@ -708,7 +695,7 @@ class Game {
         minionHp: minionDefeated ? 0 : minion.hp,
         minionMaxHp: minion.maxHp,
         minionEnded: minionDefeated,
-        retreatedTo: skipRetreat ? null : BOSS_RETREAT_SPACE,
+        retreatedTo: null,
       };
     }
 
@@ -723,20 +710,6 @@ class Game {
       }
     }
 
-    const died = events.some((e) => e.type === 'death');
-    const skipRetreat = died || (winner && winner.id === player.id);
-
-    if (!skipRetreat) {
-      const from = player.position;
-      player.position = BOSS_RETREAT_SPACE;
-      events.push({
-        type: 'boss-retreat',
-        player: player.name,
-        from,
-        to: BOSS_RETREAT_SPACE,
-      });
-    }
-
     if (!winner) {
       events.push({ type: 'pass-turn', player: player.name });
     }
@@ -747,7 +720,7 @@ class Game {
       winner,
       bossHp: this.bossHp,
       bossMaxHp: this.bossMaxHp,
-      retreatedTo: skipRetreat ? null : BOSS_RETREAT_SPACE,
+      retreatedTo: null,
     };
   }
 
@@ -776,9 +749,10 @@ class Game {
     return config;
   }
 
-  spawnBossMinions(events) {
+  spawnBossMinions(events, count = 2) {
     this.bossMinions = [];
-    for (let i = 0; i < 2; i += 1) {
+    const spawnCount = Math.max(0, Math.floor(count));
+    for (let i = 0; i < spawnCount; i += 1) {
       const raw = typeof pickRandomAmbush === 'function' ? pickRandomAmbush() : null;
       const config = this.copyAmbushConfig(raw);
       if (!config) continue;
@@ -834,18 +808,25 @@ class Game {
 
   getBossRevealFromRoll(roll) {
     const clamped = Math.max(1, Math.min(12, roll));
-    if (clamped <= 8) {
-      return { roll: clamped, multiplier: 1, tier: 'standard' };
+    let multiplier;
+    let tier;
+    if (clamped <= 4) {
+      multiplier = 1;
+      tier = 'standard';
+    } else if (clamped <= 10) {
+      multiplier = 1.5;
+      tier = 'strong';
+    } else {
+      multiplier = 2;
+      tier = 'epic';
     }
-    if (clamped <= 11) {
-      return { roll: clamped, multiplier: 1.5, tier: 'strong' };
-    }
-    return { roll: clamped, multiplier: 2, tier: 'epic' };
+    const minionCount = clamped >= 12 ? 3 : clamped >= 5 ? 1 : 0;
+    return { roll: clamped, multiplier, tier, minionCount };
   }
 
   resolveBossReveal(landedSpace, roll) {
     const player = this.currentPlayer;
-    const { roll: clamped, multiplier, tier } = this.getBossRevealFromRoll(roll);
+    const { roll: clamped, multiplier, tier, minionCount } = this.getBossRevealFromRoll(roll);
 
     this.bossMultiplier = multiplier;
     this.bossDmgPerHit = multiplier;
@@ -856,6 +837,7 @@ class Game {
       roll: clamped,
       tier,
       multiplier,
+      minionCount,
       player: player?.name,
       spaceNum: landedSpace,
     }];
@@ -865,8 +847,10 @@ class Game {
       return { events, reveal: null, needsBoss: false };
     }
 
-    if (tier === 'epic') {
-      this.spawnBossMinions(events);
+    if (minionCount > 0) {
+      this.spawnBossMinions(events, minionCount);
+    } else {
+      this.bossMinions = [];
     }
 
     events.push({
@@ -896,6 +880,7 @@ class Game {
         roll: clamped,
         tier,
         multiplier,
+        minionCount,
         config,
         bossHp: this.bossHp,
         bossMaxHp: this.bossMaxHp,
@@ -1108,6 +1093,39 @@ class Game {
       events.push({ type: 'nat1', player: player.name });
       events.push(...this.mutateHp(player, -1));
     }
+  }
+
+  /**
+   * Zet speler-HP naar max. Geen effect als al vol.
+   * @returns {{ healed: boolean, alreadyFull: boolean, from: number, to: number }}
+   */
+  healPlayerToFull(player, events) {
+    if (!player) {
+      return { healed: false, alreadyFull: true, from: 0, to: 0 };
+    }
+
+    const from = player.hp;
+    const to = player.maxHp;
+    if (from >= to) {
+      return { healed: false, alreadyFull: true, from, to };
+    }
+
+    player.hp = to;
+    events.push({
+      type: 'hp-change',
+      player: player.name,
+      from,
+      to,
+      delta: to - from,
+    });
+    events.push({
+      type: 'full-heal',
+      player: player.name,
+      from,
+      to,
+    });
+
+    return { healed: true, alreadyFull: false, from, to };
   }
 
   /**
@@ -1373,6 +1391,26 @@ class Game {
       }
 
       return { events, winner: null, needsEvent: false, needsPath: false };
+    }
+
+    if (space.type === 'healer') {
+      const healInfo = this.healPlayerToFull(player, events);
+      events.push({
+        type: 'healer-visit',
+        spaceNum: player.position,
+        name: space.name,
+        icon: space.icon,
+        flavor: space.flavor,
+        player: player.name,
+        ...healInfo,
+      });
+      return {
+        events,
+        winner: null,
+        needsEvent: false,
+        needsPath: true,
+        pathConfig: space,
+      };
     }
 
     if (space.type === 'path') {
@@ -1729,7 +1767,6 @@ window.Game = Game;
 window.TOTAL_SPACES = TOTAL_SPACES;
 window.FINISH_SPACE = FINISH_SPACE;
 window.BOSS_SPACE = BOSS_SPACE;
-window.BOSS_RETREAT_SPACE = BOSS_RETREAT_SPACE;
 window.isOnBossArena = isOnBossArena;
 window.getPathDirection = getPathDirection;
 window.getDcBonus = getDcBonus;

@@ -93,6 +93,65 @@ function syncModalScrollLock() {
   updateTokenTurnStates();
 }
 
+const MODAL_ENTER_CLASSES = [
+  'event-card--enter-calm',
+  'event-card--enter-combat',
+  'event-card--enter-win',
+  'event-modal__stack--enter-calm',
+  'event-modal__stack--enter-combat',
+];
+
+const COMBAT_EVENT_CATEGORIES = new Set(['combat', 'trap']);
+
+function getEventModalEnterTier(config) {
+  if (!config) return 'calm';
+  return COMBAT_EVENT_CATEGORIES.has(config.category) ? 'combat' : 'calm';
+}
+
+function playModalCardEnter(modalEl, tier = 'calm') {
+  if (!modalEl) return;
+
+  const stack = modalEl.querySelector('.event-modal__stack');
+  const card = modalEl.querySelector('.event-card');
+  const target = stack || card;
+  if (!target) return;
+
+  target.classList.remove(...MODAL_ENTER_CLASSES);
+
+  if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+
+  const enterClass = tier === 'combat'
+    ? (stack ? 'event-modal__stack--enter-combat' : 'event-card--enter-combat')
+    : tier === 'win'
+      ? 'event-card--enter-win'
+      : (stack ? 'event-modal__stack--enter-calm' : 'event-card--enter-calm');
+
+  void target.offsetWidth;
+  target.classList.add(enterClass);
+
+  const onEnd = (e) => {
+    if (e.target !== target) return;
+    target.classList.remove(enterClass);
+    target.removeEventListener('animationend', onEnd);
+  };
+  target.addEventListener('animationend', onEnd);
+}
+
+let lastSpectatorModalAnimKey = null;
+
+function spectatorModalAnimKey(activeModal) {
+  if (!activeModal) return null;
+  const { type, phase, spaceNum } = activeModal;
+  return `${type}|${phase ?? ''}|${spaceNum ?? ''}`;
+}
+
+function playSpectatorModalEnter(modalEl, tier, activeModal) {
+  const key = spectatorModalAnimKey(activeModal);
+  if (key === lastSpectatorModalAnimKey) return;
+  lastSpectatorModalAnimKey = key;
+  playModalCardEnter(modalEl, tier);
+}
+
 function showRulesModal() {
   if (!els.rulesModal) return;
   els.rulesModal.classList.remove('hidden');
@@ -217,6 +276,71 @@ function renderBoard() {
   });
 
   renderTokens();
+}
+
+function snapshotSpecialSpaces() {
+  const snap = {};
+  const spaces = window.SPECIAL_SPACES ?? {};
+  Object.entries(spaces).forEach(([num, special]) => {
+    if (!special) return;
+    snap[num] = `${special.type}|${special.category ?? ''}|${special.icon ?? ''}`;
+  });
+  return snap;
+}
+
+function isMysteryUnrevealedFingerprint(fp) {
+  return fp === 'mystery|mystery|❓';
+}
+
+function isMysteryRevealedFingerprint(fp) {
+  if (!fp) return false;
+  if (fp.startsWith('path|')) return true;
+  return fp.startsWith('event|ambush|');
+}
+
+function detectMysteryCellChanges(prevSnap, nextSnap) {
+  const reveals = [];
+  const resets = [];
+  const keys = new Set([...Object.keys(prevSnap ?? {}), ...Object.keys(nextSnap ?? {})]);
+
+  keys.forEach((key) => {
+    const prev = prevSnap?.[key];
+    const next = nextSnap?.[key];
+    if (!prev || prev === next) return;
+    if (isMysteryUnrevealedFingerprint(prev) && isMysteryRevealedFingerprint(next)) {
+      reveals.push(Number(key));
+    } else if (isMysteryRevealedFingerprint(prev) && isMysteryUnrevealedFingerprint(next)) {
+      resets.push(Number(key));
+    }
+  });
+
+  return { reveals, resets };
+}
+
+const MYSTERY_CELL_ANIM_MS = { reveal: 720, reset: 580 };
+
+function playMysteryCellEffect(spaceNum, kind) {
+  if (prefersReducedMotion()) return;
+  const cell = document.querySelector(`[data-space="${spaceNum}"]`);
+  if (!cell) return;
+
+  const cls = kind === 'reset' ? 'cell--mystery-pulse-reset' : 'cell--mystery-pulse-reveal';
+  cell.classList.remove('cell--mystery-pulse-reveal', 'cell--mystery-pulse-reset');
+  void cell.offsetWidth;
+  cell.classList.add(cls);
+
+  const ms = MYSTERY_CELL_ANIM_MS[kind] ?? 650;
+  window.setTimeout(() => cell.classList.remove(cls), ms);
+}
+
+function playMysteryCellChanges({ reveals = [], resets = [] } = {}) {
+  reveals.forEach((spaceNum) => playMysteryCellEffect(spaceNum, 'reveal'));
+  resets.forEach((spaceNum) => playMysteryCellEffect(spaceNum, 'reset'));
+}
+
+function playMysteryResetFromEvents(events) {
+  const resetEv = events?.find((e) => e.type === 'mystery-reset');
+  if (resetEv?.spaceNum != null) playMysteryCellEffect(resetEv.spaceNum, 'reset');
 }
 
 let tokensAnimating = false;
@@ -1380,6 +1504,7 @@ function syncModalOutcome(type, spaceNum, config, outcome) {
 }
 
 function closeSpectatorModals() {
+  lastSpectatorModalAnimKey = null;
   els.eventModal.classList.add('hidden');
   els.eventModal.classList.remove('event-modal--spectator');
   els.pathModal.classList.add('hidden');
@@ -1492,6 +1617,11 @@ function renderSpectatorModal(activeModal) {
       els.mysteryCard?.classList.toggle('event-card--jackpot', Boolean(config?.jackpot));
     }
 
+    playSpectatorModalEnter(
+      els.mysteryModal,
+      phase === 'outcome' && config?.revealType === 'ambush' ? 'combat' : 'calm',
+      activeModal,
+    );
     syncModalScrollLock();
     return;
   }
@@ -1523,6 +1653,7 @@ function renderSpectatorModal(activeModal) {
       els.bossRevealCard?.classList.toggle('event-card--epic', config?.tier === 'epic');
     }
 
+    playSpectatorModalEnter(els.bossRevealModal, 'combat', activeModal);
     syncModalScrollLock();
     return;
   }
@@ -1534,6 +1665,7 @@ function renderSpectatorModal(activeModal) {
     els.pathFlavor.textContent = config?.flavor || '';
     els.pathModal.classList.add('path-modal--spectator');
     els.pathModal.classList.remove('hidden');
+    playSpectatorModalEnter(els.pathModal, 'calm', activeModal);
     syncModalScrollLock();
     return;
   }
@@ -1543,6 +1675,7 @@ function renderSpectatorModal(activeModal) {
     els.winText.textContent = outcome?.text ?? '';
     els.winModal.classList.add('win-modal--spectator');
     els.winModal.classList.remove('hidden');
+    playSpectatorModalEnter(els.winModal, 'win', activeModal);
     syncModalScrollLock();
     return;
   }
@@ -1577,6 +1710,13 @@ function renderSpectatorModal(activeModal) {
   }
 
   els.eventModal.classList.remove('hidden');
+  playSpectatorModalEnter(
+    els.eventModal,
+    type === 'ambush' || type === 'boss' || type === 'boss-minion'
+      ? 'combat'
+      : getEventModalEnterTier(config),
+    activeModal,
+  );
   syncModalScrollLock();
 }
 
@@ -1873,6 +2013,7 @@ function showAmbushModal(onComplete) {
   syncModalInput('ambush', game.getCurrentPlayerPit()?.config, game.currentPlayer?.position, {
     submitLabel: 'Vechten',
   });
+  playModalCardEnter(els.eventModal, 'combat');
 
   setTimeout(() => els.eventDiceInput.focus(), 100);
 }
@@ -1946,6 +2087,7 @@ function showBossMinionModal(onComplete) {
     ...serializeModalConfig(minion.config),
     ambushHp: minion.maxHp,
   }, spaceNum, { submitLabel: 'Vechten' });
+  playModalCardEnter(els.eventModal, 'combat');
 
   setTimeout(() => els.eventDiceInput.focus(), 100);
 }
@@ -1976,6 +2118,7 @@ function showBossModal(onComplete) {
   populateBossModal();
   updateBossPanel();
   syncModalInput('boss', game.bossConfig, null, { submitLabel: 'Aanvallen' });
+  playModalCardEnter(els.eventModal, 'combat');
 
   setTimeout(() => els.eventDiceInput.focus(), 100);
 }
@@ -2165,6 +2308,7 @@ async function handleAmbushSubmit() {
     describeEvents(result.events);
     await syncTokensAfterEvents(result.events);
     renderBoard();
+    playMysteryResetFromEvents(result.events);
     renderPlayers();
     updateAmbushPanel();
   } catch (err) {
@@ -2387,6 +2531,7 @@ function closePathModal() {
     if (events.length > 0) {
       describeEvents(events);
       renderBoard();
+      playMysteryResetFromEvents(events);
       window.syncAfterAction?.();
     }
   }
@@ -2414,6 +2559,7 @@ function showPathModal(config, spaceNum, onComplete) {
   } catch (err) {
     console.error('Path modal sync mislukt:', err);
   }
+  playModalCardEnter(els.pathModal, 'calm');
 
   setTimeout(() => els.pathClose.focus(), 100);
 }
@@ -2562,6 +2708,10 @@ function showMysteryRevealPhase(revelation) {
     revealHtml: els.mysteryRevealContent.innerHTML,
     actionLabel: els.mysteryAction.textContent,
   });
+  playModalCardEnter(
+    els.mysteryModal,
+    revelation.type === 'ambush' ? 'combat' : 'calm',
+  );
 }
 
 function showMysteryModal(spaceNum, onComplete) {
@@ -2595,6 +2745,7 @@ function showMysteryModal(spaceNum, onComplete) {
     icon: '❓',
     flavor: 'Gooi een D12 om te onthullen wat hier loert.',
   }, spaceNum, { submitLabel: 'Onthullen' });
+  playModalCardEnter(els.mysteryModal, 'calm');
 
   setTimeout(() => els.mysteryDiceInput.focus(), 100);
 }
@@ -2611,6 +2762,10 @@ function handleMysterySubmit() {
   describeEvents(result.events);
   renderBoard();
   renderPlayers();
+  if (result.revelation) {
+    playMysteryCellEffect(activeMystery.spaceNum, 'reveal');
+    window.syncAfterAction?.();
+  }
 
   if (!result.revelation) {
     const onDone = activeMystery.onComplete;
@@ -2689,6 +2844,7 @@ function showBossRevealRevealPhase(reveal) {
     revealHtml: els.bossRevealResultContent.innerHTML,
     actionLabel: els.bossRevealAction.textContent,
   });
+  playModalCardEnter(els.bossRevealModal, 'combat');
 }
 
 function showBossRevealModal(spaceNum, onComplete) {
@@ -2721,6 +2877,7 @@ function showBossRevealModal(spaceNum, onComplete) {
     icon: '⚔️',
     flavor: 'Gooi een D12 — het lot bepaalt hoe zwaar dit gevecht wordt.',
   }, spaceNum, { submitLabel: 'Onthullen' });
+  playModalCardEnter(els.bossRevealModal, 'combat');
 
   setTimeout(() => els.bossRevealDiceInput.focus(), 100);
 }
@@ -2831,6 +2988,7 @@ function showEventModal(config, spaceNum, onComplete) {
   syncModalScrollLock();
   populateEventModal(config, spaceNum);
   syncModalInput('event', config, spaceNum, { submitLabel: 'Bevestigen' });
+  playModalCardEnter(els.eventModal, getEventModalEnterTier(config));
 
   setTimeout(() => els.eventDiceInput.focus(), 100);
 }
@@ -3114,6 +3272,7 @@ function showWinModal(winner) {
   syncModalScrollLock();
   els.winTitle.textContent = '🏆 Overwinning!';
   els.winText.textContent = `${winner.name} heeft de Draken-schat bereikt en wint het avontuur!`;
+  playModalCardEnter(els.winModal, 'win');
   setSyncedActiveModal({
     type: 'win',
     phase: 'outcome',
@@ -3216,8 +3375,12 @@ window.refreshGameUI = () => {
   updateCombatRail();
 };
 
-async function refreshGameUIFromRemote({ prevPositions, isGuest = false } = {}) {
+async function refreshGameUIFromRemote({ prevPositions, prevSpecialSpaces, isGuest = false } = {}) {
   renderBoard();
+
+  if (prevSpecialSpaces) {
+    playMysteryCellChanges(detectMysteryCellChanges(prevSpecialSpaces, snapshotSpecialSpaces()));
+  }
 
   const shouldAnimate = isGuest
     && hasTokenPositionChanges(prevPositions)
@@ -3235,6 +3398,7 @@ async function refreshGameUIFromRemote({ prevPositions, isGuest = false } = {}) 
 
 window.refreshGameUIFromRemote = refreshGameUIFromRemote;
 window.snapshotTokenPositions = snapshotTokenPositions;
+window.snapshotSpecialSpaces = snapshotSpecialSpaces;
 window.appendRemoteLogEntry = (message, type = '') => {
   prependLogEntry(message, type);
 };

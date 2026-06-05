@@ -168,11 +168,14 @@
       const prevPositions = typeof window.snapshotTokenPositions === "function"
         ? window.snapshotTokenPositions()
         : {};
+      const prevSpecialSpaces = typeof window.snapshotSpecialSpaces === "function"
+        ? window.snapshotSpecialSpaces()
+        : {};
 
       deserializeGame(data, game);
 
       if (typeof window.refreshGameUIFromRemote === "function") {
-        await window.refreshGameUIFromRemote({ prevPositions, isGuest: !isHost });
+        await window.refreshGameUIFromRemote({ prevPositions, prevSpecialSpaces, isGuest: !isHost });
       } else {
         window.refreshGameUI?.();
       }

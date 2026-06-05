@@ -23,6 +23,24 @@ Speler-tokens krijgen visuele feedback op het bord — zonder gameplay-wijziging
 | Dood (0 HP) | `.token--dying` — fade + shrink |
 | Meerdere tokens op 1 vak | cirkel-offset via `getTokenStackOffset()` |
 | Reduced motion | geen slide/bounce; lichte active scale |
+| Mystery onthulling | `cell--mystery-pulse-reveal` — gouden glow + icon-pop |
+| Mystery reset | `cell--mystery-pulse-reset` — paarse glow terug naar ❓ |
+
+---
+
+## Mystery-tegel animatie
+
+Pulse-effect bij ❓ → onthuld en bij reset naar ❓ (geen flip-morph).
+
+| Trigger | Host | Gast |
+|---------|------|------|
+| D12 onthulling | `handleMysterySubmit` → `playMysteryCellEffect(reveal)` + vroege `syncAfterAction` | `detectMysteryCellChanges` in `refreshGameUIFromRemote` |
+| Pad rusten | `closePathModal` → `playMysteryResetFromEvents` | specialSpaces-diff |
+| Ambush verslagen | `handleAmbushSubmit` → `playMysteryResetFromEvents` | specialSpaces-diff |
+
+Helpers: `snapshotSpecialSpaces()`, `detectMysteryCellChanges()`, `playMysteryCellEffect()`, `playMysteryResetFromEvents()`.
+
+Fingerprint per vak: `` `${type}|${category}|${icon}` `` — transition `mystery|mystery|❓` ↔ `path|…` / `event|ambush|…`.
 
 ---
 
@@ -244,7 +262,7 @@ applyRemoteState (multiplayer.js)
 - Apart Firebase `lastAnimation`-kanaal (bounce-overshoot 1:1 voor gast)
 - Diagonale / curved paths
 - Particles, geluid, trail
-- Animatie bij mystery-onthulling / tegel-reset
+- Mystery-onthulling / tegel-reset (sessie 7) — **pulse gebouwd**; flip-morph nog niet
 - Sessie 6 turn-based per device
 - Window-resize: tokens corrigeren pas bij volgende `renderTokens()`
 
@@ -255,7 +273,7 @@ applyRemoteState (multiplayer.js)
 - `lastAnimation` in Firebase voor gast-bounce identiek aan host
 - Snellere animatie bij lange zetten (optionele versnelling)
 - Resize-listener voor token-layer
-- Mystery-onthulling visueel
+- Flip-animatie mystery-tegel (kaart omdraaien) i.p.v. pulse
 
 ---
 

@@ -1660,6 +1660,7 @@ function clearSyncedActiveModal() {
 function resetEventModalHostControls() {
   els.eventModal.classList.remove('event-modal--spectator');
   els.eventClose.classList.remove('is-hidden');
+  els.eventClose.classList.remove('hidden');
   els.eventSubmit.classList.remove('is-hidden');
   els.eventCombatAction?.classList.add('hidden');
   activeCombatActionHandler = null;
@@ -2715,7 +2716,9 @@ function populateEventModal(config, spaceNum) {
   els.eventNat1.disabled = false;
   els.eventResult.className = 'event-card__result hidden';
   els.eventRollArea.classList.remove('is-hidden');
-  setCombatFooter('none');
+  activeCombatActionHandler = null;
+  els.eventClose.classList.remove('hidden');
+  els.eventClose.disabled = true;
   els.eventClose.textContent = 'Doorgaan op avontuur';
   els.eventSubmit.disabled = false;
   els.eventSubmit.classList.remove('is-hidden');
@@ -3614,6 +3617,8 @@ function showEventModal(config, spaceNum, onComplete) {
 
 function finishEventFlow(onClose) {
   resetEventModalHostControls();
+  activeCombatActionHandler = null;
+  els.eventClose.classList.remove('hidden');
   els.eventSubmit.disabled = true;
   els.eventDiceInput.disabled = true;
   els.eventNat20.disabled = true;
@@ -3882,7 +3887,7 @@ els.eventDiceInput.addEventListener('keydown', (e) => {
   if (e.key === 'Enter') handleEventSubmit();
 });
 els.eventClose.addEventListener('click', async () => {
-  if (activeCombatActionHandler) {
+  if (activeCombatActionHandler && (activeAmbush || activeBossMinion || activeBoss)) {
     const handler = activeCombatActionHandler;
     els.eventClose.disabled = true;
     activeCombatActionHandler = null;

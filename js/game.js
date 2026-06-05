@@ -516,7 +516,7 @@ class Game {
       : (this.bossDmgPerHit ?? 1);
 
     if (enemyNat1) {
-      const selfDamage = Math.max(1, Math.ceil((config.dmg ?? 1) * multiplier));
+      const selfDamage = 1;
       attackEvent.selfDamage = selfDamage;
 
       if (ctx.type === 'ambush') {

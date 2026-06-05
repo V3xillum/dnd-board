@@ -135,8 +135,7 @@ body {
 .app--spectator .add-player,
 .app--spectator .dice-controls,
 .app--spectator .hp-controls {
-  opacity: 0.55;
-  pointer-events: none;
+  display: none;
 }
 .app--spectator .btn-remove {
   display: none;

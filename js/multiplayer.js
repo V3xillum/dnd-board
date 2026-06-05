@@ -11,6 +11,7 @@
   let hasRemoteState = false;
   let hostHeartbeatTimer = null;
   let hostTakeoverTimer = null;
+  let remoteUiRefresh = Promise.resolve();
 
   const HOST_STALE_MS = 45_000;
   const HOST_HEARTBEAT_MS = 15_000;
@@ -155,19 +156,38 @@
       return;
     }
 
-    suppressSync = true;
-    hasRemoteState = true;
-    if (!isHost && (!data.players || data.players.length === 0)) {
-      window.clearGameLog?.();
-      lastSeenLogSeq = -1;
-    }
-    deserializeGame(data, window.getGame());
-    window.refreshGameUI?.();
-    if (!isHost) {
-      window.renderSpectatorModal?.(data.activeModal ?? null);
-    }
-    suppressSync = false;
-    updateStatusBar();
+    remoteUiRefresh = remoteUiRefresh.then(async () => {
+      suppressSync = true;
+      hasRemoteState = true;
+      if (!isHost && (!data.players || data.players.length === 0)) {
+        window.clearGameLog?.();
+        lastSeenLogSeq = -1;
+      }
+
+      const game = window.getGame();
+      const prevPositions = typeof window.snapshotTokenPositions === "function"
+        ? window.snapshotTokenPositions()
+        : {};
+
+      deserializeGame(data, game);
+
+      if (typeof window.refreshGameUIFromRemote === "function") {
+        await window.refreshGameUIFromRemote({ prevPositions, isGuest: !isHost });
+      } else {
+        window.refreshGameUI?.();
+      }
+
+      if (!isHost) {
+        window.renderSpectatorModal?.(data.activeModal ?? null);
+      }
+
+      suppressSync = false;
+      updateStatusBar();
+    }).catch((err) => {
+      suppressSync = false;
+      console.error("Remote UI refresh mislukt:", err);
+      updateStatusBar();
+    });
   }
 
   function applyRemoteLogEntry(entry) {

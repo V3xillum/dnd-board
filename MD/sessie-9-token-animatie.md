@@ -1,244 +1,229 @@
 # Sessie 9 — Token-animatie op het bord
 
-**Status:** nog te bouwen
+**Status:** geïmplementeerd (naslag)
 
 ## Doel
-Speler-tokens krijgen **visuele feedback** op het bord:
+Speler-tokens krijgen visuele feedback op het bord — zonder gameplay-wijziging. `player.position` in `game.js` blijft leidend; animatie is puur UI.
 
-1. **Actieve speler** — token wordt iets groter (en optioneel subtiel benadrukt) zolang die speler aan beurt is.
-2. **Verplaatsing** — bij een zet schuift de token **rustig vak voor vak** naar de nieuwe positie, in de juiste richting (links/rechts/omhoog/omlaag), inclusief hoeken.
-
-Geen gameplay-wijziging — puur UI/polish. Game state (`player.position`) blijft leidend; animatie volgt de al bestaande events (`from` / `to`).
+1. **Actieve speler** — grotere token met gouden rand.
+2. **Wacht op worp** — subtiele bounce-animatie zolang de speler aan beurt is en mag dobbelen.
+3. **Verplaatsing** — token schuift vak voor vak naar de nieuwe positie, inclusief hoeken.
+4. **Multiplayer** — gasten zien dezelfde beweging (via position-diff), gesynchroniseerd direct na `syncAfterAction`.
 
 ---
 
-## Huidige situatie
+## Wat is gebouwd (overzicht)
 
-Tokens zitten **in elke cel** (`.tokens` in `[data-space="N"]`) en worden bij elke update **gewist en opnieuw geplaatst**:
+| Feature | Class / mechanisme |
+|---------|------------------|
+| Token-overlay | `#token-layer` absoluut boven `#board` |
+| Actieve speler | `.token--active` — scale 1.22, gouden rand |
+| Mag gooien | `.token--waiting` — bounce-loop |
+| Onderweg | `.token--moving` — slide per vak |
+| Dood (0 HP) | `.token--dying` — fade + shrink |
+| Meerdere tokens op 1 vak | cirkel-offset via `getTokenStackOffset()` |
+| Reduced motion | geen slide/bounce; lichte active scale |
+
+---
+
+## Architectuur
+
+### Token-layer (niet meer in cel-containers)
+
+Tokens zitten **niet** meer in `.tokens` per cel. Die divs blijven in de cel-markup maar zijn leeg.
 
 ```javascript
-// ui.js — renderTokens()
-document.querySelectorAll('.tokens').forEach((t) => { t.innerHTML = ''; });
-// → nieuw <span class="token"> per speler op p.position
+// getOrCreateTokenLayer() — aangemaakt in renderBoard()-flow
+// positionTokenElement() — left/top via getSpaceCenter(spaceNum)
+// getBoundingClientRect() t.o.v. #board
 ```
 
-Gevolg: elke verplaatsing is een **teleport**, geen animatie.
+Voordelen t.o.v. oorspronkelijk plan (animatie binnen cel):
+- Geen `overflow: hidden` op cellen die slide clippt
+- Finish-vak (3×3) werkt via `[data-space="63"]`
+- Vloeiende beweging over celgrenzen via `left`/`top` transitions
 
-De spelerlijst heeft al `player-item--active` voor de huidige beurt; tokens niet.
+### Pad & hoeken
 
----
+Geen handmatige hoek-math. Per segment:
 
-## Wat al bestaat (hergebruiken)
-
-| Onderdeel | Locatie | Gebruik voor animatie |
-|-----------|---------|------------------------|
-| Grid-posities per vak | `game.spacePositions` (`buildSpacePositions`) | Bepalen welke cel bij welk vak hoort |
-| Richting per segment | `getPathDirection(positions, fromSpace)` | `right` / `left` / `down` / `up` tussen opeenvolgende vakjes |
-| Pijltjes op bord | `renderBoard()` | Zelfde richtingslogica als animatie |
-| Move-events | `game.move()`, `moveAfterEvent()` | `{ type: 'move' \| 'event-move', from, to, direction? }` |
-| Actieve speler | `game.currentIndex` | `.token--active` class |
-
-**Hoeken hoeven niet handmatig berekend te worden.** Animatie loopt vak voor vak (`from+1 … to` of omgekeerd); per segment geeft `getPathDirection` de juiste as.
-
-Voorbeeld spiraal:
-- Vak 1→9: horizontaal (→)
-- Vak 9→17: verticaal langs de rand (↓ of ↑ afhankelijk van grid)
-- Elke hoek = nieuw segment met andere richting
-
----
-
-## Verschil met andere sessies
-
-| | Sessie 5–8 | Sessie 9 |
-|---|------------|----------|
-| Game logic | Nieuwe regels / state | **Geen** wijziging in `game.js` (tenzij optionele helper) |
-| Firebase | Nieuwe velden | **Geen** sync van animatie-intent |
-| Multiplayer | Host voert in | Toeschouwer ziet **snap** of lokale animatie op state-diff |
-| Scope | Feature | **Polish / UX** |
-
----
-
-## Architectuurkeuze
-
-**Gekozen aanpak: optie A — segment-animatie binnen bestaande DOM (MVP).**
-
-Tokens blijven in `.tokens`-containers per cel. Bij verplaatsing:
-
-1. Bestaand token-element behouden (`data-player-id`).
-2. Loop over tussenliggende vakjes.
-3. Per segment: `transform: translate(...)` animeren in richting uit `getPathDirection`.
-4. Na segment: token DOM-verplaatsen naar volgende cel, transform resetten.
-5. Na laatste segment: `renderTokens()` sync voor eindstaat (stacking, active class).
-
-**Waarom niet meteen overlay (optie B):** minder refactor; finish-vak (3×3 grid) en meerdere tokens per cel blijven werken zoals nu. Overlay kan later als polish-fase.
-
-### Alternatief (fase 3, optioneel)
-
-`#token-layer` absoluut boven `#board`: tokens gepositioneerd via cel-`getBoundingClientRect()` + `spacePositions`. Vloeiender over celgrenzen, meer werk bij resize en finish-centrum.
-
----
-
-## Animatie-triggers
-
-| Situatie | Bron | `from` → `to` | Richting |
-|----------|------|---------------|----------|
-| Dobbelsteen-zet | `type: 'move'` | `ev.from`, `ev.to` | vooruit |
-| Event-succes | `type: 'event-move'` | `ev.from`, `ev.to` | `ev.direction` (`forward` / `back`) |
-| Finish-bounce | `type: 'bounce'` na move | overshoot → terug | eerst vooruit, dan terug (2 animaties of 1 gecombineerde) |
-| Dood (0 HP) | `type: 'death'` | huidige vak → `0` | fade/teleport naar start (positie `0` heeft **geen cel**) |
-| Boss-retreat | boss-flow | `62` → `56` (of `63` → `56`) | acht stappen terug of korte “whoosh” |
-| Speler toevoegen | `addPlayer()` | — | verschijnen op vak `1` bij eerste zet, of geen token bij `0` |
-| Remote state (MP) | `refreshGameUI()` | diff oude vs nieuwe `position` | optioneel: korte animatie of direct snap |
-
-**Positie `0`:** spelers vóór eerste zet / na death staan op `0`; `[data-space="0"]` bestaat niet → token **onzichtbaar** tot eerste landing op vak ≥ 1. Dood-animatie: fade-out op huidige cel → na reset fade-in op vak `1` (of direct op `1` als state al gezet is).
-
----
-
-## Timing & flow
-
-Game state wordt **direct** gezet in `game.move()` / `moveAfterEvent()` — vóór UI-update. Animatie is **puur visueel** achteraf:
-
-```
-handleMoveResult(result)
-  → describeEvents(result.events)
-  → animateFromEvents(result.events)   // nieuw — async
-  → daarna renderTokens() + continueAfterLand()
+```javascript
+// game.js — ongewijzigd, hergebruikt
+getPathDirection(game.spacePositions, fromSpace)
+// → 'right' | 'left' | 'down' | 'up'
 ```
 
-Tijdens animatie:
-- **Invoer blokkeren** (`moveBtn` disabled, zelfde patroon als modal open).
-- **Geen** `renderBoard()` tussendoor (vernietigt tokens) — bij move wordt nu al alleen `renderTokens()` aangeroepen ✓
+`buildMovePath(from, to, forward)` loopt vaknummers (`from+1…to` of omgekeerd). Animatie schuift pixel-voor-pixel tussen celcentra.
 
-Modals (event, mystery, boss): animatie **vóór** modal openen, of token al op eindpositie terwijl modal opent — kies één consistent patroon (voorstel: animatie eerst, dan modal).
+### Segmentduur
 
----
-
-## CSS (voorstel)
-
-```css
-.token {
-  transition: transform 0.2s ease, box-shadow 0.2s ease;
-  will-change: transform;
-}
-
-.token--active {
-  transform: scale(1.2);
-  z-index: 2;
-  box-shadow: 0 0 0 2px white, 0 2px 8px rgba(0, 0, 0, 0.45);
-}
-
-.token--moving {
-  transition: transform var(--token-step-ms, 180ms) ease-in-out;
-  z-index: 3;
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .token--moving { transition: none; }
-  .token--active { transform: none; }
-}
+```javascript
+getTokenStepDuration(stepCount)
+// min(220, max(100, floor(1600 / stepCount))) ms per vak
+// CSS: --token-step-ms op token-element
 ```
 
-Duur per segment: ~150–250 ms; totale zet bij 12 stappen ≈ 2–3 s — eventueel versnellen bij lange zetten (`min(200, 1200 / steps)`).
+---
+
+## Token-states (CSS)
+
+| Class | Wanneer | Visueel |
+|-------|---------|---------|
+| *(geen)* | Inactieve speler | Witte rand, normale grootte |
+| `token--active` | `p.id === currentPlayer.id` | Scale 1.22, rand `#e8c84a`, donkere outline + gouden gloed |
+| `token--waiting` | Actief + mag dobbelen | Bounce (`token-wait-bounce`, 1.15s loop) |
+| `token--moving` | Tijdens slide | Geen bounce; hogere z-index |
+| `token--dying` | Dood-event | Opacity 0, scale 0.4 |
+
+**Wacht-op-worp** (`isPlayerWaitingToRoll`): actieve speler, niet in put/boss-arena, geen open modal die input vraagt. Bijgewerkt via `updateTokenTurnStates()` — ook bij `syncModalScrollLock()` en `updateTurnUI()`.
+
+**Positie `0`:** geen token zichtbaar (start vóór eerste zet / na death). Eerste zet vanaf `0`: token verschijnt op vak 1 en schuift verder.
 
 ---
 
-## Fases — bouwvolgorde
+## Host-flow (animatie via events)
 
-### Fase 1 — Actieve token + token-behoud
-**Doel:** visuele beurt-indicator; tokens niet meer elke keer from scratch.
+### Dobbelsteen-zet
 
-1. `renderTokens()`: token hergebruiken via `data-player-id` i.p.v. altijd `innerHTML = ''` op alle `.tokens`.
-2. Class `token--active` als `players[i].id === currentPlayer.id`.
-3. CSS scale + shadow voor actieve token.
-4. `updateTurnUI()` / `renderPlayers()` roept ook token active-state bij (of `renderTokens({ activeOnly: true })`).
+```
+Verplaats
+  → game.move()
+  → handleMoveResult()
+       → describeEvents()          // log + syncLastEvent (direct)
+       → syncTokensAfterEvents()
+            → syncAfterAction()    // Firebase: positie meteen (gast start parallel)
+            → animateFromEvents()  // host slide
+            → renderTokens()
+       → renderPlayers()
+       → continueAfterLand()       // modal; setSyncedActiveModal → extra sync
+```
 
-### Fase 2 — Segment-animatie (dobbelsteen-zet)
-**Doel:** normale `game.move()` vloeiend tonen.
+### Events / gevechten
 
-1. `buildMovePath(from, to, direction)` → array van vaknummers (vooruit of achteruit).
-2. `animateTokenAlongPath(playerId, path)` — async, returns Promise.
-3. `getSegmentTransform(direction, cellSize)` — translate % binnen cel.
-4. Hook in `handleMoveResult()` vóór `continueAfterLand()`.
-5. UI lock tijdens animatie.
+Zelfde patroon via `syncTokensAfterEvents(result.events)` in:
+- `handleEventSubmit()` — `resolveEvent`
+- `handleAmbushSubmit()` — `resolveAmbushRoll` (+ `renderBoard` bij put-reset)
+- `handleBossSubmit()` — `resolveBoss`
+- `handleBossMinionSubmit()` — `resolveBossMinionRoll`
 
-### Fase 3 — Overige bewegingstypes
-**Doel:** events, bounce, death, boss-retreat.
+Tijdens animatie: `tokensAnimating = true` → `moveBtn` / dice disabled via `updateTurnUI()`.
 
-1. `animateFromEvents(events)` — scan op `move`, `event-move`, `bounce`, `death`.
-2. Event-flow na `resolveEvent`: animatie vóór volgende modal.
-3. Dood: fade + verschijnen op startvak `1`.
-4. Bounce: animeren tot overshoot-positie, dan terug (of alleen eindpositie tonen met korte “terugslag”-easing).
+### Bewegingstypes (host — `buildMovementsFromEvents`)
 
-### Fase 4 — Multiplayer & edge cases
-**Doel:** geen glitches voor gasten; meerdere tokens op één vak.
-
-1. **Host:** volledige animatie zoals singleplayer.
-2. **Gast (spectator):** bij `applyRemoteState` optioneel korte animatie als `position` gewijzigd, anders snap (MVP: snap is OK).
-3. Meerdere tokens op één cel: offset behouden in `.tokens` flex; animatie per speler onafhankelijk.
-4. Finish-vak (3×3): token in `.tokens` van `data-space="63"` — geen extra werk in fase 2.
-5. `prefers-reduced-motion`: direct `renderTokens()`.
-
----
-
-## Nieuwe / uitgebreide UI-functies
-
-| Functie | Bestand | Beschrijving |
-|---------|---------|--------------|
-| `ensureTokenElement(player)` | `ui.js` | Maak of vind token DOM node |
-| `buildMovePath(from, to, forward)` | `ui.js` | Vaknummers langs pad |
-| `animateTokenSegment(token, direction)` | `ui.js` | Eén segment, returns Promise |
-| `animateTokenAlongPath(playerId, path)` | `ui.js` | Volledige route |
-| `animateFromEvents(events, playerId)` | `ui.js` | Dispatcher voor event-types |
-| `setTokensAnimating(locked)` | `ui.js` | Disable move/dice tijdens animatie |
-
-Optioneel in `game.js` (niet verplicht):
-
-| Functie | Beschrijving |
-|---------|--------------|
-| `getPathBetween(from, to)` | Pure helper; kan ook in `ui.js` |
+| Event | Animatie |
+|-------|----------|
+| `move` | Vooruit over pad |
+| `move` + `bounce` | Eerst naar min(`to`, 63), dan terug naar `bounce.position` |
+| `event-move` | Vooruit of achteruit (`direction`) |
+| `boss-retreat` | Achteruit naar vak 56 |
+| `death` | Fade-out op `fromSpace` (via `findDeathFromSpace`) |
 
 ---
 
-## Wat de agent concreet moet doen
+## Multiplayer (gast-flow)
 
-| Bestand | Wijziging |
-|---------|-----------|
-| `js/ui.js` | `renderTokens()` refactor; animatie-helpers; hooks in `handleMoveResult`, event-resolve, `refreshGameUI` |
-| `css/styles.css` | `.token--active`, `.token--moving`, reduced-motion; eventueel `--token-step-ms` |
-| `scss/styles.scss` | Zelfde tokens-styling als CSS (bron van waarheid) |
-| `index.html` | Geen wijziging verwacht (tenzij `#token-layer` in fase 3+) |
+Geen apart Firebase-animatiekanaal. Gasten animeren via **position-diff** na state-update.
 
-**Geen wijziging:** `game.js` logica, `multiplayer.js` serialize, Firebase schema.
+```
+applyRemoteState (multiplayer.js)
+  → snapshotTokenPositions()   // vóór deserialize
+  → deserializeGame()
+  → refreshGameUIFromRemote({ prevPositions, isGuest: true })
+       → renderBoard()
+       → repositionTokensToSnapshot(prev)  // visueel terug naar oud
+       → animateFromPositionDiff()       // slide naar nieuw
+       → renderTokens() + renderPlayers()
+```
+
+**Sync-timing (belangrijk):** `syncAfterAction()` wordt aangeroepen **vóór** host-animatie in `syncTokensAfterEvents()`. Gast ontvangt Firebase-state ~gelijk met host-slide (alleen netwerk-latency).
+
+**Queue:** `remoteUiRefresh` in `multiplayer.js` — snelle opeenvolgende updates worden geserialiseerd.
+
+**Eerste join midden in spel:** geen animatie (lege `prevPositions`). **Reset/nieuw avontuur:** `isLikelyGameReset()` → geen massale fade-out.
+
+### Verschil host vs gast bij bounce
+
+| | Host | Gast |
+|---|------|------|
+| Finish-overshoot | 2 stappen (naar 63, terug) via events | 1 slide (oud → nieuw positie-diff) |
+| Overige zetten | Event-based pad | Position-diff pad |
+
+---
+
+## Code-overzicht
+
+### `ui.js`
+
+| Onderdeel | Functie |
+|-----------|---------|
+| Layer | `getOrCreateTokenLayer()`, `getSpaceCenter()`, `positionTokenElement()` |
+| Tokens renderen | `ensureTokenElement()`, `renderTokens()` |
+| Pad | `buildMovePath()`, `buildMovementsFromEvents()`, `buildMovementsFromPositionDiff()` |
+| Animatie | `animateTokenAlongPath()`, `animateTokenDeath()`, `animateMovements()`, `animateFromEvents()`, `animateFromPositionDiff()` |
+| Sync helper | `syncTokensAfterEvents()` — **sync → animate → renderTokens** |
+| Beurt-UI | `isPlayerWaitingToRoll()`, `updateTokenTurnStates()` |
+| MP gast | `snapshotTokenPositions()`, `hasTokenPositionChanges()`, `isLikelyGameReset()`, `repositionTokensToSnapshot()`, `refreshGameUIFromRemote()` |
+| Hooks | `handleMoveResult`, event/ambush/boss submits |
+
+### `multiplayer.js`
+
+| Onderdeel | Gedrag |
+|-----------|--------|
+| `applyRemoteState` | Snapshot vóór deserialize; `refreshGameUIFromRemote` voor gasten |
+| `remoteUiRefresh` | Promise-queue voor opeenvolgende updates |
+
+### `css/styles.css` + `scss/styles.scss`
+
+- `.board { position: relative }`
+- `.token-layer`, `.token--active`, `.token--waiting`, `.token--moving`, `.token--dying`
+- `@keyframes token-wait-bounce`
+- `@media (prefers-reduced-motion: reduce)`
+
+### Ongewijzigd
+
+- `game.js` — geen animatie-logica
+- Firebase schema — geen `lastAnimation`-veld
+
+---
+
+## Verschil met oorspronkelijk plan
+
+| Oorspronkelijk plan | Zoals gebouwd |
+|---------------------|---------------|
+| Tokens in `.tokens` per cel | **`#token-layer` overlay** (pixel-positionering) |
+| Sync na host-animatie | **Sync vóór animatie** (`syncAfterAction` in `syncTokensAfterEvents`) |
+| Gast: snap of korte animatie | **Volledige position-diff animatie** |
+| Witte ring actief | **Gouden rand** (`#e8c84a`) + bounce bij wachten |
+| `setTokensAnimating()` helper | `tokensAnimating` flag + `updateTurnUI()` |
 
 ---
 
 ## Handmatige testchecklist
 
-### Fase 1
-- [ ] Speler aan beurt: token groter dan andere tokens
-- [ ] Beurt wisselt: active class springt mee
-- [ ] Meerdere spelers: elk token behoudt kleur/letter
-- [ ] Speler op positie `0`: geen token op bord
+### Basis
+- [x] Actieve speler: groter + gouden rand
+- [x] Mag dobbelen: bounce; stopt bij modal/put/boss
+- [x] Inactieve spelers: witte rand, normale grootte
+- [x] Positie `0`: geen token
+- [x] Meerdere spelers opzelfde vak: leesbare stapel
 
-### Fase 2
-- [ ] Dobbelsteen 2–12: token schuift vak voor vak
-- [ ] Richting klopt op rechte stukken (bijv. 1→9 horizontaal)
-- [ ] Hoeken (bijv. 8→9→10): segment wisselt van richting zonder diagonalen
-- [ ] Tijdens animatie: geen dubbele zet mogelijk
-- [ ] Na animatie: token op juiste vak, sidebar klopt
+### Beweging (host)
+- [x] Dobbelsteen 2–12: vak voor vak
+- [x] Hoeken: richting wisselt per segment
+- [x] Event vooruit/terug
+- [x] Finish-bounce: heen + terug (host)
+- [x] Dood: fade-out
+- [x] Boss-retreat naar 56
+- [x] Geen dubbele zet tijdens animatie
 
-### Fase 3
-- [ ] Event-vooruit: zelfde animatie als dobbelsteen
-- [ ] Event-terug: animatie loopt achteruit over vakjes
-- [ ] Finish overshoot: visueel begrijpelijk (bounce)
-- [ ] Dood: token verdwijnt/verschijnt bij start
-- [ ] Boss-retreat naar 56: animatie of geaccepteerde shortcut
+### Multiplayer
+- [x] Gast: token beweegt ~gelijk met host (na sync-fix)
+- [x] Gast: geen glitch bij snelle updates (queue)
+- [x] Eerste join: snap, geen valse animatie
+- [x] Log (`lastEvent`) kan vóór token komen — verwacht gedrag
 
-### Fase 4
-- [ ] 2+ tokens opzelfde vak: stapelen blijft leesbaar
-- [ ] Multiplayer gast: geen broken state na remote update
-- [ ] `prefers-reduced-motion`: geen slide, wel active scale mag uit
-- [ ] Window resize mid-game: tokens nog op juiste plek na `renderBoard()`
+### Accessibility
+- [x] `prefers-reduced-motion`: geen slide/bounce
 
 ---
 
@@ -246,37 +231,36 @@ Optioneel in `game.js` (niet verplicht):
 
 | Sessie | Nodig voor |
 |--------|------------|
-| 1 | Bord-layout, `spacePositions`, tokens in cellen |
-| 2 | Event-move (`event-move` events, forward/back) |
-| 3 | Boss-retreat positie 56 |
-| 5 | `refreshGameUI()` bij remote state — animatie-gedrag afstemmen |
+| 1 | Bord-layout, `spacePositions` |
+| 2 | `event-move`, forward/back |
+| 3 | Boss-retreat vak 56 |
+| 5 | `syncAfterAction`, `applyRemoteState`, `refreshGameUI` |
+| 7 | Mystery-modals (bounce stopt tijdens modal) |
 
 ---
 
 ## Bewust buiten scope
 
-- Token-overlay laag (tenzij fase 3+ polish)
-- Animatie sync via Firebase (intent channel)
-- Diagonale / curved paths tussen vakjes
-- Particles, trail, bounce physics
-- Animatie bij mystery-onthulling (sessie 7 polish)
-- Sessie 6 turn-based per device (invloed op wanneer animatie draait)
+- Apart Firebase `lastAnimation`-kanaal (bounce-overshoot 1:1 voor gast)
+- Diagonale / curved paths
+- Particles, geluid, trail
+- Animatie bij mystery-onthulling / tegel-reset
+- Sessie 6 turn-based per device
+- Window-resize: tokens corrigeren pas bij volgende `renderTokens()`
 
 ---
 
-## Na sessie 9 (polish)
+## Polish later
 
-- `#token-layer` voor vloeiendere cross-cell beweging
-- Versnel lange zetten automatisch
-- Subtle idle pulse op actieve token
-- Geluid (optioneel, user setting)
-- Spectator: replay-animatie op basis van `lastEvent` seq
+- `lastAnimation` in Firebase voor gast-bounce identiek aan host
+- Snellere animatie bij lange zetten (optionele versnelling)
+- Resize-listener voor token-layer
+- Mystery-onthulling visueel
 
 ---
 
 ## Gerelateerd
 
 - Bord & richting: `js/game.js` — `getPathDirection`, `buildSpacePositions`
-- Huidige render: `js/ui.js` — `renderBoard()`, `renderTokens()`
-- Multiplayer UI refresh: `js/multiplayer.js` — `applyRemoteState` → `refreshGameUI()`
-- Mystery polish (ook animatie genoemd): `MD/sessie-7-mystery-vakjes.md`
+- Multiplayer sync: `MD/sessie-5-multiplayer.md`
+- Mystery (geen token-animatie bij onthulling): `MD/sessie-7-mystery-vakjes.md`

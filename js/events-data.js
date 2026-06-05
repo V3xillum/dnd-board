@@ -76,6 +76,59 @@ function flattenEventPool(nested) {
   return flat;
 }
 
+function attackBonusFromDc(dc) {
+  if (dc <= 11) return 3;
+  if (dc <= 14) return 4;
+  return 5;
+}
+
+const BOSS_SPECIAL_ATTACKS = {
+  'Storm Giant': { name: 'Thunder Stomp', saveAbility: 'Dexterity', dc: 14, dmgFail: 2, dmgSuccess: 1 },
+  'Hill Giant': { name: 'Boulder Toss', saveAbility: 'Dexterity', dc: 13, dmgFail: 2, dmgSuccess: 1 },
+  [GUARDIAN_EVENT_NAME]: { name: 'Shield Slam', saveAbility: 'Athletics', dc: 14, dmgFail: 2, dmgSuccess: 1 },
+  'Dark Paladin': { name: 'Fallen Smite', saveAbility: 'Constitution', dc: 14, dmgFail: 2, dmgSuccess: 1 },
+  Dracolich: { name: 'Lich Breath', saveAbility: 'Constitution', dc: 16, dmgFail: 2, dmgSuccess: 1 },
+  'Ancient Red Dragon': { name: 'Fire Breath', saveAbility: 'Dexterity', dc: 15, dmgFail: 2, dmgSuccess: 1 },
+  'Ancient Black Dragon': { name: 'Acid Breath', saveAbility: 'Dexterity', dc: 16, dmgFail: 2, dmgSuccess: 1 },
+  'Avatar of the Blight': { name: 'Blight Spores', saveAbility: 'Constitution', dc: 15, dmgFail: 2, dmgSuccess: 1 },
+  Reaper: { name: 'Soul Drain', saveAbility: 'Wisdom', dc: 15, dmgFail: 2, dmgSuccess: 1 },
+  Lich: { name: 'Finger of Death', saveAbility: 'Constitution', dc: 15, dmgFail: 2, dmgSuccess: 1 },
+  'Death Knight': { name: 'Hellfire Blade', saveAbility: 'Dexterity', dc: 14, dmgFail: 2, dmgSuccess: 1 },
+  'Green Hag': { name: "Hag's Curse", saveAbility: 'Wisdom', dc: 14, dmgFail: 2, dmgSuccess: 1 },
+};
+
+function defaultBossSpecialAttack(ev) {
+  const dc = ev.dc ?? 14;
+  return {
+    name: 'Special Attack',
+    saveAbility: 'Dexterity',
+    dc: Math.max(12, dc - 1),
+    dmgFail: 2,
+    dmgSuccess: 1,
+  };
+}
+
+/** Voeg attack-roll velden toe aan ambush/boss entries (sessie 10). */
+function enrichCombatEvent(ev) {
+  if (ev.category !== 'ambush' && ev.category !== 'boss') return ev;
+  const dc = ev.dc ?? 10;
+  const heavyDmg = ev.name === 'Orc Patrol'
+    || ev.name === 'Ancient Red Dragon'
+    || ev.name === 'Ancient Black Dragon'
+    || ev.name === 'Dracolich';
+  const enriched = {
+    ...ev,
+    attackBonus: ev.attackBonus ?? attackBonusFromDc(dc),
+    dmg: ev.dmg ?? (heavyDmg ? 2 : 1),
+  };
+  if (ev.category === 'boss') {
+    enriched.specialAttack = ev.specialAttack
+      ?? BOSS_SPECIAL_ATTACKS[ev.name]
+      ?? defaultBossSpecialAttack(ev);
+  }
+  return enriched;
+}
+
 const EVENT_POOL_RAW = {
   ambush: {
     "Acrobatics": [
@@ -1418,7 +1471,7 @@ const EVENT_POOL_RAW = {
   },
 };
 
-const EVENT_POOL = flattenEventPool(EVENT_POOL_RAW);
+const EVENT_POOL = flattenEventPool(EVENT_POOL_RAW).map(enrichCombatEvent);
 
 
 function shuffleArray(items) {

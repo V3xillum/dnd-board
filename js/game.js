@@ -178,6 +178,8 @@ class Game {
       ability: source.ability,
       dc: source.dc,
       ambushHp: hp,
+      attackBonus: source.attackBonus ?? 3,
+      dmg: source.dmg ?? 1,
       flavor: source.flavor,
       successText: source.successText,
       failText: source.failText,
@@ -286,14 +288,454 @@ class Game {
 
   copyBossConfig(source) {
     if (!source) return null;
-    return {
+    const out = {
       name: source.name,
       icon: source.icon,
       ability: source.ability,
       dc: source.dc,
+      attackBonus: source.attackBonus ?? 5,
+      dmg: source.dmg ?? 1,
       flavor: source.flavor,
       successText: source.successText,
       failText: source.failText,
+    };
+    if (source.specialAttack) {
+      out.specialAttack = { ...source.specialAttack };
+    }
+    return out;
+  }
+
+  buildCombatContext(type, options = {}) {
+    const { allowDefeated = false } = options;
+    const player = this.currentPlayer;
+    if (!player) return null;
+
+    if (type === 'ambush') {
+      const spaceNum = player.position;
+      const pit = spaceNum != null ? this.getPitAt(spaceNum) : null;
+      if (!pit || (!allowDefeated && pit.hp <= 0) || !pit.playerIds.includes(player.id)) return null;
+      return { type: 'ambush', spaceNum, config: pit.config, pit };
+    }
+
+    if (type === 'boss-minion') {
+      const minion = this.getActiveBossMinion();
+      if (!minion || !isOnBossArena(player.position)) return null;
+      if (!allowDefeated && minion.hp <= 0) return null;
+      return { type: 'boss-minion', spaceNum: player.position, config: minion.config, minion };
+    }
+
+    if (type === 'boss') {
+      const config = this.bossConfig;
+      if (!this.bossActive || !config || this.hasBossMinions() || !isOnBossArena(player.position)) {
+        return null;
+      }
+      return { type: 'boss', spaceNum: player.position, config };
+    }
+
+    return null;
+  }
+
+  resolveCombatPlayerAttack(ctx, roll, options = {}) {
+    const player = this.currentPlayer;
+    if (!player || !ctx?.config) {
+      return { events: [], playerHit: false, enemyDefeated: false, skipEnemyPhase: true };
+    }
+
+    const { nat20 = false, nat1 = false } = options;
+    const config = ctx.config;
+    const dcModApplied = player.nextDcMod ?? 0;
+    player.nextDcMod = 0;
+
+    const effectiveAc = getEffectiveDc(player, config.dc, this.difficultyLevel, dcModApplied);
+    const isNat1 = !nat20 && nat1;
+    const playerHit = !isNat1 && (nat20 || (roll != null && roll >= effectiveAc));
+    const prefix = ctx.type === 'ambush' ? 'ambush' : ctx.type === 'boss-minion' ? 'boss-minion' : 'boss';
+    const events = [];
+
+    const attackEvent = {
+      type: `${prefix}-player-attack`,
+      roll: roll ?? null,
+      ac: config.dc,
+      effectiveAc,
+      hit: playerHit,
+      nat20,
+      nat1: isNat1,
+      player: player.name,
+    };
+
+    if (ctx.type === 'ambush') {
+      attackEvent.ambushName = config.name;
+      attackEvent.ambushHp = ctx.pit.hp;
+      attackEvent.spaceNum = ctx.spaceNum;
+    } else if (ctx.type === 'boss-minion') {
+      attackEvent.minionName = config.name;
+      attackEvent.minionHp = ctx.minion.hp;
+      attackEvent.spaceNum = ctx.spaceNum;
+    } else {
+      attackEvent.bossName = config.name;
+    }
+
+    events.push(attackEvent);
+
+    if (playerHit) {
+      const dmgBonus = player.dmgBonus ?? 0;
+      const hitDamage = nat20 ? 2 + dmgBonus : 1 + dmgBonus;
+      if (nat20) {
+        events.push({ type: 'nat20', player: player.name });
+      }
+
+      if (ctx.type === 'ambush') {
+        ctx.pit.hp = Math.max(0, ctx.pit.hp - hitDamage);
+        events.push({
+          type: 'ambush-hit',
+          ambushHp: ctx.pit.hp,
+          ambushMaxHp: ctx.pit.maxHp,
+          player: player.name,
+          ambushName: config.name,
+          playerHp: player.hp,
+          spaceNum: ctx.spaceNum,
+          damage: hitDamage,
+          nat20,
+        });
+        attackEvent.ambushHp = ctx.pit.hp;
+      } else if (ctx.type === 'boss-minion') {
+        ctx.minion.hp = Math.max(0, ctx.minion.hp - hitDamage);
+        events.push({
+          type: 'boss-minion-hit',
+          minionHp: ctx.minion.hp,
+          minionMaxHp: ctx.minion.maxHp,
+          player: player.name,
+          minionName: config.name,
+          damage: hitDamage,
+          nat20,
+          spaceNum: ctx.spaceNum,
+        });
+        attackEvent.minionHp = ctx.minion.hp;
+      } else {
+        this.bossHp = Math.max(0, this.bossHp - hitDamage);
+        events.push({
+          type: 'boss-hit',
+          bossHp: this.bossHp,
+          bossMaxHp: this.bossMaxHp,
+          player: player.name,
+          bossName: config.name,
+          damage: hitDamage,
+          nat20,
+        });
+        attackEvent.bossHp = this.bossHp;
+      }
+    }
+
+    const enemyDefeated = ctx.type === 'ambush'
+      ? ctx.pit.hp <= 0
+      : ctx.type === 'boss-minion'
+        ? ctx.minion.hp <= 0
+        : this.bossHp <= 0;
+
+    return {
+      events,
+      playerHit,
+      playerNat1: isNat1,
+      nat20,
+      nat1: isNat1,
+      enemyDefeated,
+      skipEnemyPhase: enemyDefeated,
+      enemyHp: ctx.type === 'ambush'
+        ? ctx.pit.hp
+        : ctx.type === 'boss-minion'
+          ? ctx.minion.hp
+          : this.bossHp,
+      enemyMaxHp: ctx.type === 'ambush'
+        ? ctx.pit.maxHp
+        : ctx.type === 'boss-minion'
+          ? ctx.minion.maxHp
+          : this.bossMaxHp,
+    };
+  }
+
+  rollCombatEnemyAttack(ctx) {
+    const config = ctx?.config;
+    const attackBonus = config?.attackBonus ?? 3;
+    const roll = Math.floor(Math.random() * 20) + 1;
+    return {
+      roll,
+      total: roll + attackBonus,
+      attackBonus,
+      nat20: roll === 20,
+      nat1: roll === 1,
+    };
+  }
+
+  resolveCombatEnemyAttack(ctx, options = {}) {
+    const player = this.currentPlayer;
+    if (!player || !ctx?.config) {
+      return {
+        events: [],
+        triggerSpecial: false,
+        died: false,
+        effectiveHit: false,
+        enemyNat20: false,
+        enemyNat1: false,
+      };
+    }
+
+    const { hit = false, enemyRoll = {}, playerNat1 = false } = options;
+    const config = ctx.config;
+    const prefix = ctx.type === 'ambush' ? 'ambush' : ctx.type === 'boss-minion' ? 'boss-minion' : 'boss';
+    const events = [];
+    const enemyNat20 = enemyRoll.nat20 ?? enemyRoll.roll === 20;
+    const enemyNat1 = enemyRoll.nat1 ?? enemyRoll.roll === 1;
+    const effectiveHit = enemyNat1 ? false : (enemyNat20 ? true : hit);
+
+    const attackEvent = {
+      type: `${prefix}-enemy-attack`,
+      roll: enemyRoll.roll ?? null,
+      total: enemyRoll.total ?? null,
+      attackBonus: enemyRoll.attackBonus ?? config.attackBonus ?? 3,
+      hit: effectiveHit,
+      nat20: enemyNat20,
+      nat1: enemyNat1,
+      player: player.name,
+    };
+
+    if (ctx.type === 'ambush') {
+      attackEvent.ambushName = config.name;
+      attackEvent.spaceNum = ctx.spaceNum;
+    } else if (ctx.type === 'boss-minion') {
+      attackEvent.minionName = config.name;
+      attackEvent.spaceNum = ctx.spaceNum;
+    } else {
+      attackEvent.bossName = config.name;
+    }
+
+    events.push(attackEvent);
+
+    let triggerSpecial = false;
+    const multiplier = ctx.type === 'ambush'
+      ? (ctx.pit.dmgPerHit ?? 1)
+      : (this.bossDmgPerHit ?? 1);
+
+    if (enemyNat1) {
+      const selfDamage = Math.max(1, Math.ceil((config.dmg ?? 1) * multiplier));
+      attackEvent.selfDamage = selfDamage;
+
+      if (ctx.type === 'ambush') {
+        ctx.pit.hp = Math.max(0, ctx.pit.hp - selfDamage);
+        attackEvent.ambushHp = ctx.pit.hp;
+      } else if (ctx.type === 'boss-minion') {
+        ctx.minion.hp = Math.max(0, ctx.minion.hp - selfDamage);
+        attackEvent.minionHp = ctx.minion.hp;
+      } else {
+        this.bossHp = Math.max(0, this.bossHp - selfDamage);
+        attackEvent.bossHp = this.bossHp;
+      }
+    } else if (effectiveHit) {
+      let damage = Math.ceil((config.dmg ?? 1) * multiplier);
+      if (enemyNat20) {
+        damage *= 2;
+      }
+      if (playerNat1) {
+        damage += 1;
+        events.push({ type: 'nat1', player: player.name });
+      }
+      for (let i = 0; i < damage; i += 1) {
+        events.push(...this.mutateHp(player, -1));
+      }
+      attackEvent.damage = damage;
+      attackEvent.playerHp = player.hp;
+
+      if (ctx.type === 'boss' && config.specialAttack && Math.random() < 0.25) {
+        triggerSpecial = true;
+      }
+    }
+
+    return {
+      events,
+      triggerSpecial,
+      died: events.some((e) => e.type === 'death'),
+      effectiveHit,
+      enemyNat20,
+      enemyNat1,
+      selfDamage: attackEvent.selfDamage ?? 0,
+      damage: attackEvent.damage ?? 0,
+    };
+  }
+
+  resolveCombatSpecialSave(ctx, saveRoll) {
+    const player = this.currentPlayer;
+    const special = ctx?.config?.specialAttack;
+    if (!player || !special) {
+      return { events: [], success: false, died: false };
+    }
+
+    const success = saveRoll != null && saveRoll >= special.dc;
+    const damage = success ? special.dmgSuccess : special.dmgFail;
+    const events = [{
+      type: 'boss-special-save',
+      roll: saveRoll ?? null,
+      dc: special.dc,
+      saveAbility: special.saveAbility,
+      name: special.name,
+      success,
+      damage,
+      player: player.name,
+      bossName: ctx.config.name,
+    }];
+
+    for (let i = 0; i < damage; i += 1) {
+      events.push(...this.mutateHp(player, -1));
+    }
+
+    return {
+      events,
+      success,
+      died: events.some((e) => e.type === 'death'),
+    };
+  }
+
+  finalizeCombatRound(ctx, pendingEvents = [], options = {}) {
+    const player = this.currentPlayer;
+    const events = [...pendingEvents];
+    if (!player || !ctx) {
+      return { events, passTurn: !this.gameOver, winner: null };
+    }
+
+    const config = ctx.config;
+    let winner = null;
+
+    if (ctx.type === 'ambush') {
+      const { pit, spaceNum } = ctx;
+      const ambushDefeated = pit.hp <= 0;
+      const died = events.some((e) => e.type === 'death');
+
+      if (ambushDefeated) {
+        const freedNames = pit.playerIds
+          .map((id) => this.players.find((p) => p.id === id)?.name)
+          .filter(Boolean);
+        const wasMysteryAmbush = options.wasMysteryAmbush
+          ?? this.revealedSpaces[spaceNum]?.type === 'ambush';
+        if (this.revealedSpaces[spaceNum]?.jackpot) {
+          this.grantDmgBonus(player, events);
+        }
+        events.push({
+          type: 'ambush-end',
+          success: true,
+          ambushName: config.name,
+          player: player.name,
+          freedPlayers: freedNames,
+          spaceNum,
+        });
+        this.clearPitAt(spaceNum);
+        if (wasMysteryAmbush) {
+          this.resetMysterySpace(spaceNum, events);
+        }
+      } else if (died) {
+        this.removePlayerFromPit(player, spaceNum);
+        const pitContinues = (this.getPitAt(spaceNum)?.playerIds.length ?? 0) > 0;
+        events.push({
+          type: 'ambush-end',
+          success: false,
+          ambushName: config.name,
+          player: player.name,
+          spaceNum,
+          pitContinues,
+        });
+      }
+
+      if (!this.gameOver) {
+        events.push({ type: 'pass-turn', player: player.name });
+      }
+
+      return {
+        events,
+        passTurn: !this.gameOver,
+        winner: null,
+        ambushHp: ambushDefeated ? 0 : pit.hp,
+        ambushMaxHp: pit.maxHp,
+        ambushEnded: ambushDefeated || died,
+        retreatedTo: null,
+      };
+    }
+
+    if (ctx.type === 'boss-minion') {
+      const { minion } = ctx;
+      const minionDefeated = minion.hp <= 0;
+      const died = events.some((e) => e.type === 'death');
+
+      if (minionDefeated) {
+        events.push({
+          type: 'boss-minion-end',
+          success: true,
+          minionName: config.name,
+          player: player.name,
+          spaceNum: ctx.spaceNum,
+          minionsRemaining: this.bossMinions.filter((m) => m.hp > 0).length,
+        });
+      }
+
+      const skipRetreat = died;
+      if (!skipRetreat) {
+        const from = player.position;
+        player.position = BOSS_RETREAT_SPACE;
+        events.push({
+          type: 'boss-retreat',
+          player: player.name,
+          from,
+          to: BOSS_RETREAT_SPACE,
+        });
+      }
+
+      if (!this.gameOver) {
+        events.push({ type: 'pass-turn', player: player.name });
+      }
+
+      return {
+        events,
+        passTurn: !this.gameOver,
+        winner: null,
+        minionHp: minionDefeated ? 0 : minion.hp,
+        minionMaxHp: minion.maxHp,
+        minionEnded: minionDefeated,
+        retreatedTo: skipRetreat ? null : BOSS_RETREAT_SPACE,
+      };
+    }
+
+    if (this.bossHp <= 0) {
+      this.bossActive = false;
+      this.bossHp = 0;
+      this.bossMinions = [];
+      events.push({ type: 'boss-defeated', bossName: config.name });
+      winner = this.checkWinAfterBoss();
+      if (winner) {
+        events.push({ type: 'finish', player: winner.name });
+      }
+    }
+
+    const died = events.some((e) => e.type === 'death');
+    const skipRetreat = died || (winner && winner.id === player.id);
+
+    if (!skipRetreat) {
+      const from = player.position;
+      player.position = BOSS_RETREAT_SPACE;
+      events.push({
+        type: 'boss-retreat',
+        player: player.name,
+        from,
+        to: BOSS_RETREAT_SPACE,
+      });
+    }
+
+    if (!winner) {
+      events.push({ type: 'pass-turn', player: player.name });
+    }
+
+    return {
+      events,
+      passTurn: !winner,
+      winner,
+      bossHp: this.bossHp,
+      bossMaxHp: this.bossMaxHp,
+      retreatedTo: skipRetreat ? null : BOSS_RETREAT_SPACE,
     };
   }
 
@@ -1064,356 +1506,6 @@ class Game {
       mysterySpaceNum: chain.mysterySpaceNum ?? null,
       eventConfig: chain.eventConfig ?? null,
       pathConfig: chain.pathConfig ?? null,
-    };
-  }
-
-  resolveAmbushRoll(roll, options = {}) {
-    const player = this.currentPlayer;
-    const pitView = this.getPlayerPit(player);
-    const spaceNum = player?.position;
-    const pit = spaceNum != null ? this.getPitAt(spaceNum) : null;
-
-    if (!player || !pitView || !pit) {
-      return {
-        events: [],
-        passTurn: true,
-        success: false,
-        effectiveDc: null,
-      };
-    }
-
-    const config = pit.config;
-    const { nat20 = false, nat1 = false } = options;
-    const dcModApplied = player.nextDcMod ?? 0;
-    player.nextDcMod = 0;
-
-    const effectiveDc = getEffectiveDc(player, config.dc, this.difficultyLevel, dcModApplied);
-    const isNat1 = !nat20 && nat1;
-    const success = !isNat1 && (nat20 || (roll != null && roll >= effectiveDc));
-
-    const events = [{
-      type: 'ambush-d20',
-      roll: roll ?? null,
-      dc: config.dc,
-      effectiveDc,
-      dcBonus: getDcBonus(player),
-      dcMod: dcModApplied,
-      ability: config.ability,
-      success,
-      nat20,
-      nat1: isNat1,
-      player: player.name,
-      ambushName: config.name,
-      ambushHp: pit.hp,
-      playerHp: player.hp,
-      spaceNum,
-    }];
-
-    if (success) {
-      const dmgBonus = player.dmgBonus ?? 0;
-      const hitDamage = nat20 ? 2 + dmgBonus : 1 + dmgBonus;
-      pit.hp = Math.max(0, pit.hp - hitDamage);
-      if (nat20) {
-        events.push({ type: 'nat20', player: player.name });
-      }
-      events.push({
-        type: 'ambush-hit',
-        ambushHp: pit.hp,
-        ambushMaxHp: pit.maxHp,
-        player: player.name,
-        ambushName: config.name,
-        playerHp: player.hp,
-        spaceNum,
-        damage: hitDamage,
-        nat20,
-      });
-    } else {
-      const failHits = Math.ceil(pit.dmgPerHit ?? 1);
-      for (let i = 0; i < failHits; i += 1) {
-        events.push(...this.mutateHp(player, -1));
-      }
-      if (isNat1) {
-        events.push({ type: 'nat1', player: player.name });
-        events.push(...this.mutateHp(player, -1));
-      }
-    }
-
-    const d20Event = events.find((e) => e.type === 'ambush-d20');
-    d20Event.ambushHp = pit.hp;
-    d20Event.playerHp = player.hp;
-
-    const died = events.some((e) => e.type === 'death');
-    const ambushDefeated = pit.hp <= 0;
-
-    if (ambushDefeated) {
-      const freedNames = pit.playerIds
-        .map((id) => this.players.find((p) => p.id === id)?.name)
-        .filter(Boolean);
-      const wasMysteryAmbush = this.revealedSpaces[spaceNum]?.type === 'ambush';
-      if (this.revealedSpaces[spaceNum]?.jackpot) {
-        this.grantDmgBonus(player, events);
-      }
-      events.push({
-        type: 'ambush-end',
-        success: true,
-        ambushName: config.name,
-        player: player.name,
-        freedPlayers: freedNames,
-        spaceNum,
-      });
-      this.clearPitAt(spaceNum);
-      if (wasMysteryAmbush) {
-        this.resetMysterySpace(spaceNum, events);
-      }
-    } else if (died) {
-      this.removePlayerFromPit(player, spaceNum);
-      const pitContinues = (this.getPitAt(spaceNum)?.playerIds.length ?? 0) > 0;
-      events.push({
-        type: 'ambush-end',
-        success: false,
-        ambushName: config.name,
-        player: player.name,
-        spaceNum,
-        pitContinues,
-      });
-    }
-
-    if (!this.gameOver) {
-      events.push({ type: 'pass-turn', player: player.name });
-    }
-
-    return {
-      events,
-      passTurn: !this.gameOver,
-      success,
-      effectiveDc,
-      nat20,
-      nat1: isNat1,
-      ambushHp: ambushDefeated ? 0 : pit.hp,
-      ambushMaxHp: pit.maxHp,
-      ambushEnded: ambushDefeated || died,
-    };
-  }
-
-  resolveBossMinionRoll(roll, options = {}) {
-    const minion = this.getActiveBossMinion();
-    const config = minion?.config;
-    const player = this.currentPlayer;
-
-    if (!player || !minion || !config || !isOnBossArena(player.position)) {
-      return {
-        events: [],
-        passTurn: true,
-        success: false,
-        effectiveDc: null,
-      };
-    }
-
-    const { nat20 = false, nat1 = false } = options;
-    const dcModApplied = player.nextDcMod ?? 0;
-    player.nextDcMod = 0;
-
-    const effectiveDc = getEffectiveDc(player, config.dc, this.difficultyLevel, dcModApplied);
-    const isNat1 = !nat20 && nat1;
-    const success = !isNat1 && (nat20 || (roll != null && roll >= effectiveDc));
-
-    const events = [{
-      type: 'boss-minion-d20',
-      roll: roll ?? null,
-      dc: config.dc,
-      effectiveDc,
-      dcBonus: getDcBonus(player),
-      dcMod: dcModApplied,
-      ability: config.ability,
-      success,
-      nat20,
-      nat1: isNat1,
-      player: player.name,
-      minionName: config.name,
-      minionHp: minion.hp,
-      spaceNum: player.position,
-    }];
-
-    if (success) {
-      const dmgBonus = player.dmgBonus ?? 0;
-      const hitDamage = nat20 ? 2 + dmgBonus : 1 + dmgBonus;
-      minion.hp = Math.max(0, minion.hp - hitDamage);
-      if (nat20) {
-        events.push({ type: 'nat20', player: player.name });
-      }
-      events.push({
-        type: 'boss-minion-hit',
-        minionHp: minion.hp,
-        minionMaxHp: minion.maxHp,
-        player: player.name,
-        minionName: config.name,
-        damage: hitDamage,
-        nat20,
-        spaceNum: player.position,
-      });
-    } else {
-      const failHits = Math.ceil(this.bossDmgPerHit ?? 1);
-      for (let i = 0; i < failHits; i += 1) {
-        events.push(...this.mutateHp(player, -1));
-      }
-      if (isNat1) {
-        events.push({ type: 'nat1', player: player.name });
-        events.push(...this.mutateHp(player, -1));
-      }
-    }
-
-    const d20Event = events.find((e) => e.type === 'boss-minion-d20');
-    d20Event.minionHp = minion.hp;
-
-    const died = events.some((e) => e.type === 'death');
-    const minionDefeated = minion.hp <= 0;
-
-    if (minionDefeated) {
-      events.push({
-        type: 'boss-minion-end',
-        success: true,
-        minionName: config.name,
-        player: player.name,
-        spaceNum: player.position,
-        minionsRemaining: this.bossMinions.filter((m) => m.hp > 0).length,
-      });
-    }
-
-    const skipRetreat = died;
-    if (!skipRetreat) {
-      const from = player.position;
-      player.position = BOSS_RETREAT_SPACE;
-      events.push({
-        type: 'boss-retreat',
-        player: player.name,
-        from,
-        to: BOSS_RETREAT_SPACE,
-      });
-    }
-
-    if (!this.gameOver) {
-      events.push({ type: 'pass-turn', player: player.name });
-    }
-
-    return {
-      events,
-      passTurn: !this.gameOver,
-      success,
-      effectiveDc,
-      nat20,
-      nat1: isNat1,
-      minionHp: minionDefeated ? 0 : minion.hp,
-      minionMaxHp: minion.maxHp,
-      minionEnded: minionDefeated,
-      retreatedTo: skipRetreat ? null : BOSS_RETREAT_SPACE,
-    };
-  }
-
-  resolveBoss(roll, options = {}) {
-    const config = this.bossConfig;
-    if (!this.bossActive || !config || !this.currentPlayer || this.hasBossMinions()) {
-      return {
-        events: [],
-        winner: null,
-        passTurn: true,
-        success: false,
-        effectiveDc: null,
-      };
-    }
-
-    const { nat20 = false, nat1 = false } = options;
-    const player = this.currentPlayer;
-    const dcModApplied = player.nextDcMod ?? 0;
-    player.nextDcMod = 0;
-
-    const effectiveDc = getEffectiveDc(player, config.dc, this.difficultyLevel, dcModApplied);
-    const isNat1 = !nat20 && nat1;
-    const success = !isNat1 && (nat20 || (roll != null && roll >= effectiveDc));
-
-    const events = [{
-      type: 'boss-d20',
-      roll: roll ?? null,
-      dc: config.dc,
-      effectiveDc,
-      dcBonus: getDcBonus(player),
-      dcMod: dcModApplied,
-      ability: config.ability,
-      success,
-      nat20,
-      nat1: isNat1,
-      player: player.name,
-      bossName: config.name,
-    }];
-
-    let winner = null;
-
-    if (success) {
-      const dmgBonus = player.dmgBonus ?? 0;
-      const hitDamage = nat20 ? 2 + dmgBonus : 1 + dmgBonus;
-      this.bossHp = Math.max(0, this.bossHp - hitDamage);
-      if (nat20) {
-        events.push({ type: 'nat20', player: player.name });
-      }
-      events.push({
-        type: 'boss-hit',
-        bossHp: this.bossHp,
-        bossMaxHp: this.bossMaxHp,
-        player: player.name,
-        bossName: config.name,
-        damage: hitDamage,
-        nat20,
-      });
-    } else {
-      const failHits = Math.ceil(this.bossDmgPerHit ?? 1);
-      for (let i = 0; i < failHits; i += 1) {
-        events.push(...this.mutateHp(player, -1));
-      }
-      if (isNat1) {
-        events.push({ type: 'nat1', player: player.name });
-        events.push(...this.mutateHp(player, -1));
-      }
-    }
-
-    if (this.bossHp <= 0) {
-      this.bossActive = false;
-      this.bossHp = 0;
-      this.bossMinions = [];
-      events.push({ type: 'boss-defeated', bossName: config.name });
-      winner = this.checkWinAfterBoss();
-      if (winner) {
-        events.push({ type: 'finish', player: winner.name });
-      }
-    }
-
-    const died = events.some((e) => e.type === 'death');
-    const skipRetreat = died || (winner && winner.id === player.id);
-
-    if (!skipRetreat) {
-      const from = player.position;
-      player.position = BOSS_RETREAT_SPACE;
-      events.push({
-        type: 'boss-retreat',
-        player: player.name,
-        from,
-        to: BOSS_RETREAT_SPACE,
-      });
-    }
-
-    if (!winner) {
-      events.push({ type: 'pass-turn', player: player.name });
-    }
-
-    return {
-      events,
-      winner,
-      passTurn: !winner,
-      success,
-      effectiveDc,
-      nat20,
-      nat1: isNat1,
-      bossHp: this.bossHp,
-      bossMaxHp: this.bossMaxHp,
-      retreatedTo: skipRetreat ? null : BOSS_RETREAT_SPACE,
     };
   }
 

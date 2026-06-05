@@ -60,7 +60,27 @@ const els = {
   eventNat1: document.getElementById('event-nat1'),
   eventSubmit: document.getElementById('event-submit'),
   eventResult: document.getElementById('event-result'),
+  eventCombatAction: document.getElementById('event-combat-action'),
   eventClose: document.getElementById('event-close'),
+  eventCheckLabel: document.getElementById('event-check-label'),
+  eventDcWrap: document.getElementById('event-dc-wrap'),
+  eventDcLabel: document.getElementById('event-dc-label'),
+  eventEnemyAtk: document.getElementById('event-enemy-atk'),
+  eventRollLabel: document.getElementById('event-roll-label'),
+  eventCombatAdjudicate: document.getElementById('event-combat-adjudicate'),
+  eventCombatAdjudicateLabel: document.getElementById('event-combat-adjudicate-label'),
+  eventCombatHit: document.getElementById('event-combat-hit'),
+  eventCombatMiss: document.getElementById('event-combat-miss'),
+  eventEnemyRoll: document.getElementById('event-enemy-roll'),
+  eventEnemyRollLabel: document.getElementById('event-enemy-roll-label'),
+  eventEnemyRollDisplay: document.getElementById('event-enemy-roll-display'),
+  eventEnemyHit: document.getElementById('event-enemy-hit'),
+  eventEnemyMiss: document.getElementById('event-enemy-miss'),
+  eventSpecialSave: document.getElementById('event-special-save'),
+  eventSpecialSaveTitle: document.getElementById('event-special-save-title'),
+  eventSpecialSaveFlavor: document.getElementById('event-special-save-flavor'),
+  eventSpecialSaveInput: document.getElementById('event-special-save-input'),
+  eventSpecialSaveSubmit: document.getElementById('event-special-save-submit'),
   winModal: document.getElementById('win-modal'),
   winTitle: document.getElementById('win-title'),
   winText: document.getElementById('win-text'),
@@ -884,6 +904,7 @@ function getDeathFromEvents(events) {
 }
 
 function setEventResultClass(success, events) {
+  els.eventResult.classList.remove('hidden');
   if (hasDeathInEvents(events)) {
     els.eventResult.className = 'event-card__result event-card__result--death';
     return;
@@ -1360,6 +1381,20 @@ function describeEvents(events) {
           'special',
         );
         break;
+      case 'boss-minion-player-attack': {
+        const nat = ev.nat20 ? ' · Kritiek succes!' : ev.nat1 ? ' · Kritiek mislukking!' : '';
+        addLog(
+          `👹 ${ev.player} vs ${ev.minionName}: aanval ${ev.roll ?? '—'} vs AC ${ev.effectiveAc ?? ev.ac} — ${ev.hit ? 'Hit!' : 'Miss!'}${nat}`,
+          ev.hit ? 'success' : 'fail',
+        );
+        break;
+      }
+      case 'boss-minion-enemy-attack':
+        addLog(
+          `👹 ${ev.minionName} aanvalt ${ev.player}: ${ev.roll ?? '—'}+${ev.attackBonus ?? '?'}=${ev.total ?? '—'} To hit — ${formatEnemyAttackLogEffect(ev)}`,
+          ev.hit ? 'fail' : (ev.nat1 ? 'success' : 'special'),
+        );
+        break;
       case 'boss-minion-d20': {
         const nat = ev.nat20 ? ' · Kritiek succes!' : ev.nat1 ? ' · Kritiek mislukking!' : '';
         addLog(
@@ -1384,6 +1419,26 @@ function describeEvents(events) {
         addLog(
           `De schat is bereikbaar, maar ${ev.name ?? 'de eindbaas'} blokkeert de overwinning!`,
           'warn',
+        );
+        break;
+      case 'boss-player-attack': {
+        const nat = ev.nat20 ? ' · Kritiek succes!' : ev.nat1 ? ' · Kritiek mislukking!' : '';
+        addLog(
+          `⚔️ ${ev.player} vs ${ev.bossName}: aanval ${ev.roll ?? '—'} vs AC ${ev.effectiveAc ?? ev.ac} — ${ev.hit ? 'Hit!' : 'Miss!'}${nat}`,
+          ev.hit ? 'success' : 'fail',
+        );
+        break;
+      }
+      case 'boss-enemy-attack':
+        addLog(
+          `⚔️ ${ev.bossName} aanvalt ${ev.player}: ${ev.roll ?? '—'}+${ev.attackBonus ?? '?'}=${ev.total ?? '—'} To hit — ${formatEnemyAttackLogEffect(ev)}`,
+          ev.hit ? 'fail' : (ev.nat1 ? 'success' : 'special'),
+        );
+        break;
+      case 'boss-special-save':
+        addLog(
+          `⚡ ${ev.name} op ${ev.player}: ${ev.saveAbility} ${ev.roll ?? '—'} vs DC ${ev.dc} — ${ev.success ? `geslaagd (−${ev.damage} HP)` : `mislukt (−${ev.damage} HP)`}`,
+          ev.success ? 'warn' : 'fail',
         );
         break;
       case 'boss-d20': {
@@ -1425,6 +1480,20 @@ function describeEvents(events) {
         addLog(
           `🕳️ ${ev.player} valt bij ${ev.name} in de put op vak ${ev.spaceNum} (${ev.ambushHp} HP)${ev.allies?.length ? ` — al aanwezig: ${ev.allies.join(', ')}` : ''}`,
           'warn',
+        );
+        break;
+      case 'ambush-player-attack': {
+        const nat = ev.nat20 ? ' · Kritiek succes!' : ev.nat1 ? ' · Kritiek mislukking!' : '';
+        addLog(
+          `Ambush ${ev.ambushName}: ${ev.player} aanval ${ev.roll ?? '—'} vs AC ${ev.effectiveAc ?? ev.ac} — ${ev.hit ? 'Hit!' : 'Miss!'}${nat}`,
+          ev.hit ? 'success' : 'fail',
+        );
+        break;
+      }
+      case 'ambush-enemy-attack':
+        addLog(
+          `Ambush ${ev.ambushName} aanvalt ${ev.player}: ${ev.roll ?? '—'}+${ev.attackBonus ?? '?'}=${ev.total ?? '—'} To hit — ${formatEnemyAttackLogEffect(ev)}`,
+          ev.hit ? 'fail' : (ev.nat1 ? 'success' : 'special'),
         );
         break;
       case 'ambush-d20': {
@@ -1524,11 +1593,23 @@ let activeEvent = null;
 let activeBoss = null;
 let activeBossMinion = null;
 let activeAmbush = null;
+let activeCombatActionHandler = null;
 let activeMystery = null;
 let activeBossReveal = null;
 let syncedActiveModal = null;
 let pathModalCallback = null;
 let pathModalSpaceNum = null;
+
+function formatEnemyAttackLogEffect(ev) {
+  if (ev.nat1 && ev.selfDamage) {
+    return `Kritiek mislukking — vijand raakt zichzelf (−${ev.selfDamage} HP)`;
+  }
+  if (ev.hit) {
+    const crit = ev.nat20 ? 'Kritiek treffer' : 'Hit';
+    return `${crit} (−${ev.damage ?? 1} HP)`;
+  }
+  return 'Miss';
+}
 
 function serializeModalConfig(config) {
   if (!config) return null;
@@ -1539,6 +1620,11 @@ function serializeModalConfig(config) {
   };
   if (config.ability != null) out.ability = config.ability;
   if (config.dc != null) out.dc = config.dc;
+  if (config.attackBonus != null) out.attackBonus = config.attackBonus;
+  if (config.dmg != null) out.dmg = config.dmg;
+  if (config.specialAttack) {
+    out.specialAttack = { ...config.specialAttack };
+  }
   if (config.successText != null) out.successText = config.successText;
   if (config.failText != null) out.failText = config.failText;
   if (config.revealType != null) out.revealType = config.revealType;
@@ -1575,6 +1661,734 @@ function resetEventModalHostControls() {
   els.eventModal.classList.remove('event-modal--spectator');
   els.eventClose.classList.remove('is-hidden');
   els.eventSubmit.classList.remove('is-hidden');
+  els.eventCombatAction?.classList.add('hidden');
+  activeCombatActionHandler = null;
+}
+
+function createCombatFlowState(onComplete, combatConfig = null, spaceNum = null) {
+  const wasMysteryAmbush = spaceNum != null && game.revealedSpaces[spaceNum]?.type === 'ambush';
+  return {
+    onComplete,
+    combatConfig,
+    spaceNum,
+    wasMysteryAmbush,
+    phase: 'player-roll',
+    pendingEvents: [],
+    eventsAppliedCount: 0,
+    roll: null,
+    nat20: false,
+    nat1: false,
+    playerHit: null,
+    enemyRoll: null,
+    enemyHit: null,
+    playerNat1: false,
+    triggerSpecial: false,
+    submitted: false,
+  };
+}
+
+function getCombatFlowType() {
+  if (activeAmbush) return 'ambush';
+  if (activeBossMinion) return 'boss-minion';
+  if (activeBoss) return 'boss';
+  return null;
+}
+
+function getActiveCombatFlow() {
+  return activeAmbush || activeBossMinion || activeBoss;
+}
+
+function getCombatConfig() {
+  const type = getCombatFlowType();
+  const flow = getActiveCombatFlow();
+  const ambushPit = () => game.getPitAt(flow?.spaceNum ?? game.currentPlayer?.position);
+
+  if (type === 'ambush') {
+    return game.getCurrentPlayerPit()?.config
+      ?? ambushPit()?.config
+      ?? flow?.combatConfig
+      ?? null;
+  }
+  if (type === 'boss-minion') {
+    return game.getActiveBossMinion()?.config ?? flow?.combatConfig ?? null;
+  }
+  if (type === 'boss') return game.bossConfig ?? flow?.combatConfig ?? null;
+  return flow?.combatConfig ?? null;
+}
+
+function getCombatSpaceNum() {
+  const flow = getActiveCombatFlow();
+  if (flow?.spaceNum != null) return flow.spaceNum;
+  const type = getCombatFlowType();
+  if (type === 'boss') return game.currentPlayer?.position ?? null;
+  return game.currentPlayer?.position ?? null;
+}
+
+function resetCombatModalPhases() {
+  els.eventCombatAdjudicate?.classList.add('hidden');
+  els.eventEnemyRoll?.classList.add('hidden');
+  els.eventSpecialSave?.classList.add('hidden');
+  els.eventCombatAction?.classList.add('hidden');
+  activeCombatActionHandler = null;
+  els.eventRollArea?.classList.remove('is-hidden');
+  els.eventNat20?.closest('.event-card__nat-crits')?.classList.remove('is-hidden');
+  els.eventCombatHit?.removeAttribute('disabled');
+  els.eventCombatMiss?.removeAttribute('disabled');
+  els.eventEnemyHit?.removeAttribute('disabled');
+  els.eventEnemyMiss?.removeAttribute('disabled');
+  if (els.eventSpecialSaveInput) els.eventSpecialSaveInput.disabled = false;
+  if (els.eventSpecialSaveSubmit) {
+    els.eventSpecialSaveSubmit.disabled = false;
+    els.eventSpecialSaveSubmit.classList.remove('is-hidden');
+  }
+}
+
+function setCombatFooter(mode, label, onClick) {
+  els.eventCombatAction?.classList.add('hidden');
+  if (mode === 'action') {
+    els.eventClose.classList.remove('hidden');
+    els.eventClose.disabled = false;
+    els.eventClose.textContent = label;
+    activeCombatActionHandler = onClick;
+    requestAnimationFrame(() => {
+      els.eventClose.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+    });
+  } else if (mode === 'close') {
+    activeCombatActionHandler = null;
+    els.eventClose.classList.remove('hidden');
+  } else {
+    activeCombatActionHandler = null;
+    els.eventClose.classList.add('hidden');
+    els.eventClose.disabled = true;
+  }
+}
+
+async function applyNewCombatEvents(flow, events) {
+  if (!events?.length) return;
+  await applyCombatEvents(events);
+  flow.eventsAppliedCount = (flow.eventsAppliedCount ?? 0) + events.length;
+}
+
+function refreshCombatModalFighterHp() {
+  const player = game.currentPlayer;
+  const wrap = els.eventCheck.querySelector('.event-card__combat-fighter-wrap');
+  if (!wrap || !player) return;
+  const hpSpan = wrap.querySelector('.ambush-modal__fighter-hp-num');
+  const hearts = wrap.querySelector('.ambush-modal__fighter-hearts');
+  if (hpSpan) hpSpan.textContent = `${player.hp} / ${player.maxHp} HP`;
+  if (hearts) hearts.innerHTML = formatPlayerHp(player);
+}
+
+function refreshCombatModalHpBars() {
+  const type = getCombatFlowType();
+  const flow = getActiveCombatFlow();
+  els.eventCheck.querySelector('.event-card__boss-hp')?.remove();
+  if (type === 'ambush') {
+    const pit = game.getPitAt(flow?.spaceNum ?? game.currentPlayer?.position);
+    if (pit) els.eventCheck.insertAdjacentHTML('beforeend', ambushHpBarHtml(pit));
+  } else if (type === 'boss-minion') {
+    const minion = game.getActiveBossMinion();
+    if (minion) els.eventCheck.insertAdjacentHTML('beforeend', bossMinionHpBarHtml(minion));
+  } else if (type === 'boss') {
+    els.eventCheck.insertAdjacentHTML('beforeend', bossHpBarHtml());
+  }
+  refreshCombatModalFighterHp();
+}
+
+function buildEnemyRollDisplay(enemyRoll) {
+  const bonus = enemyRoll.attackBonus ?? 3;
+  let suffix = '';
+  if (enemyRoll.nat20) suffix = ' — Kritiek treffer!';
+  if (enemyRoll.nat1) suffix = ' — Kritiek mislukking!';
+  return `${enemyRoll.roll} + ${bonus} = ${enemyRoll.total} To hit${suffix}`;
+}
+
+function buildPlayerOutcomeHtml(flow, playerResult, config) {
+  const player = game.currentPlayer;
+  const rollLabel = buildCombatRollLabel(flow.roll, flow.nat20, flow.nat1);
+  const acDisplay = formatAcDisplay(config.dc, player);
+  const dmgBonus = player?.dmgBonus ?? 0;
+  const type = getCombatFlowType();
+  let effect = '';
+
+  if (playerResult.playerHit) {
+    const playerDmg = flow.nat20 ? 2 + dmgBonus : 1 + dmgBonus;
+    if (type === 'ambush') {
+      effect = `Treffer! Vijand verliest ${playerDmg} HP — nog ${playerResult.enemyHp ?? 0} / ${playerResult.enemyMaxHp ?? '?'}`;
+    } else if (type === 'boss-minion') {
+      effect = `Treffer! Beschermer verliest ${playerDmg} HP — nog ${playerResult.enemyHp ?? 0} / ${playerResult.enemyMaxHp ?? '?'}`;
+    } else {
+      effect = `Treffer! Eindbaas verliest ${playerDmg} schade — nog ${playerResult.enemyHp ?? 0} / ${playerResult.enemyMaxHp ?? '?'}`;
+    }
+  } else {
+    effect = 'Mis! Geen schade aan de vijand.';
+  }
+
+  const hpHtml = buildResultHpHtml(playerResult.events, player);
+  return `
+    <div class="result-roll">🎲 ${rollLabel}</div>
+    <div class="result-vs">vs AC ${acDisplay}</div>
+    <p class="result-effect">${effect}</p>
+    ${hpHtml}
+  `;
+}
+
+function buildEnemyOutcomeHtml(flow, enemyResult, config) {
+  const player = game.currentPlayer;
+  const enemyRoll = flow.enemyRoll;
+  const bonus = enemyRoll?.attackBonus ?? config?.attackBonus ?? 3;
+  const rollLine = enemyRoll
+    ? `${enemyRoll.roll} + ${bonus} = ${enemyRoll.total} To hit`
+    : '—';
+  let effect = '';
+
+  if (enemyResult.enemyNat1) {
+    effect = `Kritiek mislukking! Vijand raakt zichzelf (−${enemyResult.selfDamage ?? 1} HP)`;
+  } else if (enemyResult.effectiveHit) {
+    const crit = enemyResult.enemyNat20 ? 'Kritiek treffer' : 'Hit';
+    effect = `${crit}! Jij verliest ${enemyResult.damage ?? 1} HP`;
+  } else {
+    effect = 'Miss! Geen schade voor jou.';
+  }
+
+  const hpHtml = buildResultHpHtml(enemyResult.events, player);
+  return `
+    <div class="result-roll">🎲 ${rollLine}${enemyRoll?.nat20 ? ' — Kritiek treffer!' : enemyRoll?.nat1 ? ' — Kritiek mislukking!' : ''}</div>
+    <p class="result-effect">${effect}</p>
+    ${hpHtml}
+  `;
+}
+
+function syncCombatOutcomePhase(type, config, spaceNum, combatPhase, outcome) {
+  syncCombatModalPhase(type, config, spaceNum, combatPhase, {
+    outcome: { ...outcome, actionLabel: outcome.actionLabel ?? null },
+  });
+}
+
+function setEventCheckForNormal(config, player) {
+  if (els.eventCheckLabel) els.eventCheckLabel.textContent = 'Ability Check';
+  els.eventAbility?.classList.remove('hidden');
+  els.eventAbility.textContent = config.ability;
+  if (els.eventDcLabel) els.eventDcLabel.textContent = 'DC';
+  if (els.eventDcWrap) {
+    els.eventDcWrap.classList.remove('hidden');
+    els.eventDc.textContent = formatDcDisplay(config.dc, player);
+  }
+  els.eventEnemyAtk?.classList.add('hidden');
+  if (els.eventRollLabel) els.eventRollLabel.textContent = 'Totale worp';
+}
+
+function formatAcDisplay(baseAc, player) {
+  return formatDcDisplay(baseAc, player);
+}
+
+function setEventCheckForCombat(config, player) {
+  if (els.eventCheckLabel) els.eventCheckLabel.textContent = 'Aanvalsworp';
+  els.eventAbility?.classList.add('hidden');
+  if (els.eventDcLabel) els.eventDcLabel.textContent = 'AC';
+  if (els.eventDcWrap) {
+    els.eventDcWrap.classList.remove('hidden');
+    els.eventDc.textContent = formatAcDisplay(config.dc, player);
+  }
+  els.eventEnemyAtk?.classList.add('hidden');
+  if (els.eventRollLabel) els.eventRollLabel.textContent = 'Aanvalsworp totaal';
+}
+
+function syncCombatModalPhase(type, config, spaceNum, combatPhase, extra = {}) {
+  const isOutcomePhase = combatPhase === 'outcome'
+    || combatPhase === 'player-outcome'
+    || combatPhase === 'enemy-outcome';
+  setSyncedActiveModal({
+    type,
+    phase: isOutcomePhase ? 'outcome' : 'input',
+    combatPhase,
+    spaceNum: spaceNum ?? null,
+    config: serializeModalConfig(config),
+    submitLabel: extra.submitLabel || 'Bevestigen',
+    enemyRoll: extra.enemyRoll ?? null,
+    specialAttack: extra.specialAttack ?? null,
+    outcome: extra.outcome ?? null,
+  });
+}
+
+function showEnemyRollPhase(enemyRoll, config) {
+  els.eventCombatAdjudicate.classList.add('hidden');
+  const bonus = enemyRoll.attackBonus ?? config?.attackBonus ?? 3;
+  if (els.eventEnemyRollLabel) {
+    els.eventEnemyRollLabel.textContent = `Vijand-aanval (+${bonus} to hit)`;
+  }
+  els.eventEnemyRollDisplay.textContent = buildEnemyRollDisplay(enemyRoll);
+  els.eventEnemyRoll.classList.remove('hidden');
+  if (enemyRoll.nat20 || enemyRoll.nat1) {
+    els.eventEnemyHit?.setAttribute('disabled', 'disabled');
+    els.eventEnemyMiss?.setAttribute('disabled', 'disabled');
+  } else {
+    els.eventEnemyHit?.removeAttribute('disabled');
+    els.eventEnemyMiss?.removeAttribute('disabled');
+  }
+}
+
+function showSpecialSavePhase(config) {
+  els.eventEnemyRoll.classList.add('hidden');
+  const special = config.specialAttack;
+  els.eventSpecialSaveTitle.textContent = `⚡ ${special?.name ?? 'Special attack'}!`;
+  els.eventSpecialSaveFlavor.textContent =
+    `${special?.saveAbility ?? 'Save'} save vs DC ${special?.dc ?? '?'} — slagen = ${special?.dmgSuccess ?? 1} HP, falen = ${special?.dmgFail ?? 2} HP`;
+  els.eventSpecialSaveInput.value = '';
+  els.eventSpecialSave.classList.remove('hidden');
+  setTimeout(() => els.eventSpecialSaveInput?.focus(), 100);
+}
+
+async function applyCombatEvents(events) {
+  describeEvents(events);
+  await syncTokensAfterEvents(events);
+  renderBoard();
+  playMysteryResetFromEvents(events);
+  renderPlayers();
+  updateCombatRail();
+}
+
+function buildCombatRollLabel(roll, nat20, nat1) {
+  if (nat20) {
+    return roll != null ? `${roll} — Kritiek succes!` : 'Kritiek succes!';
+  }
+  if (nat1) {
+    return roll != null ? `${roll} — Kritiek mislukking!` : 'Kritiek mislukking!';
+  }
+  return String(roll ?? '—');
+}
+
+function buildCombatOutcomeHtml(flow, config, finalResult) {
+  const player = game.currentPlayer;
+  const playerHit = flow.playerHit;
+  const dmgBonus = player?.dmgBonus ?? 0;
+  const type = getCombatFlowType();
+
+  let effectParts = [];
+
+  if (playerHit) {
+    const playerDmg = flow.nat20 ? 2 + dmgBonus : 1 + dmgBonus;
+    if (type === 'ambush') {
+      effectParts.push(`Treffer! Vijand verliest ${playerDmg} HP — nog ${finalResult.ambushHp ?? 0} / ${finalResult.ambushMaxHp ?? '?'}`);
+    } else if (type === 'boss-minion') {
+      effectParts.push(`Treffer! Beschermer verliest ${playerDmg} HP — nog ${finalResult.minionHp ?? 0} / ${finalResult.minionMaxHp ?? '?'}`);
+    } else {
+      effectParts.push(`Treffer! Eindbaas verliest ${playerDmg} schade — nog ${game.bossHp} / ${game.bossMaxHp}`);
+    }
+  } else {
+    effectParts.push('Mis! Geen schade aan de vijand.');
+  }
+
+  if (flow.enemyRoll && !finalResult.skipEnemySummary) {
+    let enemyLine;
+    if (flow.enemyRoll.nat1) {
+      enemyLine = `Vijand-aanval (${flow.enemyRoll.roll}+${flow.enemyRoll.attackBonus}=${flow.enemyRoll.total}): Kritiek mislukking — self dmg`;
+    } else if (flow.enemyHit) {
+      const crit = flow.enemyRoll.nat20 ? 'Kritiek treffer' : 'Hit';
+      enemyLine = `Vijand-aanval (${flow.enemyRoll.roll}+${flow.enemyRoll.attackBonus}=${flow.enemyRoll.total}): ${crit}`;
+    } else {
+      enemyLine = `Vijand-aanval (${flow.enemyRoll.roll}+${flow.enemyRoll.attackBonus}=${flow.enemyRoll.total}): Miss`;
+    }
+    effectParts.push(enemyLine);
+  }
+
+  if (flow.specialSaveResult) {
+    const sr = flow.specialSaveResult;
+    effectParts.push(
+      sr.success
+        ? `${config.specialAttack?.name ?? 'Special attack'}: geslaagd — ${sr.damage ?? config.specialAttack?.dmgSuccess ?? 1} HP`
+        : `${config.specialAttack?.name ?? 'Special attack'}: mislukt — ${sr.damage ?? config.specialAttack?.dmgFail ?? 2} HP`,
+    );
+  }
+
+  if (hasDeathInEvents(finalResult.events)) {
+    if (type === 'ambush' && finalResult.ambushEnded) {
+      effectParts.push('Uitgevallen — terug naar start · de put gaat verder voor de anderen');
+    } else {
+      effectParts.push('Uitgevallen — terug naar start');
+    }
+  } else if (type === 'ambush' && finalResult.ambushEnded && playerHit) {
+    effectParts.push('De put is opgeheven — je mag weer dobbelstenen op dit vak!');
+  } else if (type === 'boss-minion' && finalResult.minionEnded) {
+    effectParts.push(
+      game.hasBossMinions()
+        ? 'Beschermer verslagen — nog een te gaan!'
+        : 'Alle beschermers weg — tijd voor de eindbaas!',
+    );
+  } else if (type === 'boss' && finalResult.winner) {
+    effectParts.push('De schat is vrij!');
+  } else if (type === 'boss' && !game.bossActive) {
+    effectParts.push('De eindbaas is verslagen! Wie op vak 63 staat wint — anders loop naar de schat.');
+  } else if (finalResult.retreatedTo != null) {
+    effectParts.push(`Terug naar vak ${finalResult.retreatedTo}`);
+  }
+
+  const hpHtml = buildResultHpHtml(finalResult.events, player);
+  return `
+    <p class="result-effect">${effectParts.join(' · ')}</p>
+    ${hpHtml}
+  `;
+}
+
+async function finishCombatRound(flow) {
+  const type = getCombatFlowType();
+  const config = getCombatConfig() ?? flow.combatConfig;
+  const spaceNum = flow?.spaceNum ?? getCombatSpaceNum();
+  const ctx = game.buildCombatContext(type, { allowDefeated: true });
+  if (!ctx || !config) {
+    console.error('finishCombatRound: geen combat context', { type, config, ctx });
+    setCombatFooter('action', 'Samenvatting →', () => finishCombatRound(flow));
+    return;
+  }
+
+  const applied = flow.eventsAppliedCount ?? 0;
+  const finalResult = game.finalizeCombatRound(ctx, flow.pendingEvents, {
+    wasMysteryAmbush: flow.wasMysteryAmbush,
+  });
+  flow.pendingEvents = finalResult.events;
+  const newEvents = finalResult.events.slice(applied);
+  await applyNewCombatEvents(flow, newEvents);
+
+  els.eventCombatAdjudicate.classList.add('hidden');
+  els.eventEnemyRoll.classList.add('hidden');
+  els.eventSpecialSave.classList.add('hidden');
+  els.eventRollArea.classList.add('is-hidden');
+  els.eventCheck.classList.add('is-hidden');
+  els.eventCombatAction.classList.add('hidden');
+  activeCombatActionHandler = null;
+
+  const success = flow.playerHit;
+  els.eventTitle.textContent = 'Samenvatting';
+  els.eventTitle.className = 'event-card__title';
+  els.eventFlavor.textContent = success ? (config.successText || '') : (config.failText || '');
+  els.eventFlavor.className = `event-card__flavor event-card__flavor--outcome event-card__flavor--${success ? 'success' : 'fail'}`;
+
+  els.eventResult.classList.remove('hidden');
+  setEventResultClass(success, finalResult.events);
+  els.eventResult.innerHTML = buildCombatOutcomeHtml(flow, config, finalResult);
+
+  const modalType = type;
+  syncModalOutcome(modalType, spaceNum, config, {
+    headerMode: 'outcome',
+    success,
+    title: els.eventTitle.textContent,
+    titleClass: els.eventTitle.className,
+    flavor: els.eventFlavor.textContent,
+    flavorClass: els.eventFlavor.className,
+    resultClassName: els.eventResult.className,
+    resultHtml: els.eventResult.innerHTML,
+  });
+  window.syncAfterAction?.();
+
+  flow.phase = 'outcome';
+  flow.submitted = true;
+
+  els.eventResult.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+
+  if (type === 'ambush') {
+    finishAmbushFlow({
+      handler: () => {
+        finishAmbushFight(flow.onComplete);
+        advanceTurn();
+      },
+    });
+  } else if (type === 'boss-minion') {
+    finishBossMinionFlow({
+      handler: () => {
+        closeEventModal();
+        flow.onComplete?.();
+        advanceTurn();
+      },
+    });
+  } else {
+    updateBossPanel();
+    finishBossFlow({
+      handler: () => endBossTurn(flow.onComplete, finalResult.winner),
+    });
+  }
+}
+
+async function showPlayerAttackOutcome(flow, playerResult, config) {
+  const type = getCombatFlowType();
+  const spaceNum = getCombatSpaceNum();
+
+  flow.pendingEvents.push(...playerResult.events);
+  flow.playerHit = playerResult.playerHit;
+  flow.playerNat1 = playerResult.playerNat1;
+  flow.nat20 = playerResult.nat20;
+  flow.nat1 = playerResult.nat1;
+
+  await applyNewCombatEvents(flow, playerResult.events);
+  refreshCombatModalHpBars();
+
+  els.eventRollArea.classList.add('is-hidden');
+  els.eventCheck.classList.add('is-hidden');
+  els.eventCombatAdjudicate.classList.add('hidden');
+  els.eventEnemyRoll.classList.add('hidden');
+
+  const success = playerResult.playerHit;
+  els.eventTitle.textContent = success ? 'Treffer!' : 'Mis!';
+  els.eventTitle.className = `event-card__title event-card__title--${success ? 'success' : 'fail'}`;
+  els.eventFlavor.textContent = success ? (config.successText || '') : (config.failText || '');
+  els.eventFlavor.className = `event-card__flavor event-card__flavor--outcome event-card__flavor--${success ? 'success' : 'fail'}`;
+
+  els.eventResult.classList.remove('hidden');
+  setEventResultClass(success, playerResult.events);
+  els.eventResult.innerHTML = buildPlayerOutcomeHtml(flow, playerResult, config);
+
+  flow.phase = 'player-outcome';
+  syncCombatOutcomePhase(type, config, spaceNum, 'player-outcome', {
+    headerMode: 'outcome',
+    success,
+    title: els.eventTitle.textContent,
+    titleClass: els.eventTitle.className,
+    flavor: els.eventFlavor.textContent,
+    flavorClass: els.eventFlavor.className,
+    resultClassName: els.eventResult.className,
+    resultHtml: els.eventResult.innerHTML,
+    actionLabel: playerResult.skipEnemyPhase ? 'Samenvatting →' : 'Vijand aanvalt →',
+  });
+
+  if (playerResult.skipEnemyPhase) {
+    setCombatFooter('action', 'Samenvatting →', () => finishCombatRound(flow));
+  } else {
+    setCombatFooter('action', 'Vijand aanvalt →', () => startEnemyAttackPhase(flow));
+  }
+}
+
+async function startEnemyAttackPhase(flow) {
+  const type = getCombatFlowType();
+  const config = getCombatConfig();
+  const spaceNum = getCombatSpaceNum();
+  const ctx = game.buildCombatContext(type);
+  if (!ctx || !config) return;
+
+  els.eventCombatAction.classList.add('hidden');
+  activeCombatActionHandler = null;
+  els.eventResult.classList.add('hidden');
+  els.eventTitle.textContent = config.name;
+  els.eventTitle.className = 'event-card__title';
+  els.eventFlavor.textContent = config.flavor;
+  els.eventFlavor.className = 'event-card__flavor';
+
+  flow.enemyRoll = game.rollCombatEnemyAttack(ctx);
+
+  if (flow.enemyRoll.nat20 || flow.enemyRoll.nat1) {
+    flow.enemyHit = flow.enemyRoll.nat20;
+    await resolveAndShowEnemyOutcome(flow);
+    return;
+  }
+
+  flow.phase = 'enemy-hit';
+  showEnemyRollPhase(flow.enemyRoll, config);
+  els.eventResult.classList.remove('hidden');
+  els.eventResult.innerHTML = '<p class="spectator-wait">Host: hit of miss?</p>';
+  setCombatFooter('none');
+  syncCombatModalPhase(type, config, spaceNum, 'enemy-hit', {
+    enemyRoll: flow.enemyRoll,
+  });
+}
+
+async function resolveAndShowEnemyOutcome(flow) {
+  const ctx = game.buildCombatContext(getCombatFlowType());
+  if (!ctx) return;
+
+  els.eventEnemyRoll.classList.add('hidden');
+
+  let enemyResult;
+  try {
+    enemyResult = game.resolveCombatEnemyAttack(ctx, {
+      hit: flow.enemyHit,
+      enemyRoll: flow.enemyRoll,
+      playerNat1: flow.playerNat1,
+    });
+  } catch (err) {
+    console.error(err);
+    return;
+  }
+
+  flow.enemyHit = enemyResult.effectiveHit;
+  flow.pendingEvents.push(...enemyResult.events);
+  await showEnemyAttackOutcome(flow, enemyResult);
+}
+
+async function showEnemyAttackOutcome(flow, enemyResult) {
+  const type = getCombatFlowType();
+  const config = getCombatConfig();
+  const spaceNum = getCombatSpaceNum();
+
+  await applyNewCombatEvents(flow, enemyResult.events);
+  refreshCombatModalHpBars();
+
+  els.eventEnemyRoll.classList.add('hidden');
+  els.eventCombatAdjudicate.classList.add('hidden');
+
+  let title;
+  let titleClass;
+  let success;
+  if (enemyResult.enemyNat1) {
+    title = 'Kritiek mislukking!';
+    titleClass = 'event-card__title event-card__title--success';
+    success = true;
+  } else if (enemyResult.effectiveHit) {
+    title = enemyResult.enemyNat20 ? 'Kritiek treffer!' : 'Vijand raakt!';
+    titleClass = 'event-card__title event-card__title--fail';
+    success = false;
+  } else {
+    title = 'Vijand mist!';
+    titleClass = 'event-card__title event-card__title--success';
+    success = true;
+  }
+
+  els.eventTitle.textContent = title;
+  els.eventTitle.className = titleClass;
+  els.eventFlavor.textContent = '';
+  els.eventFlavor.className = 'event-card__flavor';
+
+  els.eventResult.classList.remove('hidden');
+  setEventResultClass(success, enemyResult.events);
+  els.eventResult.innerHTML = buildEnemyOutcomeHtml(flow, enemyResult, config);
+
+  flow.phase = 'enemy-outcome';
+  const actionLabel = enemyResult.triggerSpecial && config?.specialAttack
+    ? `${config.specialAttack.name} →`
+    : 'Samenvatting →';
+  if (enemyResult.triggerSpecial && config?.specialAttack) {
+    flow.triggerSpecial = true;
+  }
+  syncCombatOutcomePhase(type, config, spaceNum, 'enemy-outcome', {
+    headerMode: 'outcome',
+    success,
+    title,
+    titleClass,
+    flavor: '',
+    flavorClass: 'event-card__flavor',
+    resultClassName: els.eventResult.className,
+    resultHtml: els.eventResult.innerHTML,
+    actionLabel,
+  });
+  setCombatFooter('action', actionLabel, () => {
+    if (enemyResult.triggerSpecial && config?.specialAttack) {
+      beginSpecialSavePhase(flow, config);
+    } else {
+      finishCombatRound(flow);
+    }
+  });
+}
+
+function beginSpecialSavePhase(flow, config) {
+  const type = getCombatFlowType();
+  const spaceNum = getCombatSpaceNum();
+
+  els.eventCombatAction.classList.add('hidden');
+  activeCombatActionHandler = null;
+  els.eventResult.classList.add('hidden');
+  els.eventTitle.textContent = config.name;
+  els.eventTitle.className = 'event-card__title';
+  els.eventFlavor.textContent = config.flavor;
+  els.eventFlavor.className = 'event-card__flavor';
+
+  flow.phase = 'special-save';
+  showSpecialSavePhase(config);
+  setCombatFooter('none');
+  syncCombatModalPhase(type, config, spaceNum, 'special-save', {
+    specialAttack: config.specialAttack,
+    enemyRoll: flow.enemyRoll,
+  });
+}
+
+async function proceedAfterPlayerAttack(flow, playerResult) {
+  const config = getCombatConfig() ?? flow.combatConfig;
+  if (!config) {
+    console.error('proceedAfterPlayerAttack: geen combat config');
+    return;
+  }
+  await showPlayerAttackOutcome(flow, playerResult, config);
+}
+
+async function handleCombatPlayerSubmit() {
+  const flow = getActiveCombatFlow();
+  const type = getCombatFlowType();
+  const config = getCombatConfig();
+  const spaceNum = getCombatSpaceNum();
+  if (!flow || flow.phase !== 'player-roll') return;
+
+  const nat20 = els.eventNat20.checked;
+  const nat1 = els.eventNat1.checked;
+  const roll = parseCheckTotal(els.eventDiceInput.value);
+
+  if (roll === null && !nat20 && !nat1) {
+    els.eventResult.classList.remove('hidden');
+    els.eventResult.className = 'event-card__result event-card__result--fail';
+    els.eventResult.innerHTML =
+      '<strong>Ongeldige worp</strong><p>Vul een worp in, of kies Kritiek succes / Kritiek mislukking.</p>';
+    return;
+  }
+
+  flow.roll = roll;
+  flow.nat20 = nat20;
+  flow.nat1 = nat1;
+
+  els.eventDiceInput.disabled = true;
+  els.eventNat20.disabled = true;
+  els.eventNat1.disabled = true;
+  els.eventSubmit.disabled = true;
+  els.eventResult.classList.add('hidden');
+
+  const ctx = game.buildCombatContext(type);
+  if (!ctx) return;
+
+  let playerResult;
+  try {
+    playerResult = game.resolveCombatPlayerAttack(ctx, roll, { nat20, nat1 });
+  } catch (err) {
+    console.error(err);
+    return;
+  }
+
+  await proceedAfterPlayerAttack(flow, playerResult);
+}
+
+async function handleCombatEnemyHit(hit) {
+  const flow = getActiveCombatFlow();
+  if (!flow || flow.phase !== 'enemy-hit') return;
+
+  if (flow.enemyRoll?.nat20 || flow.enemyRoll?.nat1) return;
+
+  flow.enemyHit = hit;
+  await resolveAndShowEnemyOutcome(flow);
+}
+
+async function handleCombatSpecialSaveSubmit() {
+  const flow = getActiveCombatFlow();
+  const type = getCombatFlowType();
+  if (!flow || flow.phase !== 'special-save') return;
+
+  const saveRoll = parseCheckTotal(els.eventSpecialSaveInput.value);
+  if (saveRoll === null) {
+    els.eventResult.classList.remove('hidden');
+    els.eventResult.className = 'event-card__result event-card__result--fail';
+    els.eventResult.innerHTML = '<strong>Ongeldige worp</strong><p>Vul je saving throw totaal in.</p>';
+    return;
+  }
+
+  const ctx = game.buildCombatContext(type);
+  if (!ctx) return;
+
+  els.eventSpecialSave.classList.add('hidden');
+
+  let saveResult;
+  try {
+    saveResult = game.resolveCombatSpecialSave(ctx, saveRoll);
+  } catch (err) {
+    console.error(err);
+    return;
+  }
+
+  flow.pendingEvents.push(...saveResult.events);
+  flow.specialSaveResult = saveResult;
+  await applyNewCombatEvents(flow, saveResult.events);
+  await finishCombatRound(flow);
 }
 
 function syncModalInput(type, config, spaceNum, options = {}) {
@@ -1633,8 +2447,7 @@ function populateSpectatorCombatModal(type, config, spaceNum) {
       els.eventFlavor.textContent = config.flavor;
       els.eventFlavor.className = 'event-card__flavor';
       els.eventCheck.insertAdjacentHTML('afterbegin', ambushFighterPanelHtml(player, pit));
-      els.eventAbility.textContent = config.ability;
-      els.eventDc.textContent = formatDcDisplay(config.dc, player);
+      setEventCheckForCombat(config, player);
       els.eventCheck.insertAdjacentHTML('beforeend', ambushHpBarHtml());
     }
   } else if (type === 'boss-minion') {
@@ -1651,8 +2464,7 @@ function populateSpectatorCombatModal(type, config, spaceNum) {
     els.eventTitle.className = 'event-card__title';
     els.eventFlavor.textContent = config.flavor;
     els.eventFlavor.className = 'event-card__flavor';
-    els.eventAbility.textContent = config.ability;
-    els.eventDc.textContent = formatDcDisplay(config.dc, player);
+    setEventCheckForCombat(config, player);
   } else if (type === 'boss') {
     if (player) {
       els.eventCard?.classList.add('event-card--boss');
@@ -1665,8 +2477,7 @@ function populateSpectatorCombatModal(type, config, spaceNum) {
     els.eventTitle.className = 'event-card__title';
     els.eventFlavor.textContent = config.flavor;
     els.eventFlavor.className = 'event-card__flavor';
-    els.eventAbility.textContent = config.ability;
-    els.eventDc.textContent = formatDcDisplay(config.dc, player);
+    setEventCheckForCombat(config, player);
     els.eventCheck.insertAdjacentHTML('beforeend', bossHpBarHtml());
   } else {
     els.eventIcon.textContent = config.icon || '🎲';
@@ -1778,16 +2589,41 @@ function renderSpectatorModal(activeModal) {
 
   populateSpectatorCombatModal(type, config, spaceNum);
   els.eventModal.classList.add('event-modal--spectator');
+  resetCombatModalPhases();
   els.eventRollArea.classList.add('is-hidden');
   els.eventNat20.disabled = true;
   els.eventNat1.disabled = true;
   els.eventDiceInput.disabled = true;
 
+  const combatPhase = activeModal.combatPhase ?? 'player-roll';
+  const isCombat = type === 'ambush' || type === 'boss' || type === 'boss-minion';
+
   if (phase === 'input') {
     els.eventCheck.classList.remove('is-hidden');
     els.eventResult.classList.remove('hidden');
     els.eventResult.className = 'event-card__result';
-    els.eventResult.innerHTML = '<p class="spectator-wait">Host voert de check uit…</p>';
+    if (isCombat && combatPhase === 'enemy-hit' && activeModal.enemyRoll) {
+      const bonus = activeModal.enemyRoll.attackBonus ?? config.attackBonus ?? 3;
+      if (els.eventEnemyRollLabel) {
+        els.eventEnemyRollLabel.textContent = `Vijand-aanval (+${bonus} to hit)`;
+      }
+      els.eventEnemyRollDisplay.textContent = buildEnemyRollDisplay(activeModal.enemyRoll);
+      els.eventEnemyRoll.classList.remove('hidden');
+      els.eventResult.innerHTML = '<p class="spectator-wait">Host beslist hit of miss (vijand)…</p>';
+    } else if (isCombat && combatPhase === 'special-save') {
+      els.eventSpecialSave.classList.remove('hidden');
+      const special = activeModal.specialAttack ?? config.specialAttack;
+      els.eventSpecialSaveTitle.textContent = `⚡ ${special?.name ?? 'Special attack'}!`;
+      els.eventSpecialSaveFlavor.textContent =
+        `${special?.saveAbility ?? 'Save'} save vs DC ${special?.dc ?? '?'}`;
+      els.eventSpecialSaveInput.disabled = true;
+      els.eventSpecialSaveSubmit.classList.add('hidden');
+      els.eventResult.innerHTML = '<p class="spectator-wait">Speler rolt saving throw…</p>';
+    } else if (isCombat && combatPhase === 'player-hit') {
+      els.eventResult.innerHTML = '<p class="spectator-wait">Host beslist hit of miss (speler)…</p>';
+    } else {
+      els.eventResult.innerHTML = '<p class="spectator-wait">Host voert het gevecht uit…</p>';
+    }
   } else if (phase === 'outcome' && outcome) {
     if (outcome.headerMode === 'outcome') {
       showEventOutcomeInHeader(outcome.success, config);
@@ -1856,6 +2692,7 @@ function showEventOutcomeInHeader(success, config) {
 
 function populateEventModal(config, spaceNum) {
   resetEventModalHostControls();
+  resetCombatModalPhases();
   const player = game.currentPlayer;
   updateEventModalTurnPlayer();
 
@@ -1865,8 +2702,7 @@ function populateEventModal(config, spaceNum) {
   els.eventIcon.textContent = config.icon || '🎲';
   els.eventSpace.textContent = `Vak ${spaceNum ?? '?'}`;
   resetEventHeader(config);
-  els.eventAbility.textContent = config.ability;
-  els.eventDc.textContent = formatDcDisplay(config.dc, player);
+  setEventCheckForNormal(config, player);
   els.eventCheck.classList.remove('is-hidden');
 
   els.eventDiceInput.min = '1';
@@ -1879,9 +2715,10 @@ function populateEventModal(config, spaceNum) {
   els.eventNat1.disabled = false;
   els.eventResult.className = 'event-card__result hidden';
   els.eventRollArea.classList.remove('is-hidden');
-  els.eventClose.disabled = true;
+  setCombatFooter('none');
   els.eventClose.textContent = 'Doorgaan op avontuur';
   els.eventSubmit.disabled = false;
+  els.eventSubmit.classList.remove('is-hidden');
   els.eventSubmit.textContent = 'Bevestigen';
   els.eventDiceInput.disabled = false;
 }
@@ -1889,6 +2726,7 @@ function populateEventModal(config, spaceNum) {
 function closeEventModal() {
   els.eventModal.classList.add('hidden');
   syncModalScrollLock();
+  resetCombatModalPhases();
   activeEvent = null;
   activeBoss = null;
   activeBossMinion = null;
@@ -1925,9 +2763,9 @@ function populateBossModal() {
   els.eventTitle.className = 'event-card__title';
   els.eventFlavor.textContent = config.flavor;
   els.eventFlavor.className = 'event-card__flavor';
-  els.eventAbility.textContent = config.ability;
-  els.eventDc.textContent = formatDcDisplay(config.dc, player);
+  setEventCheckForCombat(config, player);
   els.eventCheck.classList.remove('is-hidden');
+  resetCombatModalPhases();
 
   els.eventDiceInput.min = '1';
   els.eventDiceInput.removeAttribute('max');
@@ -1938,9 +2776,10 @@ function populateBossModal() {
   els.eventNat1.disabled = false;
   els.eventResult.className = 'event-card__result hidden';
   els.eventRollArea.classList.remove('is-hidden');
-  els.eventClose.disabled = true;
+  setCombatFooter('none');
   els.eventClose.textContent = 'Doorgaan op avontuur';
   els.eventSubmit.disabled = false;
+  els.eventSubmit.classList.remove('is-hidden');
   els.eventSubmit.textContent = 'Aanvallen';
   els.eventDiceInput.disabled = false;
   els.eventDiceInput.value = '';
@@ -1950,8 +2789,9 @@ function populateBossModal() {
   els.eventCheck.insertAdjacentHTML('beforeend', bossHpBarHtml());
 }
 
-function ambushHpBarHtml() {
-  const pit = game.getCurrentPlayerPit();
+function ambushHpBarHtml(pitOverride) {
+  const pit = pitOverride
+    ?? game.getPitAt(getActiveCombatFlow()?.spaceNum ?? game.currentPlayer?.position);
   const max = pit?.maxHp || 1;
   const hp = pit?.hp ?? 0;
   const pct = Math.round((hp / max) * 100);
@@ -2064,9 +2904,9 @@ function populateAmbushModal() {
   removeAmbushModalExtras();
   els.eventCheck.insertAdjacentHTML('afterbegin', ambushFighterPanelHtml(player, pit));
 
-  els.eventAbility.textContent = config.ability;
-  els.eventDc.textContent = formatDcDisplay(config.dc, player);
+  setEventCheckForCombat(config, player);
   els.eventCheck.classList.remove('is-hidden');
+  resetCombatModalPhases();
 
   els.eventDiceInput.min = '1';
   els.eventDiceInput.removeAttribute('max');
@@ -2077,9 +2917,10 @@ function populateAmbushModal() {
   els.eventNat1.disabled = false;
   els.eventResult.className = 'event-card__result hidden';
   els.eventRollArea.classList.remove('is-hidden');
-  els.eventClose.disabled = true;
+  setCombatFooter('none');
   els.eventClose.textContent = 'Doorgaan op avontuur';
   els.eventSubmit.disabled = false;
+  els.eventSubmit.classList.remove('is-hidden');
   els.eventSubmit.textContent = 'Vechten';
   els.eventDiceInput.disabled = false;
   els.eventDiceInput.value = '';
@@ -2094,7 +2935,11 @@ function showAmbushModal(onComplete) {
     return;
   }
 
-  activeAmbush = { onComplete, submitted: false };
+  activeAmbush = createCombatFlowState(
+    onComplete,
+    game.getCurrentPlayerPit()?.config,
+    game.currentPlayer?.position,
+  );
   activeBoss = null;
   activeBossMinion = null;
   activeEvent = null;
@@ -2104,7 +2949,7 @@ function showAmbushModal(onComplete) {
   syncModalScrollLock();
   populateAmbushModal();
   updateAmbushPanel();
-  syncModalInput('ambush', game.getCurrentPlayerPit()?.config, game.currentPlayer?.position, {
+  syncCombatModalPhase('ambush', game.getCurrentPlayerPit()?.config, game.currentPlayer?.position, 'player-roll', {
     submitLabel: 'Vechten',
   });
   playModalCardEnter(els.eventModal, 'combat');
@@ -2133,9 +2978,9 @@ function populateBossMinionModal() {
   els.eventFlavor.className = 'event-card__flavor';
 
   els.eventCheck.insertAdjacentHTML('afterbegin', combatFighterPanelHtml(player, minionFighterNote(player)));
-  els.eventAbility.textContent = config.ability;
-  els.eventDc.textContent = formatDcDisplay(config.dc, player);
+  setEventCheckForCombat(config, player);
   els.eventCheck.classList.remove('is-hidden');
+  resetCombatModalPhases();
 
   els.eventDiceInput.min = '1';
   els.eventDiceInput.removeAttribute('max');
@@ -2146,9 +2991,10 @@ function populateBossMinionModal() {
   els.eventNat1.disabled = false;
   els.eventResult.className = 'event-card__result hidden';
   els.eventRollArea.classList.remove('is-hidden');
-  els.eventClose.disabled = true;
+  setCombatFooter('none');
   els.eventClose.textContent = 'Doorgaan op avontuur';
   els.eventSubmit.disabled = false;
+  els.eventSubmit.classList.remove('is-hidden');
   els.eventSubmit.textContent = 'Vechten';
   els.eventDiceInput.disabled = false;
   els.eventDiceInput.value = '';
@@ -2164,23 +3010,21 @@ function showBossMinionModal(onComplete) {
   }
 
   closeBossRevealModal();
-  activeBossMinion = { onComplete, submitted: false };
+  const minion = game.getActiveBossMinion();
+  const spaceNum = game.currentPlayer?.position;
+  activeBossMinion = createCombatFlowState(onComplete, minion.config, spaceNum);
   activeBoss = null;
   activeEvent = null;
   activeAmbush = null;
-
-  const minion = game.getActiveBossMinion();
-  const spaceNum = game.currentPlayer?.position;
 
   els.eventModal.classList.remove('hidden');
   els.eventModal.classList.remove('event-modal--spectator');
   syncModalScrollLock();
   populateBossMinionModal();
   updateBossPanel();
-  syncModalInput('boss-minion', {
-    ...serializeModalConfig(minion.config),
-    ambushHp: minion.maxHp,
-  }, spaceNum, { submitLabel: 'Vechten' });
+  syncCombatModalPhase('boss-minion', minion.config, spaceNum, 'player-roll', {
+    submitLabel: 'Vechten',
+  });
   playModalCardEnter(els.eventModal, 'combat');
 
   setTimeout(() => els.eventDiceInput.focus(), 100);
@@ -2201,7 +3045,11 @@ function showBossModal(onComplete) {
   }
 
   closeBossRevealModal();
-  activeBoss = { onComplete, submitted: false };
+  activeBoss = createCombatFlowState(
+    onComplete,
+    game.bossConfig,
+    game.currentPlayer?.position,
+  );
   activeBossMinion = null;
   activeEvent = null;
   activeAmbush = null;
@@ -2211,269 +3059,32 @@ function showBossModal(onComplete) {
   syncModalScrollLock();
   populateBossModal();
   updateBossPanel();
-  syncModalInput('boss', game.bossConfig, null, { submitLabel: 'Aanvallen' });
+  syncCombatModalPhase('boss', game.bossConfig, game.currentPlayer?.position, 'player-roll', {
+    submitLabel: 'Aanvallen',
+  });
   playModalCardEnter(els.eventModal, 'combat');
 
   setTimeout(() => els.eventDiceInput.focus(), 100);
 }
 
 function finishBossFlow(onClose) {
-  resetEventModalHostControls();
-  els.eventSubmit.disabled = true;
-  els.eventDiceInput.disabled = true;
-  els.eventNat20.disabled = true;
-  els.eventNat1.disabled = true;
-  els.eventClose.disabled = false;
-  els.eventClose.textContent = onClose?.chainLabel ?? 'Doorgaan op avontuur';
+  finishCombatHostControls(onClose);
   if (activeBoss) activeBoss.onClose = onClose?.handler;
-  els.eventClose.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
 }
 
 function finishBossMinionFlow(onClose) {
-  resetEventModalHostControls();
-  els.eventSubmit.disabled = true;
-  els.eventDiceInput.disabled = true;
-  els.eventNat20.disabled = true;
-  els.eventNat1.disabled = true;
-  els.eventClose.disabled = false;
-  els.eventClose.textContent = onClose?.chainLabel ?? 'Doorgaan op avontuur';
+  finishCombatHostControls(onClose);
   if (activeBossMinion) activeBossMinion.onClose = onClose?.handler;
-  els.eventClose.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
 }
 
 async function handleBossMinionSubmit() {
   if (!activeBossMinion || activeBossMinion.submitted || !game.getActiveBossMinion()) return;
-
-  const { onComplete } = activeBossMinion;
-  const player = game.currentPlayer;
-  const minion = game.getActiveBossMinion();
-  const config = minion?.config;
-  const spaceNum = player?.position;
-  if (!config || spaceNum == null) return;
-
-  const nat20 = els.eventNat20.checked;
-  const nat1 = els.eventNat1.checked;
-  const roll = parseCheckTotal(els.eventDiceInput.value);
-
-  if (roll === null && !nat20 && !nat1) {
-    els.eventResult.classList.remove('hidden');
-    els.eventResult.className = 'event-card__result event-card__result--fail';
-    els.eventResult.innerHTML =
-      '<strong>Ongeldige worp</strong><p>Vul een worp in, of kies Kritiek succes / Kritiek mislukking.</p>';
-    return;
-  }
-
-  activeBossMinion.submitted = true;
-
-  const effectiveDc = getEffectiveDc(player, config.dc);
-  const isNat1 = !nat20 && nat1;
-  const success = !isNat1 && (nat20 || (roll !== null && roll >= effectiveDc));
-  const rollLabel = nat20
-    ? (roll != null ? `${roll} — Kritiek succes!` : 'Kritiek succes!')
-    : isNat1
-      ? (roll != null ? `${roll} — Kritiek mislukking!` : 'Kritiek mislukking!')
-      : String(roll ?? '—');
-  const dcDisplay = formatDcDisplay(config.dc, player);
-  const failDmg = Math.ceil(game.bossDmgPerHit ?? 1);
-
-  let result;
-  try {
-    result = game.resolveBossMinionRoll(roll, { nat20, nat1 });
-    describeEvents(result.events);
-    await syncTokensAfterEvents(result.events);
-    renderBoard();
-    renderPlayers();
-    updateBossPanel();
-  } catch (err) {
-    console.error(err);
-    els.eventResult.className = 'event-card__result event-card__result--fail';
-    els.eventResult.innerHTML = '<p>Kon het gevecht niet verwerken.</p>';
-    syncModalOutcome('boss-minion', spaceNum, config, {
-      resultClassName: els.eventResult.className,
-      resultHtml: els.eventResult.innerHTML,
-    });
-    finishBossMinionFlow({
-      handler: () => {
-        closeEventModal();
-        onComplete?.();
-        advanceTurn();
-      },
-    });
-    return;
-  }
-
-  els.eventRollArea.classList.add('is-hidden');
-  els.eventCheck.classList.add('is-hidden');
-  els.eventTitle.textContent = success ? 'Treffer!' : 'Mis!';
-  els.eventTitle.className = `event-card__title event-card__title--${success ? 'success' : 'fail'}`;
-  els.eventFlavor.textContent = success ? (config.successText || '') : (config.failText || '');
-  els.eventFlavor.className = `event-card__flavor event-card__flavor--outcome event-card__flavor--${success ? 'success' : 'fail'}`;
-
-  let effectText = success
-    ? result.nat20
-      ? `Kritiek succes! Beschermer verliest ${2 + (player.dmgBonus ?? 0)} HP — nog ${result.minionHp} / ${result.minionMaxHp}`
-      : `Beschermer verliest ${1 + (player.dmgBonus ?? 0)} HP — nog ${result.minionHp} / ${result.minionMaxHp}`
-    : result.nat1
-      ? `Mislukt + kritieke mislukking — jij verliest ${failDmg + 1} HP`
-      : `Geen schade aan de beschermer · jij verliest ${failDmg} HP`;
-
-  if (hasDeathInEvents(result.events)) {
-    effectText = 'Uitgevallen — terug naar start';
-  } else if (result.minionEnded) {
-    effectText = success
-      ? (game.hasBossMinions()
-        ? 'Beschermer verslagen — nog een te gaan!'
-        : 'Alle beschermers weg — tijd voor de eindbaas!')
-      : effectText;
-  } else if (result.retreatedTo != null) {
-    effectText += ` · terug naar vak ${result.retreatedTo}`;
-  }
-
-  els.eventResult.classList.remove('hidden');
-  setEventResultClass(success, result.events);
-  const hpHtml = buildResultHpHtml(result.events, game.currentPlayer);
-
-  els.eventResult.innerHTML = `
-    <div class="result-roll">🎲 ${rollLabel}</div>
-    <div class="result-vs">vs DC ${dcDisplay}</div>
-    <p class="result-effect">${effectText}</p>
-    ${hpHtml}
-  `;
-
-  syncModalOutcome('boss-minion', spaceNum, {
-    ...serializeModalConfig(config),
-    ambushHp: result.minionMaxHp,
-  }, {
-    title: els.eventTitle.textContent,
-    titleClass: els.eventTitle.className,
-    flavor: els.eventFlavor.textContent,
-    flavorClass: els.eventFlavor.className,
-    resultClassName: els.eventResult.className,
-    resultHtml: els.eventResult.innerHTML,
-  });
-  window.syncAfterAction?.();
-
-  finishBossMinionFlow({
-    handler: () => {
-      closeEventModal();
-      onComplete?.();
-      advanceTurn();
-    },
-  });
+  await handleCombatPlayerSubmit();
 }
 
 async function handleAmbushSubmit() {
   if (!activeAmbush || activeAmbush.submitted || !game.isCurrentPlayerInAmbush()) return;
-
-  const { onComplete } = activeAmbush;
-  const player = game.currentPlayer;
-  const pit = game.getCurrentPlayerPit();
-  const config = pit?.config;
-  const spaceNum = player?.position;
-  if (!config || spaceNum == null) return;
-
-  const nat20 = els.eventNat20.checked;
-  const nat1 = els.eventNat1.checked;
-  const roll = parseCheckTotal(els.eventDiceInput.value);
-
-  if (roll === null && !nat20 && !nat1) {
-    els.eventResult.classList.remove('hidden');
-    els.eventResult.className = 'event-card__result event-card__result--fail';
-    els.eventResult.innerHTML =
-      '<strong>Ongeldige worp</strong><p>Vul een worp in, of kies Kritiek succes / Kritiek mislukking.</p>';
-    return;
-  }
-
-  activeAmbush.submitted = true;
-
-  const effectiveDc = getEffectiveDc(player, config.dc);
-  const isNat1 = !nat20 && nat1;
-  const success = !isNat1 && (nat20 || (roll !== null && roll >= effectiveDc));
-  const rollLabel = nat20
-    ? (roll != null ? `${roll} — Kritiek succes!` : 'Kritiek succes!')
-    : isNat1
-      ? (roll != null ? `${roll} — Kritiek mislukking!` : 'Kritiek mislukking!')
-      : String(roll ?? '—');
-  const dcDisplay = formatDcDisplay(config.dc, player);
-
-  let result;
-  try {
-    result = game.resolveAmbushRoll(roll, { nat20, nat1 });
-    describeEvents(result.events);
-    await syncTokensAfterEvents(result.events);
-    renderBoard();
-    playMysteryResetFromEvents(result.events);
-    renderPlayers();
-    updateAmbushPanel();
-  } catch (err) {
-    console.error(err);
-    els.eventResult.className = 'event-card__result event-card__result--fail';
-    els.eventResult.innerHTML = '<p>Kon de put niet verwerken.</p>';
-    syncModalOutcome('ambush', spaceNum, config, {
-      resultClassName: els.eventResult.className,
-      resultHtml: els.eventResult.innerHTML,
-    });
-    finishAmbushFlow({
-      handler: () => {
-        finishAmbushFight(onComplete);
-        advanceTurn();
-      },
-    });
-    return;
-  }
-
-  els.eventRollArea.classList.add('is-hidden');
-  els.eventCheck.classList.add('is-hidden');
-  els.eventTitle.textContent = success ? 'Treffer!' : 'Mis!';
-  els.eventTitle.className = `event-card__title event-card__title--${success ? 'success' : 'fail'}`;
-  els.eventFlavor.textContent = success ? (config.successText || '') : (config.failText || '');
-  els.eventFlavor.className = `event-card__flavor event-card__flavor--outcome event-card__flavor--${success ? 'success' : 'fail'}`;
-
-  let effectText = success
-    ? result.nat20
-      ? `Kritiek succes! Ambusher verliest 2 HP — nog ${result.ambushHp} / ${result.ambushMaxHp}`
-      : `Ambusher verliest 1 HP — nog ${result.ambushHp} / ${result.ambushMaxHp}`
-    : result.nat1
-      ? 'Mislukt + kritieke mislukking — jij verliest 2 HP'
-      : 'Geen schade aan de ambusher · jij verliest 1 HP';
-
-  if (hasDeathInEvents(result.events)) {
-    effectText = result.ambushEnded
-      ? 'Uitgevallen — terug naar start · de put gaat verder voor de anderen'
-      : 'Uitgevallen — terug naar start';
-  } else if (result.ambushEnded) {
-    effectText = success
-      ? 'De put is opgeheven — je mag weer dobbelstenen op dit vak!'
-      : 'Je valt uit — de put is voorbij · terug naar start';
-  }
-
-  els.eventResult.classList.remove('hidden');
-  setEventResultClass(success, result.events);
-  const hpHtml = buildResultHpHtml(result.events, game.currentPlayer);
-
-  els.eventResult.innerHTML = `
-    <div class="result-roll">🎲 ${rollLabel}</div>
-    <div class="result-vs">vs DC ${dcDisplay}</div>
-    <p class="result-effect">${effectText}</p>
-    ${hpHtml}
-  `;
-
-  syncModalOutcome('ambush', spaceNum, config, {
-    title: els.eventTitle.textContent,
-    titleClass: els.eventTitle.className,
-    flavor: els.eventFlavor.textContent,
-    flavorClass: els.eventFlavor.className,
-    resultClassName: els.eventResult.className,
-    resultHtml: els.eventResult.innerHTML,
-  });
-  window.syncAfterAction?.();
-
-  finishAmbushFlow({
-    handler: () => {
-      finishAmbushFight(onComplete);
-      advanceTurn();
-    },
-  });
+  await handleCombatPlayerSubmit();
 }
 
 /** Sluit put-modal van vorige speler; daarna advanceTurn opent zo nodig gevecht voor volgende speler in de put. */
@@ -2482,128 +3093,42 @@ function finishAmbushFight(onComplete) {
   onComplete?.();
 }
 
-function finishAmbushFlow(onClose) {
-  resetEventModalHostControls();
+function finishCombatHostControls(onClose) {
+  els.eventSubmit.classList.add('is-hidden');
   els.eventSubmit.disabled = true;
   els.eventDiceInput.disabled = true;
   els.eventNat20.disabled = true;
   els.eventNat1.disabled = true;
+  els.eventRollArea.classList.add('is-hidden');
+  els.eventCombatHit?.setAttribute('disabled', 'disabled');
+  els.eventCombatMiss?.setAttribute('disabled', 'disabled');
+  els.eventEnemyHit?.setAttribute('disabled', 'disabled');
+  els.eventEnemyMiss?.setAttribute('disabled', 'disabled');
+  if (els.eventSpecialSaveInput) els.eventSpecialSaveInput.disabled = true;
+  if (els.eventSpecialSaveSubmit) els.eventSpecialSaveSubmit.disabled = true;
+  els.eventCombatAction.classList.add('hidden');
+  activeCombatActionHandler = null;
+  els.eventClose.classList.remove('hidden');
   els.eventClose.disabled = false;
   els.eventClose.textContent = onClose?.chainLabel ?? 'Doorgaan op avontuur';
-  if (activeAmbush) activeAmbush.onClose = onClose?.handler;
   els.eventClose.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+}
+
+function finishAmbushFlow(onClose) {
+  finishCombatHostControls(onClose);
+  if (activeAmbush) activeAmbush.onClose = onClose?.handler;
 }
 
 async function handleBossSubmit() {
   if (!activeBoss || activeBoss.submitted || !game.bossActive) return;
-
-  const { onComplete } = activeBoss;
-  const player = game.currentPlayer;
-  const config = game.bossConfig;
-  const nat20 = els.eventNat20.checked;
-  const nat1 = els.eventNat1.checked;
-  const roll = parseCheckTotal(els.eventDiceInput.value);
-
-  if (roll === null && !nat20 && !nat1) {
-    els.eventResult.classList.remove('hidden');
-    els.eventResult.className = 'event-card__result event-card__result--fail';
-    els.eventResult.innerHTML =
-      '<strong>Ongeldige worp</strong><p>Vul een worp in, of kies Kritiek succes / Kritiek mislukking.</p>';
-    return;
-  }
-
-  activeBoss.submitted = true;
-
-  const effectiveDc = getEffectiveDc(player, config.dc);
-  const isNat1 = !nat20 && nat1;
-  const success = !isNat1 && (nat20 || (roll !== null && roll >= effectiveDc));
-  const rollLabel = nat20
-    ? (roll != null ? `${roll} — Kritiek succes!` : 'Kritiek succes!')
-    : isNat1
-      ? (roll != null ? `${roll} — Kritiek mislukking!` : 'Kritiek mislukking!')
-      : String(roll ?? '—');
-  const dcDisplay = formatDcDisplay(config.dc, player);
-
-  let result;
-  try {
-    result = game.resolveBoss(roll, { nat20, nat1 });
-    describeEvents(result.events);
-    await syncTokensAfterEvents(result.events);
-    renderPlayers();
-    updateBossPanel();
-    populateBossModal();
-  } catch (err) {
-    console.error(err);
-    els.eventResult.className = 'event-card__result event-card__result--fail';
-    els.eventResult.innerHTML = '<p>Kon de aanval niet verwerken.</p>';
-    syncModalOutcome('boss', null, config, {
-      title: els.eventTitle.textContent,
-      titleClass: els.eventTitle.className,
-      flavor: els.eventFlavor.textContent,
-      flavorClass: els.eventFlavor.className,
-      resultClassName: els.eventResult.className,
-      resultHtml: els.eventResult.innerHTML,
-    });
-    finishBossFlow({ handler: () => endBossTurn(onComplete) });
-    return;
-  }
-
-  els.eventRollArea.classList.add('is-hidden');
-  els.eventCheck.classList.add('is-hidden');
-  els.eventTitle.textContent = success ? 'Raak!' : 'Mis!';
-  els.eventTitle.className = `event-card__title event-card__title--${success ? 'success' : 'fail'}`;
-  els.eventFlavor.textContent = success ? (config.successText || '') : (config.failText || '');
-  els.eventFlavor.className = `event-card__flavor event-card__flavor--outcome event-card__flavor--${success ? 'success' : 'fail'}`;
-
-  let effectText = success
-    ? result.nat20
-      ? `Kritiek succes! De eindbaas verliest 2 schade — nog ${game.bossHp} / ${game.bossMaxHp}`
-      : `De eindbaas verliest 1 schade — nog ${game.bossHp} / ${game.bossMaxHp}`
-    : result.nat1
-      ? 'Mislukt + kritieke mislukking — jij verliest 2 HP'
-      : 'Geen schade aan de baas · jij verliest 1 HP';
-
-  if (result.winner) {
-    effectText += ' · De schat is vrij!';
-  } else if (!game.bossActive) {
-    effectText = 'De eindbaas is verslagen! Wie op vak 63 staat wint — anders loop naar de schat.';
-  } else if (result.retreatedTo != null) {
-    effectText += ` · terug naar vak ${result.retreatedTo} — loop opnieuw naar 62/63 om aan te vallen`;
-  }
-
-  if (hasDeathInEvents(result.events)) {
-    effectText = 'Uitgevallen — terug naar start';
-  }
-
-  const bossHpHtml = buildResultHpHtml(result.events, game.currentPlayer);
-
-  els.eventResult.classList.remove('hidden');
-  setEventResultClass(success, result.events);
-  els.eventResult.innerHTML = `
-    <div class="result-roll">🎲 ${rollLabel}</div>
-    <div class="result-vs">vs DC ${dcDisplay}</div>
-    <p class="result-effect">${effectText}</p>
-    ${bossHpHtml}
-  `;
-
-  syncModalOutcome('boss', null, config, {
-    title: els.eventTitle.textContent,
-    titleClass: els.eventTitle.className,
-    flavor: els.eventFlavor.textContent,
-    flavorClass: els.eventFlavor.className,
-    resultClassName: els.eventResult.className,
-    resultHtml: els.eventResult.innerHTML,
-  });
-
-  if (result.winner) {
-    finishBossFlow({ handler: () => showWinModal(result.winner) });
-    return;
-  }
-
-  finishBossFlow({ handler: () => endBossTurn(onComplete) });
+  await handleCombatPlayerSubmit();
 }
 
-function endBossTurn(onComplete) {
+function endBossTurn(onComplete, winner = null) {
+  if (winner) {
+    showWinModal(winner);
+    return;
+  }
   advanceTurn();
   onComplete?.();
 }
@@ -3333,10 +3858,43 @@ els.eventNat1.addEventListener('change', () => {
 });
 
 els.eventSubmit.addEventListener('click', handleEventSubmit);
+els.eventCombatAction?.addEventListener('click', async () => {
+  if (els.eventCombatAction.disabled) return;
+  const handler = activeCombatActionHandler;
+  if (!handler) return;
+  els.eventCombatAction.disabled = true;
+  activeCombatActionHandler = null;
+  try {
+    await handler();
+  } catch (err) {
+    console.error(err);
+    els.eventCombatAction.disabled = false;
+    activeCombatActionHandler = handler;
+  }
+});
+els.eventEnemyHit?.addEventListener('click', () => handleCombatEnemyHit(true));
+els.eventEnemyMiss?.addEventListener('click', () => handleCombatEnemyHit(false));
+els.eventSpecialSaveSubmit?.addEventListener('click', handleCombatSpecialSaveSubmit);
+els.eventSpecialSaveInput?.addEventListener('keydown', (e) => {
+  if (e.key === 'Enter') handleCombatSpecialSaveSubmit();
+});
 els.eventDiceInput.addEventListener('keydown', (e) => {
   if (e.key === 'Enter') handleEventSubmit();
 });
-els.eventClose.addEventListener('click', () => {
+els.eventClose.addEventListener('click', async () => {
+  if (activeCombatActionHandler) {
+    const handler = activeCombatActionHandler;
+    els.eventClose.disabled = true;
+    activeCombatActionHandler = null;
+    try {
+      await handler();
+    } catch (err) {
+      console.error(err);
+      activeCombatActionHandler = handler;
+      els.eventClose.disabled = false;
+    }
+    return;
+  }
   if (els.eventClose.disabled) return;
   const handler = activeAmbush?.onClose ?? activeBossMinion?.onClose ?? activeBoss?.onClose ?? activeEvent?.onClose;
   closeEventModal();

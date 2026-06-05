@@ -162,9 +162,10 @@
 
         <div class="event-card__check" id="event-check">
           <div class="check-badge">
-            <span class="check-badge__label">Ability Check</span>
+            <span class="check-badge__label" id="event-check-label">Ability Check</span>
             <span class="check-badge__ability" id="event-ability">Stealth</span>
-            <span class="check-badge__dc">DC <strong id="event-dc">10</strong></span>
+            <span class="check-badge__dc" id="event-dc-wrap"><span id="event-dc-label">DC</span> <strong id="event-dc">10</strong></span>
+            <span class="check-badge__enemy-atk hidden" id="event-enemy-atk"></span>
           </div>
         </div>
 
@@ -187,15 +188,46 @@
           </div>
           <div class="event-card__roll-entry">
             <label class="event-card__roll-field" for="event-dice-input">
-              <span class="event-card__roll-label">Totale worp</span>
+              <span class="event-card__roll-label" id="event-roll-label">Totale worp</span>
               <input type="number" id="event-dice-input" class="event-card__roll-value" min="1" placeholder="—" inputmode="numeric">
             </label>
             <button type="button" id="event-submit" class="btn btn--d20 btn--roll-submit">Bevestigen</button>
           </div>
         </div>
 
+        <div id="event-combat-adjudicate" class="event-card__combat-adjudicate hidden">
+          <p class="event-card__combat-adjudicate-label" id="event-combat-adjudicate-label">Host: hit of miss?</p>
+          <div class="event-card__combat-adjudicate-btns">
+            <button type="button" id="event-combat-hit" class="btn btn--success">Hit</button>
+            <button type="button" id="event-combat-miss" class="btn btn--fail">Miss</button>
+          </div>
+        </div>
+
+        <div id="event-enemy-roll" class="event-card__enemy-roll hidden">
+          <p class="event-card__enemy-roll-label" id="event-enemy-roll-label">Vijand-aanval</p>
+          <p class="event-card__enemy-roll-value" id="event-enemy-roll-display">—</p>
+          <p class="event-card__combat-adjudicate-label">Host: hit of miss?</p>
+          <div class="event-card__combat-adjudicate-btns">
+            <button type="button" id="event-enemy-hit" class="btn btn--success">Hit</button>
+            <button type="button" id="event-enemy-miss" class="btn btn--fail">Miss</button>
+          </div>
+        </div>
+
+        <div id="event-special-save" class="event-card__special-save hidden">
+          <p class="event-card__special-save-title" id="event-special-save-title">Special attack!</p>
+          <p class="event-card__special-save-flavor" id="event-special-save-flavor"></p>
+          <div class="event-card__roll-entry">
+            <label class="event-card__roll-field" for="event-special-save-input">
+              <span class="event-card__roll-label">Saving throw totaal</span>
+              <input type="number" id="event-special-save-input" class="event-card__roll-value" min="1" placeholder="—" inputmode="numeric">
+            </label>
+            <button type="button" id="event-special-save-submit" class="btn btn--d20 btn--roll-submit">Bevestigen</button>
+          </div>
+        </div>
+
         <div id="event-result" class="event-card__result hidden"></div>
 
+        <button type="button" id="event-combat-action" class="btn btn--primary btn--wide hidden" disabled>Volgende</button>
         <button id="event-close" class="btn btn--primary btn--wide" disabled>Doorgaan op avontuur</button>
       </div>
     </div>
@@ -328,6 +360,18 @@
         </section>
 
         <section class="rules-section">
+          <h3 class="rules-section__title">Gevechten — attack rolls (ambush, beschermers, eindbaas)</h3>
+          <p>Combat-gevechten gebruiken <strong>attack rolls</strong>, geen DC-checks. De host beslist hit of miss.</p>
+          <ul>
+            <li><strong>Speler:</strong> gooi D20 + modifiers, vul totaal in — hit als worp ≥ <strong>AC</strong> (Nat 20/1 via checkbox).</li>
+            <li><strong>Normale hit:</strong> <strong>1 + schade-bonus</strong> op vijand; Nat 20 → <strong>2 + bonus</strong>.</li>
+            <li><strong>Vijand:</strong> app rolt D20 + to hit modifier (bijv. 16 + 3 = 19 To hit); host klikt Hit of Miss.</li>
+            <li><strong>Eindbaas special attack:</strong> 25% kans na vijand-hit → saving throw vs DC (automatisch in app).</li>
+          </ul>
+          <p>Kritiek succes/mislukking alleen via checkbox — totale worp 20 of 1 telt niet automatisch.</p>
+        </section>
+
+        <section class="rules-section">
           <h3 class="rules-section__title">Schade-bonus</h3>
           <p>Permanente bonus van een mystery-jackpot (D12 = 12). Telt mee bij succesvolle hits op ambushers, beschermers en de eindbaas:</p>
           <ul>
@@ -337,13 +381,9 @@
         </section>
 
         <section class="rules-section">
-          <h3 class="rules-section__title">Kritiek succes / mislukking — ambush-put</h3>
-          <ul>
-            <li><strong>Nat 20:</strong> gegarandeerd slagen → ambusher <strong>−2</strong> (+ schade-bonus) HP (geen beweging, geen speler-heal).</li>
-            <li><strong>Nat 1:</strong> mis → speler <strong>−2 HP</strong> (geen overslaan van volgende beurt).</li>
-            <li>Normale hit: <strong>−1</strong> (+ schade-bonus); mislukken: schade afhankelijk van mystery-multiplier (×1, ×1,5 of ×2).</li>
-          </ul>
-          <p>1 worp per beurt, geen normale verplaatsing zolang je in de put zit. Kritiek succes/mislukking alleen via checkbox — totale worp 20 of 1 telt niet automatisch (D20 + modifiers).</p>
+          <h3 class="rules-section__title">Ambush (de put)</h3>
+          <p>Je blijft op het vak tot <strong>jij of de ambusher op 0 HP</strong> is. Daarna normaal verder. Geen tweede put op hetzelfde vak (behalve via een nieuwe ❓-onthulling).</p>
+          <p>1 attack-roll ronde per beurt (speler-aanval → eventuele vijand-aanval), geen normale verplaatsing zolang je in de put zit.</p>
         </section>
 
         <section class="rules-section">
@@ -351,32 +391,17 @@
           <p>Eerste landing op <strong>vak 62 of 63</strong> (zolang de eindbaas nog niet actief is): gooi een <strong>D12</strong> — het lot bepaalt hoe zwaar het eindgevecht wordt. Daarna <strong>geen tweede D12</strong> in dezelfde fight.</p>
           <ul>
             <li><strong>1–8:</strong> standaard eindbaas — boss-HP = <strong>3 × aantal spelers</strong>.</li>
-            <li><strong>9–11:</strong> versterkt (×1,5 HP, zwaardere mislukking).</li>
-            <li><strong>12:</strong> episch (×2 HP, zwaardere mislukking) + <strong>2 beschermers</strong> vóór de baas.</li>
+            <li><strong>9–11:</strong> versterkt (×1,5 HP, zwaardere vijand-schade).</li>
+            <li><strong>12:</strong> episch (×2 HP, zwaardere vijand-schade) + <strong>2 beschermers</strong> vóór de baas.</li>
           </ul>
-          <p>Beschermers gebruiken normale ambush-checks; versla ze allemaal voordat je de eindbaas kunt raken.</p>
-        </section>
-
-        <section class="rules-section">
-          <h3 class="rules-section__title">Kritiek succes / mislukking — eindbaas &amp; beschermers</h3>
-          <ul>
-            <li><strong>Nat 20:</strong> gegarandeerd slagen → <strong>−2</strong> (+ schade-bonus) schade (geen beweging, geen speler-heal).</li>
-            <li><strong>Nat 1:</strong> mis → speler <strong>−2 HP</strong> bovenop normale misluk-schade.</li>
-            <li>Normale hit: <strong>−1</strong> (+ schade-bonus); mislukken: <strong>1 HP</strong> (standaard) of <strong>2 HP</strong> (versterkt/episch).</li>
-            <li>Kritiek alleen via checkbox — totale worp 20 of 1 telt niet automatisch (D20 + modifiers).</li>
-          </ul>
-        </section>
-
-        <section class="rules-section">
-          <h3 class="rules-section__title">Ambush (de put)</h3>
-          <p>Je blijft op het vak tot <strong>jij of de ambusher op 0 HP</strong> is. Daarna normaal verder. Geen tweede put op hetzelfde vak (behalve via een nieuwe ❓-onthulling).</p>
+          <p>Beschermers gebruiken dezelfde attack-roll flow; versla ze allemaal voordat je de eindbaas kunt raken.</p>
         </section>
 
         <section class="rules-section">
           <h3 class="rules-section__title">Eindbaas &amp; winnen</h3>
           <ul>
             <li>Na de D12-onthulling vecht je op <strong>62/63</strong>: eerst eventuele <strong>beschermers</strong>, dan de eindbaas (gedeelde boss-schade).</li>
-            <li><strong>1 aanval per beurt</strong> (D20-check), daarna terug naar <strong>vak 56</strong> (kamp), tenzij je wint of uitvalt.</li>
+            <li><strong>1 gevechtsronde per beurt</strong> (attack rolls), daarna terug naar <strong>vak 56</strong> (kamp), tenzij je wint of uitvalt.</li>
             <li><strong>Geen win</strong> tot de baas verslagen is; daarna wint wie op <strong>vak 63</strong> staat.</li>
           </ul>
         </section>

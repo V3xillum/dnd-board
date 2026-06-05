@@ -527,6 +527,14 @@ function updateTurnUI() {
   els.moveBtn.disabled = inAmbush || onBossArena || modalNeedsInput;
   els.diceInput.disabled = inAmbush || onBossArena || modalNeedsInput;
   updateHpControls();
+
+  if (window.isMultiplayerHost?.() && inAmbush && activeAmbush === null
+      && els.eventModal.classList.contains('hidden')) {
+    showAmbushModal();
+  } else if (window.isMultiplayerHost?.() && onBossArena && activeBoss === null
+      && els.eventModal.classList.contains('hidden')) {
+    showBossModal();
+  }
 }
 
 function prependLogEntry(message, type = '') {
@@ -1199,7 +1207,8 @@ function handleAmbushSubmit() {
   const player = game.currentPlayer;
   const pit = game.getCurrentPlayerPit();
   const config = pit?.config;
-  if (!config) return;
+  const spaceNum = player?.position;
+  if (!config || spaceNum == null) return;
 
   const nat20 = els.eventNat20.checked;
   const nat1 = els.eventNat1.checked;
@@ -1232,14 +1241,20 @@ function handleAmbushSubmit() {
     renderTokens();
     renderPlayers();
     updateAmbushPanel();
-    if (game.isCurrentPlayerInAmbush()) populateAmbushModal();
-    window.syncAfterAction?.();
   } catch (err) {
     console.error(err);
     els.eventResult.className = 'event-card__result event-card__result--fail';
     els.eventResult.innerHTML = '<p>Kon de put niet verwerken.</p>';
-    finishAmbushFight(onComplete);
-    advanceTurn();
+    syncModalOutcome('ambush', spaceNum, config, {
+      resultClassName: els.eventResult.className,
+      resultHtml: els.eventResult.innerHTML,
+    });
+    finishAmbushFlow({
+      handler: () => {
+        finishAmbushFight(onComplete);
+        advanceTurn();
+      },
+    });
     return;
   }
 
@@ -1257,7 +1272,9 @@ function handleAmbushSubmit() {
       : 'Geen schade aan de ambusher · jij verliest 1 HP';
 
   if (hasDeathInEvents(result.events)) {
-    effectText = 'Uitgevallen — terug naar start';
+    effectText = result.ambushEnded
+      ? 'Uitgevallen — terug naar start · de put gaat verder voor de anderen'
+      : 'Uitgevallen — terug naar start';
   } else if (result.ambushEnded) {
     effectText = success
       ? 'De put is opgeheven — je mag weer dobbelstenen op dit vak!'
@@ -1275,14 +1292,40 @@ function handleAmbushSubmit() {
     ${hpHtml}
   `;
 
-  finishAmbushFight(onComplete);
-  advanceTurn();
+  syncModalOutcome('ambush', spaceNum, config, {
+    title: els.eventTitle.textContent,
+    titleClass: els.eventTitle.className,
+    flavor: els.eventFlavor.textContent,
+    flavorClass: els.eventFlavor.className,
+    resultClassName: els.eventResult.className,
+    resultHtml: els.eventResult.innerHTML,
+  });
+  window.syncAfterAction?.();
+
+  finishAmbushFlow({
+    handler: () => {
+      finishAmbushFight(onComplete);
+      advanceTurn();
+    },
+  });
 }
 
 /** Sluit put-modal van vorige speler; daarna advanceTurn opent zo nodig gevecht voor volgende speler in de put. */
 function finishAmbushFight(onComplete) {
   closeEventModal();
   onComplete?.();
+}
+
+function finishAmbushFlow(onClose) {
+  resetEventModalHostControls();
+  els.eventSubmit.disabled = true;
+  els.eventDiceInput.disabled = true;
+  els.eventNat20.disabled = true;
+  els.eventNat1.disabled = true;
+  els.eventClose.disabled = false;
+  els.eventClose.textContent = onClose?.chainLabel ?? 'Doorgaan op avontuur';
+  if (activeAmbush) activeAmbush.onClose = onClose?.handler;
+  els.eventClose.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
 }
 
 function handleBossSubmit() {
@@ -1524,7 +1567,6 @@ function advanceTurn() {
   }
   renderPlayers();
   updateTurnUI();
-  window.syncAfterAction?.();
 
   const cp = game.currentPlayer;
   if (!game.gameOver && cp) {
@@ -1534,6 +1576,8 @@ function advanceTurn() {
       showBossModal();
     }
   }
+
+  window.syncAfterAction?.();
 }
 
 function handleEventSubmit() {

@@ -1666,12 +1666,13 @@ function resetEventModalHostControls() {
   activeCombatActionHandler = null;
 }
 
-function createCombatFlowState(onComplete, combatConfig = null, spaceNum = null) {
+function createCombatFlowState(onComplete, combatConfig = null, spaceNum = null, minionIndex = null) {
   const wasMysteryAmbush = spaceNum != null && game.revealedSpaces[spaceNum]?.type === 'ambush';
   return {
     onComplete,
     combatConfig,
     spaceNum,
+    minionIndex,
     wasMysteryAmbush,
     phase: 'player-roll',
     pendingEvents: [],
@@ -2035,7 +2036,12 @@ async function finishCombatRound(flow) {
   const type = getCombatFlowType();
   const config = getCombatConfig() ?? flow.combatConfig;
   const spaceNum = flow?.spaceNum ?? getCombatSpaceNum();
-  const ctx = game.buildCombatContext(type, { allowDefeated: true });
+  const ctx = game.buildCombatContext(type, {
+    allowDefeated: true,
+    spaceNum,
+    minionIndex: flow.minionIndex ?? null,
+    combatConfig: config,
+  });
   if (!ctx || !config) {
     console.error('finishCombatRound: geen combat context', { type, config, ctx });
     setCombatFooter('action', 'Samenvatting →', () => finishCombatRound(flow));
@@ -3015,7 +3021,8 @@ function showBossMinionModal(onComplete) {
   closeBossRevealModal();
   const minion = game.getActiveBossMinion();
   const spaceNum = game.currentPlayer?.position;
-  activeBossMinion = createCombatFlowState(onComplete, minion.config, spaceNum);
+  const minionIndex = game.bossMinions.indexOf(minion);
+  activeBossMinion = createCombatFlowState(onComplete, minion.config, spaceNum, minionIndex);
   activeBoss = null;
   activeEvent = null;
   activeAmbush = null;

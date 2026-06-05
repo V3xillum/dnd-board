@@ -150,7 +150,7 @@ Zie ook `js/EVENTS.md` voor auteur-checklist.
 | Onderdeel | Functie |
 |-----------|---------|
 | Config | `copyAmbushConfig`, `copyBossConfig` — `attackBonus`, `dmg`, `specialAttack` |
-| Context | `buildCombatContext(type, { allowDefeated })` — `allowDefeated` voor finaliseren bij 0 HP |
+| Context | `buildCombatContext(type, { allowDefeated, spaceNum, minionIndex, combatConfig })` — bij boss-minion finalize: minion via index/config ook als alle minions op 0 HP |
 | Speler | `resolveCombatPlayerAttack(ctx, roll, { nat20, nat1 })` |
 | Vijand roll | `rollCombatEnemyAttack(ctx)` → `{ roll, total, attackBonus, nat20, nat1 }` |
 | Vijand hit | `resolveCombatEnemyAttack(ctx, { hit, enemyRoll, playerNat1 })` |

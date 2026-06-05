@@ -306,30 +306,42 @@ class Game {
   }
 
   buildCombatContext(type, options = {}) {
-    const { allowDefeated = false } = options;
+    const { allowDefeated = false, spaceNum: spaceNumOverride = null } = options;
+
+    if (type === 'boss-minion') {
+      const minion = allowDefeated
+        ? this.resolveBossMinionForContext(options)
+        : this.getActiveBossMinion();
+      if (!minion) return null;
+      const player = this.currentPlayer;
+      if (!player) return null;
+      if (!allowDefeated && minion.hp <= 0) return null;
+      if (!allowDefeated && !isOnBossArena(player.position)) return null;
+      const spaceNum = spaceNumOverride ?? player.position;
+      return { type: 'boss-minion', spaceNum, config: minion.config, minion };
+    }
+
     const player = this.currentPlayer;
     if (!player) return null;
 
     if (type === 'ambush') {
-      const spaceNum = player.position;
+      const spaceNum = spaceNumOverride ?? player.position;
       const pit = spaceNum != null ? this.getPitAt(spaceNum) : null;
-      if (!pit || (!allowDefeated && pit.hp <= 0) || !pit.playerIds.includes(player.id)) return null;
+      if (!pit) return null;
+      if (!allowDefeated && (pit.hp <= 0 || !pit.playerIds.includes(player.id))) return null;
       return { type: 'ambush', spaceNum, config: pit.config, pit };
-    }
-
-    if (type === 'boss-minion') {
-      const minion = this.getActiveBossMinion();
-      if (!minion || !isOnBossArena(player.position)) return null;
-      if (!allowDefeated && minion.hp <= 0) return null;
-      return { type: 'boss-minion', spaceNum: player.position, config: minion.config, minion };
     }
 
     if (type === 'boss') {
       const config = this.bossConfig;
-      if (!this.bossActive || !config || this.hasBossMinions() || !isOnBossArena(player.position)) {
+      if (!this.bossActive || !config) return null;
+      if (!allowDefeated) {
+        if (this.hasBossMinions() || !isOnBossArena(player.position)) return null;
+      } else if (this.hasBossMinions()) {
         return null;
       }
-      return { type: 'boss', spaceNum: player.position, config };
+      const spaceNum = spaceNumOverride ?? player.position;
+      return { type: 'boss', spaceNum, config };
     }
 
     return null;
@@ -790,6 +802,20 @@ class Game {
 
   getActiveBossMinion() {
     return this.bossMinions.find((m) => m.hp > 0) ?? null;
+  }
+
+  /** Minion voor finalize wanneer gevecht-net verslagen (hp 0, niet meer "actief"). */
+  resolveBossMinionForContext(options = {}) {
+    const { minionIndex = null, combatConfig = null } = options;
+
+    if (minionIndex != null && this.bossMinions[minionIndex]) {
+      return this.bossMinions[minionIndex];
+    }
+    if (combatConfig?.name) {
+      const byName = this.bossMinions.find((m) => m.config?.name === combatConfig.name);
+      if (byName) return byName;
+    }
+    return this.bossMinions.find((m) => m.hp <= 0) ?? this.getActiveBossMinion();
   }
 
   hasBossMinions() {

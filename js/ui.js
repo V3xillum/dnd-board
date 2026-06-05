@@ -20,6 +20,18 @@ const els = {
   pathTitle: document.getElementById('path-title'),
   pathFlavor: document.getElementById('path-flavor'),
   pathClose: document.getElementById('path-close'),
+  mysteryModal: document.getElementById('mystery-modal'),
+  mysteryCard: document.querySelector('#mystery-modal .event-card'),
+  mysteryIcon: document.getElementById('mystery-icon'),
+  mysterySpace: document.getElementById('mystery-space'),
+  mysteryTitle: document.getElementById('mystery-title'),
+  mysteryFlavor: document.getElementById('mystery-flavor'),
+  mysteryRollArea: document.getElementById('mystery-roll-area'),
+  mysteryRevealArea: document.getElementById('mystery-reveal-area'),
+  mysteryRevealContent: document.getElementById('mystery-reveal-content'),
+  mysteryDiceInput: document.getElementById('mystery-dice-input'),
+  mysterySubmit: document.getElementById('mystery-submit'),
+  mysteryAction: document.getElementById('mystery-action'),
   gameLog: document.getElementById('game-log'),
   eventModal: document.getElementById('event-modal'),
   eventIcon: document.getElementById('event-icon'),
@@ -59,6 +71,7 @@ function syncModalScrollLock() {
   const open =
     !els.eventModal.classList.contains('hidden') ||
     !els.pathModal.classList.contains('hidden') ||
+    !els.mysteryModal.classList.contains('hidden') ||
     !els.winModal.classList.contains('hidden') ||
     (els.rulesModal && !els.rulesModal.classList.contains('hidden'));
   document.body.classList.toggle('modal-open', open);
@@ -114,6 +127,8 @@ function applyCellStyle(cell, special, num) {
 
   if (special.type === 'event') {
     cell.classList.add(EVENT_CATEGORY_CLASS[special.category] || 'cell--event');
+  } else if (special.type === 'mystery') {
+    cell.classList.add('cell--mystery-unrevealed');
   } else if (special.type === 'path') {
     cell.classList.add('cell--quiet');
   } else {
@@ -216,7 +231,7 @@ function renderPlayers() {
       <span class="player-dot" style="background:${p.color}"></span>
       <span class="player-info">
         <strong>${p.name}</strong>
-        <small>Vak ${p.position} · ${formatPlayerHp(p)}${formatPlayerDcHint(p)}${formatPlayerMovementHint(p)}</small>
+        <small>Vak ${p.position} · ${formatPlayerHp(p)}${formatPlayerDcHint(p)}${formatPlayerMovementHint(p)}${formatPlayerDmgHint(p)}</small>
       </span>
       <button class="btn-remove" title="Verwijder speler" data-id="${p.id}">×</button>
     `;
@@ -312,6 +327,11 @@ function buildResultHpHtml(events, player) {
 function formatPlayerMovementHint(player) {
   const bonus = player.movementBonus ?? 0;
   return bonus > 0 ? ` · +${bonus} beweging` : '';
+}
+
+function formatPlayerDmgHint(player) {
+  const bonus = player.dmgBonus ?? 0;
+  return bonus > 0 ? ` · +${bonus} schade` : '';
 }
 
 function updateHpControls() {
@@ -731,6 +751,26 @@ function describeEvents(events) {
           addLog(`🕳️ ${ev.player} valt uit in de put — ${ev.ambushName} wint de ronde`, 'warn');
         }
         break;
+      case 'mystery-pending':
+        addLog(`❓ ${ev.player} landt op onbekend gevaar (vak ${ev.spaceNum})`, 'special');
+        break;
+      case 'mystery-roll':
+        addLog(`❓ ${ev.player} gooit D12 op vak ${ev.spaceNum}: ${ev.roll}`, 'special');
+        break;
+      case 'mystery-reveal': {
+        const label = ev.revealType === 'path'
+          ? `rustig pad — ${ev.name}`
+          : `ambush — ${ev.icon} ${ev.name} (${ev.ambushHp} HP)`;
+        const extra = ev.jackpot ? ' · JACKPOT!' : ev.multiplier > 1 ? ` · ×${ev.multiplier}` : '';
+        addLog(`❓ Onthuld op vak ${ev.spaceNum}: ${label}${extra}`, 'special');
+        break;
+      }
+      case 'dmg-bonus':
+        addLog(`⚔️ ${ev.player} krijgt permanente +1 schade-bonus (totaal +${ev.dmgBonus})`, 'success');
+        break;
+      case 'mystery-reset':
+        addLog(`❓ Vak ${ev.spaceNum} is weer onbekend — wie weet wat er nu loert?`, 'special');
+        break;
       default:
         break;
     }
@@ -753,20 +793,27 @@ function formatPlayerDcHint(player) {
 let activeEvent = null;
 let activeBoss = null;
 let activeAmbush = null;
+let activeMystery = null;
 let syncedActiveModal = null;
 let pathModalCallback = null;
+let pathModalSpaceNum = null;
 
 function serializeModalConfig(config) {
   if (!config) return null;
-  return {
-    name: config.name,
-    icon: config.icon,
-    flavor: config.flavor,
-    ability: config.ability,
-    dc: config.dc,
-    successText: config.successText,
-    failText: config.failText,
+  const out = {
+    name: config.name ?? null,
+    icon: config.icon ?? null,
+    flavor: config.flavor ?? null,
   };
+  if (config.ability != null) out.ability = config.ability;
+  if (config.dc != null) out.dc = config.dc;
+  if (config.successText != null) out.successText = config.successText;
+  if (config.failText != null) out.failText = config.failText;
+  if (config.revealType != null) out.revealType = config.revealType;
+  if (config.multiplier != null) out.multiplier = config.multiplier;
+  if (config.jackpot != null) out.jackpot = config.jackpot;
+  if (config.ambushHp != null) out.ambushHp = config.ambushHp;
+  return out;
 }
 
 function setSyncedActiveModal(modal) {
@@ -812,6 +859,9 @@ function closeSpectatorModals() {
   els.eventModal.classList.remove('event-modal--spectator');
   els.pathModal.classList.add('hidden');
   els.pathModal.classList.remove('path-modal--spectator');
+  els.mysteryModal.classList.add('hidden');
+  els.mysteryModal.classList.remove('mystery-modal--spectator');
+  els.mysteryCard?.classList.remove('event-card--jackpot');
   els.winModal.classList.add('hidden');
   els.winModal.classList.remove('win-modal--spectator');
   syncModalScrollLock();
@@ -871,6 +921,36 @@ function renderSpectatorModal(activeModal) {
   if (!activeModal) return;
 
   const { type, phase, config, spaceNum, outcome } = activeModal;
+
+  if (type === 'mystery') {
+    els.mysteryModal.classList.add('mystery-modal--spectator');
+    els.mysteryModal.classList.remove('hidden');
+    els.mysteryIcon.textContent = config?.icon || '❓';
+    els.mysterySpace.textContent = `Vak ${spaceNum ?? '?'}`;
+    els.mysteryTitle.textContent = '❓ Onbekend gevaar';
+
+    if (phase === 'input') {
+      els.mysteryFlavor.textContent = config?.flavor || 'Gooi een D12 om te onthullen wat hier loert.';
+      els.mysteryRollArea.classList.remove('hidden');
+      els.mysteryRevealArea.classList.add('hidden');
+      els.mysterySubmit.classList.add('hidden');
+      els.mysteryAction.classList.add('hidden');
+      els.mysteryDiceInput.disabled = true;
+    } else if (phase === 'outcome' && outcome) {
+      els.mysteryFlavor.textContent = 'Dit loerde achter het vraagteken:';
+      els.mysteryRollArea.classList.add('hidden');
+      els.mysteryRevealArea.classList.remove('hidden');
+      els.mysterySubmit.classList.add('hidden');
+      els.mysteryAction.classList.remove('hidden');
+      els.mysteryAction.textContent = outcome.actionLabel || 'Verder';
+      els.mysteryAction.disabled = true;
+      els.mysteryRevealContent.innerHTML = outcome.revealHtml || '';
+      els.mysteryCard?.classList.toggle('event-card--jackpot', Boolean(config?.jackpot));
+    }
+
+    syncModalScrollLock();
+    return;
+  }
 
   if (type === 'path') {
     els.pathIcon.textContent = config?.icon || '🚶';
@@ -1271,6 +1351,7 @@ function handleAmbushSubmit() {
   try {
     result = game.resolveAmbushRoll(roll, { nat20, nat1 });
     describeEvents(result.events);
+    renderBoard();
     renderTokens();
     renderPlayers();
     updateAmbushPanel();
@@ -1483,8 +1564,21 @@ function closePathModal() {
   els.pathModal.classList.remove('path-modal--spectator');
   syncModalScrollLock();
   clearSyncedActiveModal();
+
+  const spaceNum = pathModalSpaceNum;
+  pathModalSpaceNum = null;
   const cb = pathModalCallback;
   pathModalCallback = null;
+
+  if (spaceNum != null) {
+    const events = game.resetMysteryPathAfterRest(spaceNum);
+    if (events.length > 0) {
+      describeEvents(events);
+      renderBoard();
+      window.syncAfterAction?.();
+    }
+  }
+
   cb?.();
 }
 
@@ -1496,6 +1590,7 @@ function showPathModal(config, spaceNum, onComplete) {
   els.pathFlavor.textContent = config.flavor;
 
   pathModalCallback = onComplete ?? null;
+  pathModalSpaceNum = spaceNum ?? game.currentPlayer?.position ?? null;
   els.pathModal.classList.remove('hidden');
   els.pathModal.classList.remove('path-modal--spectator');
   els.pathClose.textContent = 'Rust even uit';
@@ -1511,9 +1606,200 @@ function showPathModal(config, spaceNum, onComplete) {
   setTimeout(() => els.pathClose.focus(), 100);
 }
 
+function formatMysteryMultiplierBadge(multiplier, jackpot) {
+  if (jackpot) {
+    return '<span class="mystery-badge mystery-badge--danger">Gevaarlijk</span>'
+      + '<p class="mystery-jackpot">✨ Jackpot! Versla de vijand voor permanente +1 schade-bonus.</p>';
+  }
+  if (multiplier >= 2) {
+    return '<span class="mystery-badge mystery-badge--danger">Gevaarlijk</span>';
+  }
+  if (multiplier >= 1.5) {
+    return '<span class="mystery-badge mystery-badge--strong">Versterkte vijand</span>';
+  }
+  return '';
+}
+
+function buildMysteryRevealHtml(revelation) {
+  if (!revelation) return '';
+  const cfg = revelation.config ?? {};
+
+  if (revelation.type === 'path') {
+    return `
+      <div class="mystery-reveal-card">
+        <div class="mystery-reveal-card__head">
+          <span class="mystery-reveal-card__icon">${cfg.icon ?? '🚶'}</span>
+          <div>
+            <p class="mystery-reveal-card__name">Rustig pad — ${cfg.name ?? 'Pad'}</p>
+            <p class="mystery-reveal-card__flavor">${cfg.flavor ?? ''}</p>
+          </div>
+        </div>
+      </div>`;
+  }
+
+  const hp = Math.ceil((cfg.ambushHp ?? 3) * (revelation.multiplier ?? 1));
+  return `
+    <div class="mystery-reveal-card">
+      <div class="mystery-reveal-card__head">
+        <span class="mystery-reveal-card__icon">${cfg.icon ?? '🕳️'}</span>
+        <div>
+          <p class="mystery-reveal-card__name">${cfg.name ?? 'Ambush'}</p>
+          <p class="mystery-reveal-card__flavor">${cfg.flavor ?? ''}</p>
+        </div>
+      </div>
+      <p class="mystery-reveal-card__flavor">Vijand-HP: ${hp}</p>
+      ${formatMysteryMultiplierBadge(revelation.multiplier ?? 1, revelation.jackpot)}
+    </div>`;
+}
+
+function closeMysteryModal() {
+  if (els.mysteryModal.classList.contains('hidden')) return;
+  els.mysteryModal.classList.add('hidden');
+  els.mysteryModal.classList.remove('mystery-modal--spectator');
+  els.mysteryCard?.classList.remove('event-card--jackpot');
+  syncModalScrollLock();
+  activeMystery = null;
+  if (window.isMultiplayerHost?.() && syncedActiveModal?.type === 'mystery') {
+    clearSyncedActiveModal();
+  }
+}
+
+function showMysteryRevealPhase(revelation) {
+  if (!activeMystery) return;
+  activeMystery.phase = 'reveal';
+  activeMystery.revelation = revelation;
+
+  els.mysteryFlavor.textContent = 'Dit loerde achter het vraagteken:';
+  els.mysteryRollArea.classList.add('hidden');
+  els.mysteryRevealArea.classList.remove('hidden');
+  els.mysterySubmit.classList.add('hidden');
+  els.mysteryAction.classList.remove('hidden');
+  els.mysteryAction.disabled = false;
+
+  if (revelation.type === 'path') {
+    els.mysteryAction.textContent = 'Verder lopen';
+  } else {
+    els.mysteryAction.textContent = 'Gevecht beginnen';
+    els.mysteryCard?.classList.toggle('event-card--jackpot', Boolean(revelation.jackpot));
+  }
+
+  els.mysteryRevealContent.innerHTML = buildMysteryRevealHtml(revelation);
+
+  const cfg = revelation.config ?? {};
+  syncModalOutcome('mystery', activeMystery.spaceNum, {
+    ...serializeModalConfig(cfg),
+    revealType: revelation.type,
+    multiplier: revelation.multiplier ?? null,
+    jackpot: revelation.jackpot ?? false,
+    ambushHp: revelation.type === 'ambush'
+      ? Math.ceil((cfg.ambushHp ?? 3) * (revelation.multiplier ?? 1))
+      : null,
+  }, {
+    revealHtml: els.mysteryRevealContent.innerHTML,
+    actionLabel: els.mysteryAction.textContent,
+  });
+}
+
+function showMysteryModal(spaceNum, onComplete) {
+  closeEventModal();
+  closePathModal();
+  activeMystery = { spaceNum, onComplete, phase: 'roll', revelation: null };
+  activeEvent = null;
+  activeBoss = null;
+  activeAmbush = null;
+
+  els.mysteryModal.classList.remove('hidden');
+  els.mysteryModal.classList.remove('mystery-modal--spectator');
+  els.mysteryIcon.textContent = '❓';
+  els.mysterySpace.textContent = `Vak ${spaceNum}`;
+  els.mysteryTitle.textContent = '❓ Onbekend gevaar';
+  els.mysteryFlavor.textContent = 'Gooi een D12 om te onthullen wat hier loert.';
+  els.mysteryRollArea.classList.remove('hidden');
+  els.mysteryRevealArea.classList.add('hidden');
+  els.mysteryAction.classList.add('hidden');
+  els.mysterySubmit.classList.remove('hidden');
+  els.mysterySubmit.disabled = false;
+  els.mysteryDiceInput.disabled = false;
+  els.mysteryDiceInput.value = '';
+  els.mysteryCard?.classList.remove('event-card--jackpot');
+  syncModalScrollLock();
+
+  syncModalInput('mystery', {
+    name: 'Onbekend gevaar',
+    icon: '❓',
+    flavor: 'Gooi een D12 om te onthullen wat hier loert.',
+  }, spaceNum, { submitLabel: 'Onthullen' });
+
+  setTimeout(() => els.mysteryDiceInput.focus(), 100);
+}
+
+function handleMysterySubmit() {
+  if (!activeMystery || activeMystery.phase !== 'roll') return;
+  const roll = parseDiceRoll(els.mysteryDiceInput.value, 1, 12);
+  if (roll === null) {
+    addLog('Vul een D12-worp in (1–12).', 'warn');
+    return;
+  }
+
+  const result = game.resolveMysteryRoll(activeMystery.spaceNum, roll);
+  describeEvents(result.events);
+  renderBoard();
+  renderPlayers();
+
+  if (!result.revelation) {
+    const onDone = activeMystery.onComplete;
+    closeMysteryModal();
+    advanceTurn();
+    window.syncAfterAction?.();
+    onDone?.();
+    return;
+  }
+
+  showMysteryRevealPhase(result.revelation);
+}
+
+function handleMysteryAction() {
+  if (!activeMystery || activeMystery.phase !== 'reveal') return;
+  const { revelation, spaceNum, onComplete } = activeMystery;
+
+  if (revelation.type === 'path') {
+    closeMysteryModal();
+    showPathModal(revelation.config, spaceNum, () => {
+      advanceTurn();
+      onComplete?.();
+    });
+    return;
+  }
+
+  const player = game.currentPlayer;
+  const ambushResult = game.startRevealedAmbush(player, spaceNum);
+  if (!ambushResult) {
+    closeMysteryModal();
+    advanceTurn();
+    onComplete?.();
+    return;
+  }
+
+  describeEvents(ambushResult.events);
+  closeMysteryModal();
+  updateAmbushPanel();
+  if (ambushResult.needsAmbush) {
+    showAmbushModal(onComplete);
+  } else {
+    advanceTurn();
+    onComplete?.();
+  }
+}
+
 function continueAfterLand(result, onComplete) {
   if (result.winner) {
     showWinModal(result.winner);
+    return;
+  }
+
+  if (result.needsMysteryRoll) {
+    const spaceNum = result.mysterySpaceNum ?? game.currentPlayer?.position;
+    showMysteryModal(spaceNum, onComplete);
     return;
   }
 
@@ -1605,6 +1891,7 @@ function formatEventMoveResult(result, events) {
   if (result.needsEvent) text += ' · nog een event!';
   if (result.needsPath) text += ' · rustig pad!';
   if (result.needsBoss) text += ' · eindbaas!';
+  if (result.needsMysteryRoll) text += ' · onbekend gevaar!';
   if (result.needsAmbush) text += ' · ambush-put!';
 
   return text;
@@ -1735,6 +2022,18 @@ function handleEventSubmit() {
     return;
   }
 
+  if (result.needsMysteryRoll) {
+    const nextSpace = result.mysterySpaceNum ?? game.currentPlayer?.position;
+    finishEventFlow({
+      chainLabel: 'Onbekend gevaar →',
+      handler: () => {
+        closeEventModal();
+        showMysteryModal(nextSpace, onComplete);
+      },
+    });
+    return;
+  }
+
   if (result.needsAmbush) {
     finishEventFlow({
       chainLabel: 'Ambush-put →',
@@ -1784,6 +2083,12 @@ els.pathClose.addEventListener('click', closePathModal);
 els.pathClose.addEventListener('keydown', (e) => {
   if (e.key === 'Enter' && !els.pathModal.classList.contains('hidden')) closePathModal();
 });
+
+els.mysterySubmit.addEventListener('click', handleMysterySubmit);
+els.mysteryDiceInput.addEventListener('keydown', (e) => {
+  if (e.key === 'Enter') handleMysterySubmit();
+});
+els.mysteryAction.addEventListener('click', handleMysteryAction);
 
 function showWinModal(winner) {
   els.winModal.classList.remove('hidden');

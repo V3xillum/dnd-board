@@ -147,6 +147,8 @@ class Game {
     this.bossConfig = null;
     /** Per vak: actieve put met gedeelde vijand en lijst vastzittende spelers */
     this.ambushPits = {};
+    /** Per vak: onthulde mystery-inhoud (path of ambush + multiplier) */
+    this.revealedSpaces = {};
   }
 
   copyAmbushConfig(source) {
@@ -237,14 +239,26 @@ class Game {
       };
     }
 
-    const raw = typeof pickRandomAmbush === 'function' ? pickRandomAmbush() : null;
+    const revealed = this.revealedSpaces[spaceNum];
+    let raw;
+    let multiplier = 1;
+
+    if (revealed?.type === 'ambush') {
+      raw = revealed.config;
+      multiplier = revealed.multiplier ?? 1;
+    } else {
+      raw = typeof pickRandomAmbush === 'function' ? pickRandomAmbush() : null;
+    }
+
     const config = this.copyAmbushConfig(raw);
     if (!config) return null;
 
+    const hp = Math.ceil(config.ambushHp * multiplier);
     pit = {
       config,
-      hp: config.ambushHp,
-      maxHp: config.ambushHp,
+      hp,
+      maxHp: hp,
+      dmgPerHit: multiplier,
       playerIds: [player.id],
     };
     this.ambushPits[spaceNum] = pit;
@@ -309,10 +323,179 @@ class Game {
       hp: DEFAULT_HP,
       maxHp: DEFAULT_MAX_HP,
       movementBonus: 0,
+      dmgBonus: 0,
       dcStreak: 0,
       nextDcMod: 0,
       skipNextTurn: false,
     });
+  }
+
+  grantDmgBonus(player, events) {
+    if (!player) return;
+    player.dmgBonus = (player.dmgBonus ?? 0) + 1;
+    events.push({
+      type: 'dmg-bonus',
+      player: player.name,
+      dmgBonus: player.dmgBonus,
+    });
+  }
+
+  copyPathConfig(source) {
+    if (!source) return null;
+    return {
+      name: source.name,
+      icon: source.icon,
+      flavor: source.flavor,
+    };
+  }
+
+  buildAmbushRevelation(multiplier, jackpot) {
+    const raw = typeof pickRandomAmbush === 'function' ? pickRandomAmbush() : null;
+    const config = this.copyAmbushConfig(raw);
+    if (!config) return null;
+    return {
+      type: 'ambush',
+      config,
+      multiplier,
+      jackpot: Boolean(jackpot),
+    };
+  }
+
+  getMysteryTile() {
+    return {
+      type: 'mystery',
+      category: 'mystery',
+      icon: '❓',
+      name: 'Onbekend gevaar',
+      flavor: 'Iets loert hier. Je weet nog niet wat.',
+    };
+  }
+
+  applyRevealToBoard(spaceNum, revelation) {
+    if (!revelation) return;
+
+    if (revelation.type === 'path') {
+      SPECIAL_SPACES[spaceNum] = { type: 'path', ...revelation.config };
+    } else if (revelation.type === 'ambush') {
+      SPECIAL_SPACES[spaceNum] = {
+        type: 'event',
+        category: 'ambush',
+        ...revelation.config,
+      };
+    }
+
+    window.SPECIAL_SPACES = SPECIAL_SPACES;
+  }
+
+  /** Terug naar ❓ na mystery-bezoek (pad uitgerust of ambush verslagen). */
+  resetMysterySpace(spaceNum, events) {
+    if (!this.revealedSpaces[spaceNum]) return false;
+
+    delete this.revealedSpaces[spaceNum];
+    SPECIAL_SPACES[spaceNum] = this.getMysteryTile();
+    window.SPECIAL_SPACES = SPECIAL_SPACES;
+    events.push({ type: 'mystery-reset', spaceNum });
+    return true;
+  }
+
+  /** Na rustig pad van mystery-D12: vak weer onbekend maken. */
+  resetMysteryPathAfterRest(spaceNum) {
+    if (this.revealedSpaces[spaceNum]?.type !== 'path') return [];
+    const events = [];
+    this.resetMysterySpace(spaceNum, events);
+    return events;
+  }
+
+  resolveMysteryRoll(spaceNum, roll) {
+    const player = this.currentPlayer;
+    const clamped = Math.max(1, Math.min(12, roll));
+    const events = [{
+      type: 'mystery-roll',
+      roll: clamped,
+      spaceNum,
+      player: player?.name,
+    }];
+
+    let revelation;
+    if (clamped <= 2) {
+      const tile = typeof pickRandomPath === 'function'
+        ? pickRandomPath()
+        : { name: 'Rustig pad', icon: '🚶', flavor: 'Even ademhalen onderweg.' };
+      revelation = {
+        type: 'path',
+        config: this.copyPathConfig(tile),
+      };
+    } else if (clamped <= 8) {
+      revelation = this.buildAmbushRevelation(1, false);
+    } else if (clamped <= 11) {
+      revelation = this.buildAmbushRevelation(1.5, false);
+    } else {
+      revelation = this.buildAmbushRevelation(2, true);
+    }
+
+    if (!revelation) {
+      return { events, revelation: null, spaceNum };
+    }
+
+    this.revealedSpaces[spaceNum] = revelation;
+    this.applyRevealToBoard(spaceNum, revelation);
+
+    events.push({
+      type: 'mystery-reveal',
+      spaceNum,
+      revealType: revelation.type,
+      multiplier: revelation.multiplier ?? null,
+      jackpot: revelation.jackpot ?? false,
+      name: revelation.config?.name,
+      icon: revelation.config?.icon,
+      ambushHp: revelation.type === 'ambush'
+        ? Math.ceil((revelation.config?.ambushHp ?? 3) * (revelation.multiplier ?? 1))
+        : null,
+      player: player?.name,
+    });
+
+    return { events, revelation, spaceNum };
+  }
+
+  startRevealedAmbush(player, spaceNum) {
+    const joined = this.joinOrStartPit(player, spaceNum);
+    if (!joined) return null;
+
+    const { config, kind, pit } = joined;
+    const allies = pit.playerIds
+      .filter((id) => id !== player.id)
+      .map((id) => this.players.find((p) => p.id === id)?.name)
+      .filter(Boolean);
+
+    const events = [];
+    if (kind === 'join') {
+      events.push({
+        type: 'ambush-join',
+        name: config.name,
+        icon: config.icon,
+        ambushHp: pit.hp,
+        ambushMaxHp: pit.maxHp,
+        player: player.name,
+        allies,
+        spaceNum,
+      });
+    } else {
+      events.push({
+        type: 'ambush-start',
+        name: config.name,
+        icon: config.icon,
+        flavor: config.flavor,
+        ambushHp: pit.hp,
+        ambushMaxHp: pit.maxHp,
+        player: player.name,
+        spaceNum,
+      });
+    }
+
+    return {
+      events,
+      needsAmbush: this.isPlayerInPit(player),
+    };
   }
 
   /** Mislukte gevechts-check: −1 HP; bij Nat 1 nog eens −1 HP + `nat1`-event. */
@@ -497,6 +680,90 @@ class Game {
       return { events, winner: null, needsEvent: false, needsPath: false };
     }
 
+    if (space.type === 'mystery') {
+      const spaceNum = player.position;
+      const revealed = this.revealedSpaces[spaceNum];
+
+      if (!revealed) {
+        events.push({
+          type: 'mystery-pending',
+          spaceNum,
+          player: player.name,
+        });
+        return {
+          events,
+          winner: null,
+          needsEvent: false,
+          needsPath: false,
+          needsMysteryRoll: true,
+          mysterySpaceNum: spaceNum,
+        };
+      }
+
+      if (revealed.type === 'path') {
+        events.push({
+          type: 'path',
+          spaceNum,
+          name: revealed.config.name,
+          icon: revealed.config.icon,
+          flavor: revealed.config.flavor,
+          player: player.name,
+        });
+        return {
+          events,
+          winner: null,
+          needsEvent: false,
+          needsPath: true,
+          pathConfig: revealed.config,
+        };
+      }
+
+      if (revealed.type === 'ambush') {
+        const joined = this.joinOrStartPit(player, spaceNum);
+        if (joined) {
+          const { config, kind, pit } = joined;
+          const allies = pit.playerIds
+            .filter((id) => id !== player.id)
+            .map((id) => this.players.find((p) => p.id === id)?.name)
+            .filter(Boolean);
+
+          if (kind === 'join') {
+            events.push({
+              type: 'ambush-join',
+              name: config.name,
+              icon: config.icon,
+              ambushHp: pit.hp,
+              ambushMaxHp: pit.maxHp,
+              player: player.name,
+              allies,
+              spaceNum,
+            });
+          } else {
+            events.push({
+              type: 'ambush-start',
+              name: config.name,
+              icon: config.icon,
+              flavor: config.flavor,
+              ambushHp: pit.hp,
+              ambushMaxHp: pit.maxHp,
+              player: player.name,
+              spaceNum,
+            });
+          }
+
+          return {
+            events,
+            winner: null,
+            needsEvent: false,
+            needsPath: false,
+            needsAmbush: this.isPlayerInPit(player),
+          };
+        }
+      }
+
+      return { events, winner: null, needsEvent: false, needsPath: false };
+    }
+
     if (space.type === 'path') {
       events.push({
         type: 'path',
@@ -666,6 +933,8 @@ class Game {
       needsPath: chain.needsPath ?? false,
       needsBoss: chain.needsBoss ?? false,
       needsAmbush: chain.needsAmbush ?? false,
+      needsMysteryRoll: chain.needsMysteryRoll ?? false,
+      mysterySpaceNum: chain.mysterySpaceNum ?? null,
       eventConfig: chain.eventConfig ?? null,
       pathConfig: chain.pathConfig ?? null,
     };
@@ -714,7 +983,8 @@ class Game {
     }];
 
     if (success) {
-      const hitDamage = nat20 ? 2 : 1;
+      const dmgBonus = player.dmgBonus ?? 0;
+      const hitDamage = nat20 ? 2 + dmgBonus : 1 + dmgBonus;
       pit.hp = Math.max(0, pit.hp - hitDamage);
       if (nat20) {
         events.push({ type: 'nat20', player: player.name });
@@ -731,7 +1001,14 @@ class Game {
         nat20,
       });
     } else {
-      this.applyCombatCheckFail(player, events, isNat1);
+      const failHits = Math.ceil(pit.dmgPerHit ?? 1);
+      for (let i = 0; i < failHits; i += 1) {
+        events.push(...this.mutateHp(player, -1));
+      }
+      if (isNat1) {
+        events.push({ type: 'nat1', player: player.name });
+        events.push(...this.mutateHp(player, -1));
+      }
     }
 
     const d20Event = events.find((e) => e.type === 'ambush-d20');
@@ -745,6 +1022,10 @@ class Game {
       const freedNames = pit.playerIds
         .map((id) => this.players.find((p) => p.id === id)?.name)
         .filter(Boolean);
+      const wasMysteryAmbush = this.revealedSpaces[spaceNum]?.type === 'ambush';
+      if (this.revealedSpaces[spaceNum]?.jackpot) {
+        this.grantDmgBonus(player, events);
+      }
       events.push({
         type: 'ambush-end',
         success: true,
@@ -754,6 +1035,9 @@ class Game {
         spaceNum,
       });
       this.clearPitAt(spaceNum);
+      if (wasMysteryAmbush) {
+        this.resetMysterySpace(spaceNum, events);
+      }
     } else if (died) {
       this.removePlayerFromPit(player, spaceNum);
       const pitContinues = (this.getPitAt(spaceNum)?.playerIds.length ?? 0) > 0;
@@ -823,7 +1107,8 @@ class Game {
     let winner = null;
 
     if (success) {
-      const hitDamage = nat20 ? 2 : 1;
+      const dmgBonus = player.dmgBonus ?? 0;
+      const hitDamage = nat20 ? 2 + dmgBonus : 1 + dmgBonus;
       this.bossHp = Math.max(0, this.bossHp - hitDamage);
       if (nat20) {
         events.push({ type: 'nat20', player: player.name });
@@ -968,6 +1253,8 @@ class Game {
         needsPath: moveResult.needsPath,
         needsBoss: moveResult.needsBoss ?? false,
         needsAmbush: moveResult.needsAmbush ?? false,
+        needsMysteryRoll: moveResult.needsMysteryRoll ?? false,
+        mysterySpaceNum: moveResult.mysterySpaceNum ?? null,
         eventConfig: moveResult.eventConfig,
         pathConfig: moveResult.pathConfig,
         passTurn: false,
@@ -1041,6 +1328,7 @@ class Game {
     this.bossMaxHp = 0;
     this.bossConfig = null;
     this.ambushPits = {};
+    this.revealedSpaces = {};
   }
 }
 

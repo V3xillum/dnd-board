@@ -48,6 +48,18 @@
     return JSON.parse(JSON.stringify(spaces));
   }
 
+  /** Firebase weigert `undefined` — strip uit objecten vóór write. */
+  function stripUndefined(value) {
+    if (value === undefined) return null;
+    if (value === null || typeof value !== "object") return value;
+    if (Array.isArray(value)) return value.map(stripUndefined);
+    const out = {};
+    Object.entries(value).forEach(([key, entry]) => {
+      if (entry !== undefined) out[key] = stripUndefined(entry);
+    });
+    return out;
+  }
+
   function normalizeAmbushPits(pits) {
     if (!pits || typeof pits !== "object") return {};
     const normalized = {};
@@ -58,7 +70,7 @@
   }
 
   function serializeGame(game) {
-    return {
+    return stripUndefined({
       players: cloneSpecialSpaces(game.players),
       currentIndex: game.currentIndex,
       pendingExtraTurn: game.pendingExtraTurn,
@@ -69,11 +81,12 @@
       bossMaxHp: game.bossMaxHp,
       bossConfig: game.bossConfig ? cloneSpecialSpaces(game.bossConfig) : null,
       ambushPits: cloneSpecialSpaces(normalizeAmbushPits(game.ambushPits)),
+      revealedSpaces: cloneSpecialSpaces(normalizeAmbushPits(game.revealedSpaces)),
       specialSpaces: cloneSpecialSpaces(window.SPECIAL_SPACES),
       activeModal: typeof window.getActiveModal === "function" ? window.getActiveModal() : null,
       updatedBy: sessionId,
       updatedAt: Date.now(),
-    };
+    });
   }
 
   function deserializeGame(data, game) {
@@ -91,6 +104,7 @@
     game.bossMaxHp = data.bossMaxHp ?? 0;
     game.bossConfig = data.bossConfig ? cloneSpecialSpaces(data.bossConfig) : null;
     game.ambushPits = normalizeAmbushPits(data.ambushPits);
+    game.revealedSpaces = normalizeAmbushPits(data.revealedSpaces);
 
     if (data.specialSpaces && typeof window.applySpecialSpaces === "function") {
       window.applySpecialSpaces(cloneSpecialSpaces(data.specialSpaces));
@@ -148,7 +162,7 @@
 
   function syncActiveModal(modal) {
     if (!isHost || suppressSync || !gameId || typeof window.writeActiveModal !== "function") return;
-    window.writeActiveModal(gameId, modal);
+    window.writeActiveModal(gameId, stripUndefined(modal));
   }
 
   window.syncAfterAction = function syncAfterAction() {

@@ -1029,6 +1029,13 @@ function pickRandomAmbush() {
   return AMBUSH_POOL[Math.floor(Math.random() * AMBUSH_POOL.length)];
 }
 
+function pickRandomPath() {
+  if (PATH_TILES.length === 0) {
+    return { name: 'Rustig pad', icon: '🚶', flavor: 'Even ademhalen onderweg.' };
+  }
+  return PATH_TILES[Math.floor(Math.random() * PATH_TILES.length)];
+}
+
 function eventsByDc(min, max) {
   return eventsExceptBosses().filter((e) => e.dc >= min && e.dc <= max);
 }
@@ -1100,10 +1107,15 @@ function buildSpecialSpaces() {
     1,
     Math.min(Math.round(eventSlotNums.length * AMBUSH_RATIO), eventSlotNums.length),
   );
-  const ambushSlots = shuffleArray(eventSlotNums).slice(0, ambushCount);
-  ambushSlots.forEach((slot) => {
-    const ambush = pickRandomAmbush();
-    if (ambush) spaces[slot] = { type: 'event', ...ambush };
+  const mysterySlots = shuffleArray(eventSlotNums).slice(0, ambushCount);
+  mysterySlots.forEach((slot) => {
+    spaces[slot] = {
+      type: 'mystery',
+      category: 'mystery',
+      icon: '❓',
+      name: 'Onbekend gevaar',
+      flavor: 'Iets loert hier. Je weet nog niet wat.',
+    };
   });
 
   return spaces;
@@ -1129,6 +1141,7 @@ window.BOSS_POOL = BOSS_POOL;
 window.AMBUSH_POOL = AMBUSH_POOL;
 window.AMBUSH_RATIO = AMBUSH_RATIO;
 window.pickRandomAmbush = pickRandomAmbush;
+window.pickRandomPath = pickRandomPath;
 window.PATH_TILES = PATH_TILES;
 window.ENCAMPMENT_SPACE = ENCAMPMENT_SPACE;
 window.ENCAMPMENT_TILE = ENCAMPMENT_TILE;

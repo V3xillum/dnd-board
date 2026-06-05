@@ -4,6 +4,10 @@
   box-sizing: border-box;
 }
 
+.hidden {
+  display: none !important;
+}
+
 :root {
   --tile-event: linear-gradient(135deg, #ddb892, #c4956a);
   --tile-quiet: linear-gradient(135deg, #e8dcc8, #d4c4a8);
@@ -13,6 +17,7 @@
   --tile-social: linear-gradient(135deg, #e8d4b8, #c8a878);
   --tile-loot: linear-gradient(135deg, #c0d8f0, #90b8d4);
   --tile-mystery: linear-gradient(135deg, #c8c0d8, #9890b8);
+  --tile-mystery-unrevealed: linear-gradient(135deg, #4a3d6b, #2d2548);
   --tile-wild: linear-gradient(135deg, #b8d8b8, #88b888);
   --tile-fey: linear-gradient(135deg, #f0c8e8, #d898c8);
   --tile-boss: linear-gradient(135deg, #8b1a1a, #c9a227);
@@ -111,6 +116,11 @@ body {
 .event-modal--spectator #event-close,
 .event-modal--spectator .event-card__nat-controls {
   display: none !important;
+}
+.mystery-modal--spectator #mystery-submit,
+.mystery-modal--spectator #mystery-action,
+.mystery-modal--spectator #mystery-dice-input {
+  pointer-events: none;
 }
 .path-modal--spectator #path-close,
 .win-modal--spectator #win-close {
@@ -408,6 +418,11 @@ body {
 }
 .cell--mystery {
   background: var(--tile-mystery);
+}
+.cell--mystery-unrevealed {
+  background: var(--tile-mystery-unrevealed);
+  border-color: rgba(180, 160, 220, 0.55);
+  box-shadow: inset 0 0 14px rgba(120, 90, 200, 0.35);
 }
 .cell--wild {
   background: var(--tile-wild);
@@ -977,6 +992,7 @@ body {
 .legend-swatch--social { background: var(--tile-social); }
 .legend-swatch--loot { background: var(--tile-loot); }
 .legend-swatch--mystery { background: var(--tile-mystery); }
+.legend-swatch--mystery-unrevealed { background: var(--tile-mystery-unrevealed); }
 .legend-swatch--wild { background: var(--tile-wild); }
 .legend-swatch--fey { background: var(--tile-fey); }
 .legend-swatch--ambush { background: var(--tile-ambush); }
@@ -1263,6 +1279,93 @@ body.modal-open {
   font-size: 0.95rem;
   color: rgba(74, 48, 32, 0.75);
   font-style: italic;
+}
+.event-card--mystery .event-card__frame {
+  background: linear-gradient(165deg, #3d3258, #2a2240, #1e1830);
+  color: #e8e0f8;
+  text-align: center;
+}
+.event-card--mystery .event-card__title,
+.event-card--mystery .event-card__flavor {
+  color: #e8e0f8;
+}
+.event-card--mystery .event-card__badge {
+  background: rgba(180, 160, 220, 0.2);
+  color: #d8d0f0;
+}
+.mystery-roll-area {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  justify-content: center;
+  gap: 0.75rem;
+  margin: 1rem 0;
+}
+.mystery-reveal-area {
+  margin: 1rem 0;
+  text-align: left;
+}
+.mystery-reveal-area.hidden {
+  display: none;
+}
+.mystery-reveal-card {
+  padding: 1rem;
+  border-radius: 10px;
+  background: rgba(0, 0, 0, 0.25);
+  border: 1px solid rgba(180, 160, 220, 0.3);
+}
+.mystery-reveal-card__head {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  margin-bottom: 0.5rem;
+}
+.mystery-reveal-card__icon {
+  font-size: 2.5rem;
+  line-height: 1;
+}
+.mystery-reveal-card__name {
+  margin: 0;
+  font-size: 1.15rem;
+  color: #f4e8ff;
+}
+.mystery-reveal-card__flavor {
+  margin: 0.35rem 0 0;
+  font-size: 0.9rem;
+  color: rgba(232, 224, 248, 0.85);
+  font-style: italic;
+}
+.mystery-badge {
+  display: inline-block;
+  margin-top: 0.65rem;
+  padding: 0.25rem 0.65rem;
+  border-radius: 20px;
+  font-size: 0.78rem;
+  font-weight: bold;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+.mystery-badge--strong {
+  background: rgba(232, 160, 48, 0.25);
+  color: #f0d060;
+  border: 1px solid rgba(232, 160, 48, 0.45);
+}
+.mystery-badge--danger {
+  background: rgba(200, 50, 50, 0.3);
+  color: #ffb0b0;
+  border: 1px solid rgba(220, 80, 80, 0.5);
+}
+.mystery-jackpot {
+  margin-top: 0.65rem;
+  padding: 0.5rem 0.75rem;
+  border-radius: 8px;
+  background: linear-gradient(135deg, rgba(201, 162, 39, 0.25), rgba(220, 80, 80, 0.2));
+  border: 1px solid rgba(201, 162, 39, 0.5);
+  color: #ffe8a0;
+  font-size: 0.85rem;
+}
+.event-card--mystery.event-card--jackpot .event-card__frame {
+  box-shadow: 0 0 24px rgba(201, 162, 39, 0.35), inset 0 0 20px rgba(220, 60, 60, 0.15);
 }
 .event-card__header {
   display: flex;

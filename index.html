@@ -92,8 +92,8 @@
           Loot
         </span>
         <span class="legend-item">
-          <span class="legend-swatch legend-swatch--mystery" aria-hidden="true"></span>
-          Mysterie
+          <span class="legend-swatch legend-swatch--mystery-unrevealed" aria-hidden="true"></span>
+          ❓ Onbekend gevaar
         </span>
         <span class="legend-item">
           <span class="legend-swatch legend-swatch--wild" aria-hidden="true"></span>
@@ -189,6 +189,33 @@
     </div>
   </div>
 
+  <div id="mystery-modal" class="event-modal hidden" role="dialog" aria-modal="true">
+    <div class="event-card event-card--mystery">
+      <div class="event-card__frame">
+        <header class="event-card__header">
+          <span class="event-card__icon" id="mystery-icon">❓</span>
+          <span class="event-card__badge" id="mystery-space">Vak 0</span>
+        </header>
+        <h2 class="event-card__title" id="mystery-title">Onbekend gevaar</h2>
+        <p class="event-card__flavor" id="mystery-flavor">Gooi een D12 om te onthullen wat hier loert.</p>
+
+        <div id="mystery-roll-area" class="mystery-roll-area">
+          <label class="event-card__roll-field" for="mystery-dice-input">
+            <span class="event-card__roll-label">D12 worp</span>
+            <input type="number" id="mystery-dice-input" class="event-card__roll-value" min="1" max="12" placeholder="1–12" inputmode="numeric">
+          </label>
+          <button type="button" id="mystery-submit" class="btn btn--d20 btn--roll-submit">Onthullen</button>
+        </div>
+
+        <div id="mystery-reveal-area" class="mystery-reveal-area hidden">
+          <div id="mystery-reveal-content"></div>
+        </div>
+
+        <button type="button" id="mystery-action" class="btn btn--primary btn--wide hidden">Verder</button>
+      </div>
+    </div>
+  </div>
+
   <div id="path-modal" class="event-modal hidden" role="dialog" aria-modal="true">
     <div class="event-card event-card--path">
       <div class="event-card__frame">
@@ -278,7 +305,7 @@
             <span class="rules-legend__item"><span class="legend-swatch legend-swatch--magic" aria-hidden="true"></span> Magie</span>
             <span class="rules-legend__item"><span class="legend-swatch legend-swatch--social" aria-hidden="true"></span> Social</span>
             <span class="rules-legend__item"><span class="legend-swatch legend-swatch--loot" aria-hidden="true"></span> Loot</span>
-            <span class="rules-legend__item"><span class="legend-swatch legend-swatch--mystery" aria-hidden="true"></span> Mysterie</span>
+            <span class="rules-legend__item"><span class="legend-swatch legend-swatch--mystery-unrevealed" aria-hidden="true"></span> ❓ Onbekend gevaar</span>
             <span class="rules-legend__item"><span class="legend-swatch legend-swatch--wild" aria-hidden="true"></span> Wildernis</span>
             <span class="rules-legend__item"><span class="legend-swatch legend-swatch--fey" aria-hidden="true"></span> Fey</span>
             <span class="rules-legend__item"><span class="legend-swatch legend-swatch--ambush" aria-hidden="true"></span> Ambush</span>

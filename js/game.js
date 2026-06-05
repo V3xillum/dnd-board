@@ -804,6 +804,16 @@ class Game {
     return this.bossMinions.find((m) => m.hp > 0) ?? null;
   }
 
+  /** D12 is één keer per boss-fight; bossRevealRoll blijft staan tot reset(). */
+  hasBossReveal() {
+    return this.bossRevealRoll != null;
+  }
+
+  /** Boss verslagen — geen nieuwe D12 of gevecht op vak 62. */
+  isBossEncounterComplete() {
+    return this.hasBossReveal() && !this.bossActive;
+  }
+
   /** Minion voor finalize wanneer gevecht-net verslagen (hp 0, niet meer "actief"). */
   resolveBossMinionForContext(options = {}) {
     const { minionIndex = null, combatConfig = null } = options;
@@ -1206,7 +1216,7 @@ class Game {
   resolveSpace(player, events) {
     const onBossSpace = player.position === BOSS_SPACE || player.position === FINISH_SPACE;
 
-    if (!this.bossActive && onBossSpace) {
+    if (!this.bossActive && onBossSpace && !this.hasBossReveal()) {
       events.push({
         type: 'boss-reveal-pending',
         player: player.name,
@@ -1265,6 +1275,15 @@ class Game {
         needsBossMinion: hasMinions,
         needsBoss: !hasMinions,
       };
+    }
+
+    if (player.position === BOSS_SPACE && this.isBossEncounterComplete()) {
+      events.push({
+        type: 'boss-cleared',
+        player: player.name,
+        spaceNum: BOSS_SPACE,
+      });
+      return { events, winner: null, needsEvent: false, needsPath: false };
     }
 
     const space = SPECIAL_SPACES[player.position];

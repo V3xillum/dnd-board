@@ -1458,6 +1458,9 @@ function describeEvents(events) {
       case 'boss-defeated':
         addLog(`🏆 ${ev.bossName} is verslagen!`, 'success');
         break;
+      case 'boss-cleared':
+        addLog(`⚔️ ${ev.player} passeert vak ${ev.spaceNum} — de eindbaas is al verslagen`, 'special');
+        break;
       case 'boss-engage':
         addLog(
           `${ev.player} bereikt vak ${ev.spaceNum} — tijd om ${ev.name ?? 'de eindbaas'} aan te vallen!`,

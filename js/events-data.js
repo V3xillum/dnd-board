@@ -1117,7 +1117,13 @@ function rebuildBoard() {
   return SPECIAL_SPACES;
 }
 
+function applySpecialSpaces(spaces) {
+  SPECIAL_SPACES = spaces;
+  window.SPECIAL_SPACES = spaces;
+}
+
 window.SPECIAL_SPACES = SPECIAL_SPACES;
+window.applySpecialSpaces = applySpecialSpaces;
 window.EVENT_POOL = EVENT_POOL;
 window.BOSS_POOL = BOSS_POOL;
 window.AMBUSH_POOL = AMBUSH_POOL;

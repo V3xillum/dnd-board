@@ -72,6 +72,56 @@ body {
   opacity: 0.75;
   font-style: italic;
 }
+.multiplayer-bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem 1rem;
+  margin-top: 0.75rem;
+  padding: 0.5rem 0.75rem;
+  border-radius: 8px;
+  background: rgba(44, 24, 16, 0.55);
+  border: 1px solid rgba(201, 162, 39, 0.35);
+  font-size: 0.85rem;
+}
+#mp-status {
+  color: #f4e4bc;
+}
+#mp-game-id {
+  color: #e8c84a;
+  font-family: monospace;
+}
+.btn--small {
+  padding: 0.25rem 0.65rem;
+  font-size: 0.78rem;
+  border-radius: 14px;
+}
+.app--spectator .add-player,
+.app--spectator .dice-controls,
+.app--spectator .hp-controls {
+  opacity: 0.55;
+  pointer-events: none;
+}
+.app--spectator .btn-remove {
+  display: none;
+}
+.event-modal--spectator .event-card__roll-area,
+.event-modal--spectator #event-submit,
+.event-modal--spectator #event-close,
+.event-modal--spectator .event-card__nat-controls {
+  display: none !important;
+}
+.path-modal--spectator #path-close,
+.win-modal--spectator #win-close {
+  display: none !important;
+}
+.spectator-wait {
+  margin: 0;
+  text-align: center;
+  font-style: italic;
+  opacity: 0.85;
+}
 .btn--rules {
   padding: 0.4rem 0.9rem;
   font-size: 0.82rem;

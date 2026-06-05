@@ -230,6 +230,7 @@ function renderPlayers() {
       renderBoard();
       renderPlayers();
       updateTurnUI();
+      window.syncAfterAction?.();
     });
   });
 
@@ -334,6 +335,7 @@ function adjustCurrentPlayerHp(delta) {
   renderBoard();
   renderPlayers();
   updateTurnUI();
+  window.syncAfterAction?.();
 }
 
 function renderCombatPlayerChips(playerIds, options = {}) {
@@ -527,7 +529,7 @@ function updateTurnUI() {
   updateHpControls();
 }
 
-function addLog(message, type = '') {
+function prependLogEntry(message, type = '') {
   const li = document.createElement('li');
   li.className = type ? `log-entry log-entry--${type}` : 'log-entry';
   li.textContent = message;
@@ -536,6 +538,11 @@ function addLog(message, type = '') {
   while (els.gameLog.children.length > 30) {
     els.gameLog.removeChild(els.gameLog.lastChild);
   }
+}
+
+function addLog(message, type = '') {
+  prependLogEntry(message, type);
+  window.syncLastEvent?.(message, type);
 }
 
 function describeEvents(events) {
@@ -731,6 +738,171 @@ function formatPlayerDcHint(player) {
 let activeEvent = null;
 let activeBoss = null;
 let activeAmbush = null;
+let syncedActiveModal = null;
+
+function serializeModalConfig(config) {
+  if (!config) return null;
+  return {
+    name: config.name,
+    icon: config.icon,
+    flavor: config.flavor,
+    ability: config.ability,
+    dc: config.dc,
+    successText: config.successText,
+    failText: config.failText,
+  };
+}
+
+function setSyncedActiveModal(modal) {
+  syncedActiveModal = modal;
+  window.syncActiveModal?.(modal);
+  window.syncAfterAction?.();
+}
+
+function clearSyncedActiveModal() {
+  syncedActiveModal = null;
+  window.syncActiveModal?.(null);
+  window.syncAfterAction?.();
+}
+
+function resetEventModalHostControls() {
+  els.eventModal.classList.remove('event-modal--spectator');
+  els.eventClose.classList.remove('is-hidden');
+  els.eventSubmit.classList.remove('is-hidden');
+}
+
+function syncModalInput(type, config, spaceNum, options = {}) {
+  setSyncedActiveModal({
+    type,
+    phase: 'input',
+    spaceNum: spaceNum ?? null,
+    config: serializeModalConfig(config),
+    submitLabel: options.submitLabel || 'Bevestigen',
+  });
+}
+
+function syncModalOutcome(type, spaceNum, config, outcome) {
+  setSyncedActiveModal({
+    type,
+    phase: 'outcome',
+    spaceNum: spaceNum ?? null,
+    config: serializeModalConfig(config),
+    outcome,
+  });
+}
+
+function closeSpectatorModals() {
+  els.eventModal.classList.add('hidden');
+  els.eventModal.classList.remove('event-modal--spectator');
+  els.pathModal.classList.add('hidden');
+  els.pathModal.classList.remove('path-modal--spectator');
+  els.winModal.classList.add('hidden');
+  els.winModal.classList.remove('win-modal--spectator');
+  syncModalScrollLock();
+}
+
+function populateSpectatorCombatModal(type, config, spaceNum) {
+  const player = game.currentPlayer;
+  updateEventModalTurnPlayer();
+  removeCombatHpBars();
+  removeAmbushModalExtras();
+  els.eventCard?.classList.remove('event-card--ambush');
+
+  if (type === 'ambush') {
+    const pit = game.getCurrentPlayerPit();
+    if (pit && player) {
+      els.eventCard?.classList.add('event-card--ambush');
+      els.eventCard?.style.setProperty('--ambush-fighter-color', player.color);
+      els.eventIcon.textContent = config.icon || '🕳️';
+      els.eventSpace.textContent = `Vak ${spaceNum ?? player.position}`;
+      els.eventTitle.textContent = config.name;
+      els.eventTitle.className = 'event-card__title';
+      els.eventFlavor.textContent = config.flavor;
+      els.eventFlavor.className = 'event-card__flavor';
+      els.eventCheck.insertAdjacentHTML('afterbegin', ambushFighterPanelHtml(player, pit));
+      els.eventAbility.textContent = config.ability;
+      els.eventDc.textContent = formatDcDisplay(config.dc, player);
+      els.eventCheck.insertAdjacentHTML('beforeend', ambushHpBarHtml());
+    }
+  } else if (type === 'boss') {
+    els.eventIcon.textContent = config.icon || '🛡️';
+    els.eventSpace.textContent = 'Eindbaas';
+    els.eventTitle.textContent = `⚔️ ${config.name}`;
+    els.eventTitle.className = 'event-card__title';
+    els.eventFlavor.textContent = config.flavor;
+    els.eventFlavor.className = 'event-card__flavor';
+    els.eventAbility.textContent = config.ability;
+    els.eventDc.textContent = formatDcDisplay(config.dc, player);
+    els.eventCheck.insertAdjacentHTML('beforeend', bossHpBarHtml());
+  } else {
+    els.eventIcon.textContent = config.icon || '🎲';
+    els.eventSpace.textContent = `Vak ${spaceNum ?? '?'}`;
+    resetEventHeader(config);
+    els.eventAbility.textContent = config.ability;
+    els.eventDc.textContent = formatDcDisplay(config.dc, player);
+  }
+}
+
+function renderSpectatorModal(activeModal) {
+  if (window.isMultiplayerHost?.()) return;
+
+  closeSpectatorModals();
+  if (!activeModal) return;
+
+  const { type, phase, config, spaceNum, outcome } = activeModal;
+
+  if (type === 'path') {
+    els.pathIcon.textContent = config?.icon || '🚶';
+    els.pathSpace.textContent = `Vak ${spaceNum ?? '?'}`;
+    els.pathTitle.textContent = config?.name || '';
+    els.pathFlavor.textContent = config?.flavor || '';
+    els.pathModal.classList.add('path-modal--spectator');
+    els.pathModal.classList.remove('hidden');
+    syncModalScrollLock();
+    return;
+  }
+
+  if (type === 'win') {
+    els.winTitle.textContent = outcome?.title ?? '🏆 Overwinning!';
+    els.winText.textContent = outcome?.text ?? '';
+    els.winModal.classList.add('win-modal--spectator');
+    els.winModal.classList.remove('hidden');
+    syncModalScrollLock();
+    return;
+  }
+
+  if (!config) return;
+
+  populateSpectatorCombatModal(type, config, spaceNum);
+  els.eventModal.classList.add('event-modal--spectator');
+  els.eventRollArea.classList.add('is-hidden');
+  els.eventNat20.disabled = true;
+  els.eventNat1.disabled = true;
+  els.eventDiceInput.disabled = true;
+
+  if (phase === 'input') {
+    els.eventCheck.classList.remove('is-hidden');
+    els.eventResult.classList.remove('hidden');
+    els.eventResult.className = 'event-card__result';
+    els.eventResult.innerHTML = '<p class="spectator-wait">Host voert de check uit…</p>';
+  } else if (phase === 'outcome' && outcome) {
+    if (outcome.headerMode === 'outcome') {
+      showEventOutcomeInHeader(outcome.success, config);
+    } else {
+      els.eventTitle.textContent = outcome.title ?? config.name;
+      els.eventTitle.className = outcome.titleClass ?? 'event-card__title';
+      els.eventFlavor.textContent = outcome.flavor ?? '';
+      els.eventFlavor.className = outcome.flavorClass ?? 'event-card__flavor';
+    }
+    els.eventCheck.classList.add('is-hidden');
+    els.eventResult.classList.remove('hidden');
+    els.eventResult.className = outcome.resultClassName ?? 'event-card__result';
+    els.eventResult.innerHTML = outcome.resultHtml ?? '';
+  }
+
+  els.eventModal.classList.remove('hidden');
+  syncModalScrollLock();
+}
 
 function removeCombatHpBars() {
   els.eventCheck.querySelector('.event-card__boss-hp')?.remove();
@@ -771,6 +943,7 @@ function showEventOutcomeInHeader(success, config) {
 }
 
 function populateEventModal(config, spaceNum) {
+  resetEventModalHostControls();
   const player = game.currentPlayer;
   updateEventModalTurnPlayer();
 
@@ -809,9 +982,16 @@ function closeEventModal() {
   activeAmbush = null;
   els.eventCard?.classList.remove('event-card--ambush');
   removeAmbushModalExtras();
+  if (window.isMultiplayerHost?.()) {
+    const modalType = syncedActiveModal?.type;
+    if (modalType === 'event' || modalType === 'boss' || modalType === 'ambush') {
+      clearSyncedActiveModal();
+    }
+  }
 }
 
 function populateBossModal() {
+  resetEventModalHostControls();
   const config = game.bossConfig;
   const player = game.currentPlayer;
   if (!config) return;
@@ -913,6 +1093,7 @@ function ambushFighterPanelHtml(player, pit) {
 }
 
 function populateAmbushModal() {
+  resetEventModalHostControls();
   const pit = game.getCurrentPlayerPit();
   const player = game.currentPlayer;
   if (!pit || !player) return;
@@ -968,9 +1149,13 @@ function showAmbushModal(onComplete) {
   activeEvent = null;
 
   els.eventModal.classList.remove('hidden');
+  els.eventModal.classList.remove('event-modal--spectator');
   syncModalScrollLock();
   populateAmbushModal();
   updateAmbushPanel();
+  syncModalInput('ambush', game.getCurrentPlayerPit()?.config, game.currentPlayer?.position, {
+    submitLabel: 'Vechten',
+  });
 
   setTimeout(() => els.eventDiceInput.focus(), 100);
 }
@@ -986,21 +1171,24 @@ function showBossModal(onComplete) {
   activeAmbush = null;
 
   els.eventModal.classList.remove('hidden');
+  els.eventModal.classList.remove('event-modal--spectator');
   syncModalScrollLock();
   populateBossModal();
   updateBossPanel();
+  syncModalInput('boss', game.bossConfig, null, { submitLabel: 'Aanvallen' });
 
   setTimeout(() => els.eventDiceInput.focus(), 100);
 }
 
 function finishBossFlow(onClose) {
+  resetEventModalHostControls();
   els.eventSubmit.disabled = true;
   els.eventDiceInput.disabled = true;
   els.eventNat20.disabled = true;
   els.eventNat1.disabled = true;
   els.eventClose.disabled = false;
   els.eventClose.textContent = onClose?.chainLabel ?? 'Doorgaan op avontuur';
-  activeBoss.onClose = onClose?.handler;
+  if (activeBoss) activeBoss.onClose = onClose?.handler;
   els.eventClose.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
 }
 
@@ -1045,6 +1233,7 @@ function handleAmbushSubmit() {
     renderPlayers();
     updateAmbushPanel();
     if (game.isCurrentPlayerInAmbush()) populateAmbushModal();
+    window.syncAfterAction?.();
   } catch (err) {
     console.error(err);
     els.eventResult.className = 'event-card__result event-card__result--fail';
@@ -1138,6 +1327,14 @@ function handleBossSubmit() {
     console.error(err);
     els.eventResult.className = 'event-card__result event-card__result--fail';
     els.eventResult.innerHTML = '<p>Kon de aanval niet verwerken.</p>';
+    syncModalOutcome('boss', null, config, {
+      title: els.eventTitle.textContent,
+      titleClass: els.eventTitle.className,
+      flavor: els.eventFlavor.textContent,
+      flavorClass: els.eventFlavor.className,
+      resultClassName: els.eventResult.className,
+      resultHtml: els.eventResult.innerHTML,
+    });
     finishBossFlow({ handler: () => endBossTurn(onComplete) });
     return;
   }
@@ -1178,6 +1375,15 @@ function handleBossSubmit() {
     ${bossHpHtml}
   `;
 
+  syncModalOutcome('boss', null, config, {
+    title: els.eventTitle.textContent,
+    titleClass: els.eventTitle.className,
+    flavor: els.eventFlavor.textContent,
+    flavorClass: els.eventFlavor.className,
+    resultClassName: els.eventResult.className,
+    resultHtml: els.eventResult.innerHTML,
+  });
+
   if (result.winner) {
     finishBossFlow({ handler: () => showWinModal(result.winner) });
     return;
@@ -1199,10 +1405,12 @@ function showPathModal(config, spaceNum, onComplete) {
 
   els.pathModal.classList.remove('hidden');
   syncModalScrollLock();
+  syncModalInput('path', config, spaceNum);
 
   const onClose = () => {
     els.pathModal.classList.add('hidden');
     syncModalScrollLock();
+    clearSyncedActiveModal();
     onComplete?.();
   };
 
@@ -1258,20 +1466,23 @@ function showEventModal(config, spaceNum, onComplete) {
   activeAmbush = null;
 
   els.eventModal.classList.remove('hidden');
+  els.eventModal.classList.remove('event-modal--spectator');
   syncModalScrollLock();
   populateEventModal(config, spaceNum);
+  syncModalInput('event', config, spaceNum, { submitLabel: 'Bevestigen' });
 
   setTimeout(() => els.eventDiceInput.focus(), 100);
 }
 
 function finishEventFlow(onClose) {
+  resetEventModalHostControls();
   els.eventSubmit.disabled = true;
   els.eventDiceInput.disabled = true;
   els.eventNat20.disabled = true;
   els.eventNat1.disabled = true;
   els.eventClose.disabled = false;
   els.eventClose.textContent = onClose?.chainLabel ?? 'Doorgaan op avontuur';
-  activeEvent.onClose = onClose?.handler;
+  if (activeEvent) activeEvent.onClose = onClose?.handler;
   els.eventClose.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
 }
 
@@ -1313,6 +1524,7 @@ function advanceTurn() {
   }
   renderPlayers();
   updateTurnUI();
+  window.syncAfterAction?.();
 
   const cp = game.currentPlayer;
   if (!game.gameOver && cp) {
@@ -1371,6 +1583,10 @@ function handleEventSubmit() {
     console.error(err);
     els.eventResult.className = 'event-card__result event-card__result--fail';
     els.eventResult.innerHTML = '<p>Kon het effect niet toepassen. Je kunt toch doorgaan.</p>';
+    syncModalOutcome('event', activeEvent.spaceNum, config, {
+      resultClassName: els.eventResult.className,
+      resultHtml: els.eventResult.innerHTML,
+    });
     finishEventFlow({ handler: () => endEventTurn(onComplete) });
     return;
   }
@@ -1388,6 +1604,13 @@ function handleEventSubmit() {
     <p class="result-effect">${formatEventMoveResult(result, result.events)}</p>
     ${hpHtml}
   `;
+
+  syncModalOutcome('event', activeEvent.spaceNum, config, {
+    headerMode: 'outcome',
+    success,
+    resultClassName: els.eventResult.className,
+    resultHtml: els.eventResult.innerHTML,
+  });
 
   if (result.winner) {
     finishEventFlow({ handler: () => showWinModal(result.winner) });
@@ -1465,15 +1688,27 @@ els.eventClose.addEventListener('click', () => {
 
 function showWinModal(winner) {
   els.winModal.classList.remove('hidden');
+  els.winModal.classList.remove('win-modal--spectator');
   syncModalScrollLock();
   els.winTitle.textContent = '🏆 Overwinning!';
   els.winText.textContent = `${winner.name} heeft de Draken-schat bereikt en wint het avontuur!`;
+  setSyncedActiveModal({
+    type: 'win',
+    phase: 'outcome',
+    spaceNum: null,
+    config: null,
+    outcome: {
+      title: '🏆 Overwinning!',
+      text: `${winner.name} heeft de Draken-schat bereikt en wint het avontuur!`,
+    },
+  });
 }
 
 function handleMoveResult(result) {
   describeEvents(result.events);
   renderTokens();
   continueAfterLand(result);
+  window.syncAfterAction?.();
 }
 
 els.addBtn.addEventListener('click', () => {
@@ -1489,6 +1724,7 @@ els.addBtn.addEventListener('click', () => {
   renderBoard();
   renderPlayers();
   addLog(`${name} voegt zich bij het avontuur!`);
+  window.syncAfterAction?.();
 });
 
 els.playerName.addEventListener('keydown', (e) => {
@@ -1530,6 +1766,7 @@ els.rulesModal?.addEventListener('click', (e) => {
 els.winClose.addEventListener('click', () => {
   els.winModal.classList.add('hidden');
   syncModalScrollLock();
+  clearSyncedActiveModal();
   game.reset();
   if (typeof rebuildBoard === 'function') rebuildBoard();
   els.gameLog.innerHTML = '';
@@ -1538,7 +1775,44 @@ els.winClose.addEventListener('click', () => {
   renderBoard();
   renderPlayers();
   addLog('Nieuw avontuur — het bord is opnieuw geschud!');
+  window.syncAfterAction?.();
+  window.resetMultiplayerLog?.();
 });
+
+window.getGame = () => game;
+window.getActiveModal = () => syncedActiveModal;
+window.renderSpectatorModal = renderSpectatorModal;
+window.resyncActiveModalIfOpen = () => {
+  if (syncedActiveModal) {
+    window.syncActiveModal?.(syncedActiveModal);
+    if (window.isMultiplayerHost?.()) window.syncAfterAction?.();
+  }
+};
+window.refreshGameUI = () => {
+  renderBoard();
+  renderPlayers();
+  updateCombatRail();
+};
+window.appendRemoteLogEntry = (message, type = '') => {
+  prependLogEntry(message, type);
+};
+window.clearGameLog = () => {
+  els.gameLog.innerHTML = '';
+};
+window.setMultiplayerReadOnly = (readOnly) => {
+  document.querySelector('.app')?.classList.toggle('app--spectator', readOnly);
+  els.playerName.disabled = readOnly;
+  els.addBtn.disabled = readOnly;
+  if (readOnly) {
+    els.moveBtn.disabled = true;
+    els.diceInput.disabled = true;
+    els.hpMinusBtn.disabled = true;
+    els.hpPlusBtn.disabled = true;
+  } else {
+    updateTurnUI();
+  }
+};
 
 renderBoard();
 renderPlayers();
+window.initMultiplayer?.();

@@ -22,6 +22,7 @@
   --tile-fey: linear-gradient(135deg, #f0c8e8, #d898c8);
   --tile-boss: linear-gradient(135deg, #8b1a1a, #c9a227);
   --tile-ambush: linear-gradient(135deg, #e8a030, #f0d060);
+  --tile-healer: linear-gradient(135deg, #3d6b4a, #7cb88a);
   --tile-encampment: linear-gradient(135deg, #6b5b45, #a89070);
 }
 
@@ -135,8 +136,7 @@ body {
 .app--spectator .add-player,
 .app--spectator .dice-controls,
 .app--spectator .hp-controls {
-  opacity: 0.55;
-  pointer-events: none;
+  display: none;
 }
 .app--spectator .btn-remove {
   display: none;
@@ -579,6 +579,11 @@ body {
   background: var(--tile-ambush);
   border-color: rgba(232, 160, 48, 0.85);
   box-shadow: inset 0 0 10px rgba(0, 0, 0, 0.2);
+}
+.cell--healer {
+  background: var(--tile-healer);
+  border-color: rgba(124, 184, 138, 0.85);
+  box-shadow: inset 0 0 10px rgba(255, 255, 255, 0.12);
 }
 .cell--encampment {
   background: var(--tile-encampment);
@@ -1229,6 +1234,7 @@ body {
 .legend-swatch--fey { background: var(--tile-fey); }
 .legend-swatch--ambush { background: var(--tile-ambush); }
 .legend-swatch--boss { background: var(--tile-boss); }
+.legend-swatch--healer { background: var(--tile-healer); }
 .legend-swatch--encampment { background: var(--tile-encampment); }
 .legend-swatch--event { background: var(--tile-event); }
 
@@ -2148,6 +2154,79 @@ input.event-card__roll-value[type=number]:focus {
   .event-card__nat-crit-title {
     font-size: 0.74rem;
   }
+}
+
+.check-badge__enemy-atk {
+  display: block;
+  margin-top: 0.35rem;
+  font-size: 0.82rem;
+  font-weight: 600;
+  opacity: 0.9;
+}
+
+.event-card__combat-adjudicate,
+.event-card__enemy-roll,
+.event-card__special-save {
+  margin-top: 1rem;
+  padding: 1rem;
+  border-radius: 12px;
+  background: rgba(0, 0, 0, 0.04);
+  border: 1px solid rgba(0, 0, 0, 0.08);
+}
+
+.event-card__combat-adjudicate-label,
+.event-card__enemy-roll-label {
+  margin: 0 0 0.75rem;
+  font-size: 0.9rem;
+  font-weight: 600;
+  text-align: center;
+}
+
+.event-card__enemy-roll-value {
+  margin: 0 0 0.75rem;
+  font-size: 1.15rem;
+  font-weight: 700;
+  text-align: center;
+}
+
+.event-card__combat-adjudicate-btns {
+  display: flex;
+  gap: 0.75rem;
+  justify-content: center;
+}
+
+.event-card__special-save-title {
+  margin: 0 0 0.35rem;
+  font-size: 1.05rem;
+  font-weight: 700;
+  text-align: center;
+}
+
+.event-card__special-save-flavor {
+  margin: 0 0 0.85rem;
+  font-size: 0.88rem;
+  text-align: center;
+  opacity: 0.85;
+}
+
+.btn--success {
+  background: linear-gradient(135deg, #2ecc71, #27ae60);
+  color: #fff;
+  border: none;
+}
+
+.btn--success:hover:not(:disabled) {
+  filter: brightness(1.05);
+}
+
+.btn--fail {
+  background: linear-gradient(135deg, #e74c3c, #c0392b);
+  color: #fff;
+  border: none;
+}
+
+.btn--fail:hover:not(:disabled) {
+  filter: brightness(1.05);
 }
 
 /*# sourceMappingURL=styles.css.map */

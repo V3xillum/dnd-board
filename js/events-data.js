@@ -9,7 +9,7 @@
  * - ~38% rustige pad-vakjes (unieke tegels uit PATH_TILES, daarna opnieuw shufflen)
  * - rest D20-events, uniek per ronde zolang de pool groot genoeg is
  * - makkelijkere DC vroeg op het bord, zwaarder tegen het einde
- * - vak 56 = altijd kamp (rustig pad, terugtrekplek na boss-aanval)
+ * - vak 56 = genezerhutje (volledig HP-herstel)
  * - vak 62 = willekeurige eindbaas uit BOSS_POOL
  *
  * Zie js/EVENTS.md voor uitleg en voorbeelden.
@@ -48,15 +48,18 @@ const PATH_TILES = [
   { name: 'Hartslag onder de aarde', icon: '❤️', flavor: 'Wanneer je even stilstaat, denk je iets te voelen onder je voeten. Niet een trilling. Niet een aardbeving. Meer alsof de grond zelf één langzame hartslag geeft voordat alles weer stil wordt.' },
 ];
 
-/** Vast rustig vak — boss-retreat en even bijkomen vóór de volgende aanval */
-const ENCAMPMENT_SPACE = 56;
-const ENCAMPMENT_TILE = {
-  name: 'Kamp bij de drempel',
-  icon: '⛺',
-  encampment: true,
+/** Vast genezer-vak op het bord */
+const HEALER_SPACE = 56;
+const HEALER_TILE = {
+  name: 'Genezerhutje',
+  icon: '✨',
   flavor:
-    'Tenten, een smeulend kampvuur en stille wachters met zware ogen maar vaste handen op het zwaard. Hier hergroept het gezelschap na elke aanval op de eindbaas — wonden verbinden, water delen, dan de drempel weer op.',
+    'Een bescheiden hutje rookt zacht naar de drempel toe. Een cleric zwaait je binnen, legt warme handen op je wonden en fluistert een gebed — je voelt je weer volledig hersteld.',
 };
+/** @deprecated alias — gebruik HEALER_SPACE */
+const ENCAMPMENT_SPACE = HEALER_SPACE;
+/** @deprecated alias — gebruik HEALER_TILE */
+const ENCAMPMENT_TILE = HEALER_TILE;
 
 const GUARDIAN_EVENT_NAME = 'Laatste wachter';
 const PATH_RATIO = 0.38;
@@ -74,6 +77,59 @@ function flattenEventPool(nested) {
     }
   }
   return flat;
+}
+
+function attackBonusFromDc(dc) {
+  if (dc <= 11) return 3;
+  if (dc <= 14) return 4;
+  return 5;
+}
+
+const BOSS_SPECIAL_ATTACKS = {
+  'Storm Giant': { name: 'Thunder Stomp', saveAbility: 'Dexterity', dc: 14, dmgFail: 2, dmgSuccess: 1 },
+  'Hill Giant': { name: 'Boulder Toss', saveAbility: 'Dexterity', dc: 13, dmgFail: 2, dmgSuccess: 1 },
+  [GUARDIAN_EVENT_NAME]: { name: 'Shield Slam', saveAbility: 'Athletics', dc: 14, dmgFail: 2, dmgSuccess: 1 },
+  'Dark Paladin': { name: 'Fallen Smite', saveAbility: 'Constitution', dc: 14, dmgFail: 2, dmgSuccess: 1 },
+  Dracolich: { name: 'Lich Breath', saveAbility: 'Constitution', dc: 16, dmgFail: 2, dmgSuccess: 1 },
+  'Ancient Red Dragon': { name: 'Fire Breath', saveAbility: 'Dexterity', dc: 15, dmgFail: 2, dmgSuccess: 1 },
+  'Ancient Black Dragon': { name: 'Acid Breath', saveAbility: 'Dexterity', dc: 16, dmgFail: 2, dmgSuccess: 1 },
+  'Avatar of the Blight': { name: 'Blight Spores', saveAbility: 'Constitution', dc: 15, dmgFail: 2, dmgSuccess: 1 },
+  Reaper: { name: 'Soul Drain', saveAbility: 'Wisdom', dc: 15, dmgFail: 2, dmgSuccess: 1 },
+  Lich: { name: 'Finger of Death', saveAbility: 'Constitution', dc: 15, dmgFail: 2, dmgSuccess: 1 },
+  'Death Knight': { name: 'Hellfire Blade', saveAbility: 'Dexterity', dc: 14, dmgFail: 2, dmgSuccess: 1 },
+  'Green Hag': { name: "Hag's Curse", saveAbility: 'Wisdom', dc: 14, dmgFail: 2, dmgSuccess: 1 },
+};
+
+function defaultBossSpecialAttack(ev) {
+  const dc = ev.dc ?? 14;
+  return {
+    name: 'Special Attack',
+    saveAbility: 'Dexterity',
+    dc: Math.max(12, dc - 1),
+    dmgFail: 2,
+    dmgSuccess: 1,
+  };
+}
+
+/** Voeg attack-roll velden toe aan ambush/boss entries (sessie 10). */
+function enrichCombatEvent(ev) {
+  if (ev.category !== 'ambush' && ev.category !== 'boss') return ev;
+  const dc = ev.dc ?? 10;
+  const heavyDmg = ev.name === 'Orc Patrol'
+    || ev.name === 'Ancient Red Dragon'
+    || ev.name === 'Ancient Black Dragon'
+    || ev.name === 'Dracolich';
+  const enriched = {
+    ...ev,
+    attackBonus: ev.attackBonus ?? attackBonusFromDc(dc),
+    dmg: ev.dmg ?? (heavyDmg ? 2 : 1),
+  };
+  if (ev.category === 'boss') {
+    enriched.specialAttack = ev.specialAttack
+      ?? BOSS_SPECIAL_ATTACKS[ev.name]
+      ?? defaultBossSpecialAttack(ev);
+  }
+  return enriched;
 }
 
 const EVENT_POOL_RAW = {
@@ -1418,7 +1474,7 @@ const EVENT_POOL_RAW = {
   },
 };
 
-const EVENT_POOL = flattenEventPool(EVENT_POOL_RAW);
+const EVENT_POOL = flattenEventPool(EVENT_POOL_RAW).map(enrichCombatEvent);
 
 
 function shuffleArray(items) {
@@ -1491,11 +1547,11 @@ function buildSpecialSpaces() {
 
   const bossPreview = pickRandomBoss();
   spaces[62] = { type: 'event', ...bossPreview };
-  spaces[ENCAMPMENT_SPACE] = { type: 'path', ...ENCAMPMENT_TILE };
+  spaces[HEALER_SPACE] = { type: 'healer', ...HEALER_TILE };
 
   const playable = [];
   for (let n = 2; n <= 61; n += 1) {
-    if (n !== ENCAMPMENT_SPACE) playable.push(n);
+    if (n !== HEALER_SPACE) playable.push(n);
   }
 
   const shuffledSlots = shuffleArray(playable);
@@ -1530,7 +1586,7 @@ function buildSpecialSpaces() {
 
   const eventSlotNums = [];
   for (let n = 2; n <= 61; n += 1) {
-    if (n !== ENCAMPMENT_SPACE && spaces[n]?.type === 'event') {
+    if (n !== HEALER_SPACE && spaces[n]?.type === 'event') {
       eventSlotNums.push(n);
     }
   }
@@ -1575,6 +1631,8 @@ window.AMBUSH_RATIO = AMBUSH_RATIO;
 window.pickRandomAmbush = pickRandomAmbush;
 window.pickRandomPath = pickRandomPath;
 window.PATH_TILES = PATH_TILES;
+window.HEALER_SPACE = HEALER_SPACE;
+window.HEALER_TILE = HEALER_TILE;
 window.ENCAMPMENT_SPACE = ENCAMPMENT_SPACE;
 window.ENCAMPMENT_TILE = ENCAMPMENT_TILE;
 window.getDefaultBoss = getDefaultBoss;

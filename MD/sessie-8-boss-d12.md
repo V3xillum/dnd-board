@@ -31,11 +31,14 @@ De preview-tegel op vak 62 blijft bestaan; de D12 bepaalt pas bij activatie de w
 
 ### D12 eindbaas-tabel
 
-| Roll | Tier | Effect |
-|------|------|--------|
-| 1–8 | Standaard | `bossMultiplier = 1`, `bossDmgPerHit = 1` |
-| 9–11 | Versterkt | `bossMultiplier = 1.5`, `bossDmgPerHit = 1.5` |
-| 12 | Episch | `bossMultiplier = 2`, `bossDmgPerHit = 2` + **2 minions** |
+| Roll | Tier | HP-multiplier | Beschermers |
+|------|------|---------------|-------------|
+| 1–4 | Standaard | ×1 | 0 |
+| 5–10 | Versterkt | ×1,5 | 1 |
+| 11 | Episch | ×2 | 1 |
+| 12 | Episch | ×2 | **3** |
+
+Implementatie: `getBossRevealFromRoll(roll)` → `{ roll, multiplier, tier, minionCount }`; `spawnBossMinions(events, count)`.
 
 Boss-HP na D12:
 
@@ -44,18 +47,18 @@ bossMaxHp = Math.ceil(BOSS_HP_PER_PLAYER * playerCount * bossMultiplier)
 // BOSS_HP_PER_PLAYER = 3
 ```
 
-### Fail-damage naar speler
+### Fail-damage / vijand-aanval (sessie 10)
 
-Bij mislukte boss- **of** minion-check:
+Combat gebruikt **attack rolls** — geen DC-check op boss/minion meer. Vijand-schade bij hit:
 
 ```javascript
-failHits = Math.ceil(bossDmgPerHit)  // 1, 2 of 2 bij epic (1.5 → 2)
-// per failHit: mutateHp(-1); Nat 1 = +1 extra HP-verlies (zoals overal)
+damage = Math.ceil(config.dmg × bossDmgPerHit)  // ×2 bij vijand-Nat 20
+// via applyRepeatedHpDamage — stopt bij death (geen overflow op respawn)
 ```
 
 ### Schade naar boss/minion (speler-hit)
 
-Zelfde als sessie 7 — `dmgBonus` uit mystery-jackpot telt mee, maar D12 geeft **geen** nieuwe bonus:
+Zie `MD/sessie-10-attack-roll-combat.md`. `dmgBonus` uit mystery-jackpot telt mee; D12 geeft **geen** nieuwe bonus:
 
 | Worp | Schade |
 |------|--------|
@@ -65,46 +68,48 @@ Zelfde als sessie 7 — `dmgBonus` uit mystery-jackpot telt mee, maar D12 geeft 
 ### Levenscyclus (geen refresh)
 
 ```
-Eerste landing op 62 of 63 (boss nog niet actief)
+Eerste landing op 62 of 63 (boss nog niet actief, bossRevealRoll == null)
   → needsBossReveal
   → D12-modal (#boss-reveal-modal)
   → resolveBossReveal(roll)
        → bossMultiplier, bossDmgPerHit, bossRevealRoll gezet
        → activateBoss() — boss is nu actief in state
-       → bij tier epic: spawnBossMinions() (2× pickRandomAmbush)
-  → onthullingsfase (tier-badge, HP, eventueel minion-preview)
+       → spawnBossMinions(count) als minionCount > 0
+  → onthullingsfase (tier-badge, HP, minion-preview)
   → knop "Gevecht beginnen"
   → showBossFightModal()
        → minions leven? showBossMinionModal()
        → anders showBossModal()
 
-Tijdens de fight (sessie 3-regels blijven):
+Tijdens de fight:
   → landing op 62/63: eerst minion als hasBossMinions(), anders boss
-  → na aanval: retreat naar vak 56 (minion én boss)
+  → na gevechtsronde: pass-turn, speler blijft op 62/63 (geen retreat)
   → gedeelde boss-HP over alle spelers
 
 Na boss-kill:
   → bossActive = false, bossMinions = []
-  → win op vak 63 via checkWinAfterBoss() (sessie 3)
+  → win op vak 63 via checkWinAfterBoss()
+  → opnieuw landen op 62: boss-cleared (geen tweede D12 — bossRevealRoll blijft gezet)
 
 Nieuw avontuur / reset():
   → alle boss-velden leeg; volgende activatie opnieuw D12
 ```
 
-**Geen tweede D12** zolang dezelfde boss-fight loopt.
+**Geen tweede D12** zolang `bossRevealRoll != null` (zelfde fight óf na boss-kill tot reset).
 
 ---
 
-## Minions (roll 12)
+## Minions (D12 ≥ 5)
 
 ### Architectuur
 
-Minions zitten op **`game.bossMinions`** — **niet** als ambush-putten op het bord. Reden: vak 62/63 is boss-arena; putten elders zouden extra movement forceren.
+Minions zitten op **`game.bossMinions`** — **niet** als ambush-putten op het bord.
 
 ```javascript
+// minionCount uit getBossRevealFromRoll:
+// 0 (roll 1–4), 1 (5–11), 3 (12)
 game.bossMinions = [
-  { config, hp, maxHp },  // pickRandomAmbush() × 2
-  { config, hp, maxHp },
+  { config, hp, maxHp },  // pickRandomAmbush() × minionCount
 ]
 ```
 
@@ -116,12 +121,12 @@ Geen `bossMinionIndex` — actieve minion = **eerste levende** entry (`getActive
 |----------|--------|
 | `hasBossMinions()` + speler op 62/63 | `needsBossMinion` → minion-modal vóór boss |
 | Succesvolle hit | Minion-HP omlaag (`1 + dmgBonus` / `2 + dmgBonus`) |
-| Mislukte check | `Math.ceil(bossDmgPerHit)` × HP-verlies |
-| Minion op 0 HP | `boss-minion-end`; volgende landing → volgende minion of boss |
-| Alle minions weg | `resolveBoss()` werkt normaal; `hasBossMinions()` blokkeert boss-aanvallen |
-| Na aanval (niet dood) | Retreat naar vak 56 — zelfde als boss-fight |
+| Mislukte speler-aanval | Vijand-aanvalsfase (attack roll, sessie 10) |
+| Minion op 0 HP | `boss-minion-end`; volgende ronde → volgende minion of boss |
+| Alle minions weg | Boss-gevecht; `hasBossMinions()` false |
+| Na gevechtsronde | **Blijf op 62/63** + `pass-turn` (geen retreat) |
 
-Minion-config: DC, ability, `ambushHp` uit `pickRandomAmbush()` — **zonder** mystery-multiplier op HP (standaard ambush-HP).
+Minion-config uit `pickRandomAmbush()` — attack-roll velden via `enrichCombatEvent()`.
 
 ---
 
@@ -132,12 +137,11 @@ Minion-config: DC, ability, `ambushHp` uit `pickRandomAmbush()` — **zonder** m
 | Onderdeel | Functie |
 |-----------|---------|
 | State | `bossMultiplier`, `bossDmgPerHit`, `bossRevealRoll`, `bossMinions` |
-| D12-tabel | `getBossRevealFromRoll(roll)` → `{ roll, multiplier, tier }` |
-| Onthulling | `resolveBossReveal(landedSpace, roll)` → `activateBoss()` + optioneel `spawnBossMinions()` |
-| Minions | `spawnBossMinions()`, `getActiveBossMinion()`, `hasBossMinions()` |
-| Landing | `resolveSpace()` → `needsBossReveal` (eerste keer) of `needsBossMinion` / `needsBoss` (arena) |
-| Minion-gevecht | `resolveBossMinionRoll()` — ambush-achtige D20, `bossDmgPerHit`, retreat, `dmgBonus` |
-| Boss-gevecht | `resolveBoss()` — faalt als `hasBossMinions()`; fail via `bossDmgPerHit` |
+| D12-tabel | `getBossRevealFromRoll(roll)` → `{ roll, multiplier, tier, minionCount }` |
+| Onthulling | `resolveBossReveal(landedSpace, roll)` → `activateBoss()` + `spawnBossMinions(count)` |
+| Minions | `spawnBossMinions(events, count)`, `getActiveBossMinion()`, `resolveBossMinionForContext()`, `hasBossMinions()` |
+| Landing | `resolveSpace()` → `needsBossReveal` als `!hasBossReveal()`; anders minion/boss/cleared |
+| Combat | `finalizeCombatRound()` — attack rolls (sessie 10), geen retreat |
 | Boss-HP | `activateBoss()` — `ceil(BOSS_HP_PER_PLAYER × spelers × bossMultiplier)` |
 | Einde | Bij boss-kill: `bossMinions = []`; bij `reset()`: alle boss-velden gewist |
 
@@ -145,7 +149,9 @@ Minion-config: DC, ability, `ambushHp` uit `pickRandomAmbush()` — **zonder** m
 `needsBossReveal`, `bossRevealSpaceNum`, `needsBossMinion`, `needsBoss`
 
 **Events (log):**  
-`boss-reveal-pending`, `boss-reveal`, `boss-start`, `boss-minion-start`, `boss-minion-engage`, `boss-minion-d20`, `boss-minion-hit`, `boss-minion-end`, `boss-engage`, `boss-guard`, plus bestaande `boss-d20`, `boss-hit`, `boss-retreat`, `boss-defeated`
+`boss-reveal-pending`, `boss-reveal`, `boss-start`, `boss-minion-start`, `boss-minion-engage`, `boss-minion-*-attack`, `boss-minion-end`, `boss-engage`, `boss-guard`, `boss-*-attack`, `boss-special-save`, `boss-defeated`, `boss-cleared`
+
+(Legacy: `boss-retreat`, `boss-d20`, `boss-hit` — niet meer geëmit in huidige build.)
 
 ### `ui.js`
 
@@ -189,11 +195,12 @@ Land op 62/63 (boss nog niet actief)
   → Fase 2: onthulling (tier, HP, minions bij epic)
   → "Gevecht beginnen"
   → showBossFightModal()
-       minions? → showBossMinionModal() → resolveBossMinionRoll → retreat 56
-       geen minions / alle minions weg → showBossModal() → resolveBoss → retreat 56
+       minions? → showBossMinionModal() → attack-roll flow (sessie 10)
+       geen minions / alle minions weg → showBossModal() → attack-roll flow
 
 Volgende beurten op 62/63:
   → needsBossMinion of needsBoss (geen tweede D12)
+  → speler blijft op arena tussen rondes
 ```
 
 Multiplayer (sessie 5-patroon): host voert D12 en gevechten in; guests zien modals via `renderSpectatorModal`. Boss-state + `activeModal` syncen via Firebase.
@@ -208,7 +215,8 @@ Multiplayer (sessie 5-patroon): host voert D12 en gevechten in; guests zien moda
 | Fase 1 zonder minions; roll 12 alleen ×2 | Fase 1 + 2 samen gebouwd; roll 12 inclusief minions |
 | Aparte minion-modal markup | Hergebruik `#event-modal` met ambush-styling (`boss-minion` sync-type) |
 | `bossReveal` apart object | Alleen `bossRevealRoll` + multiplier-velden op game state |
-| Minion zonder retreat | Retreat naar vak 56 na elke minion-aanval (zoals boss) |
+| Minion zonder retreat | **Geïmplementeerd (sessie 10):** blijf op 62/63 na ronde |
+| Boss-retreat naar 56 | **Verwijderd** — vak 56 is nu genezer (vol HP) |
 
 ---
 
@@ -216,20 +224,23 @@ Multiplayer (sessie 5-patroon): host voert D12 en gevechten in; guests zien moda
 
 ### D12 & multipliers
 - [x] Eerste landing 62/63 → D12-modal (geen directe boss-start)
-- [x] Roll 1–8 → standaard boss-HP (`3 × spelers`)
-- [x] Roll 9–11 → hogere boss-HP (`ceil(3 × spelers × 1.5)`)
-- [x] Roll 12 → dubbele boss-HP (`6 × spelers`) + zwaardere fail-dmg + 2 minions
-- [x] Geen tweede D12 tijdens dezelfde boss-fight
+- [x] Roll 1–4 → standaard boss-HP (`3 × spelers`), 0 minions
+- [x] Roll 5–10 → ×1,5 HP + 1 beschermer
+- [x] Roll 11 → ×2 HP + 1 beschermer
+- [x] Roll 12 → ×2 HP + **3** beschermers
+- [x] Geen tweede D12 tijdens dezelfde boss-fight (`hasBossReveal()`)
+- [x] Na boss-kill op 62: geen D12 opnieuw; door naar 63
 - [x] Na boss-kill: normale win-flow op 63
 - [x] `reset()` / nieuw avontuur → weer D12 bij volgende activatie
 - [x] Multiplayer: reveal + boss-state syncen
 
 ### Minions
-- [x] Roll 12 → 2 minions zichtbaar in combat-rail + D12-onthulling
+- [x] Roll ≥5 → minions zichtbaar in combat-rail + D12-onthulling
+- [x] Roll 12 → 3 minions
 - [x] Op 62/63: eerst minion vechten, dan boss
-- [x] Minion gebruikt ambush DC/HP uit `pickRandomAmbush()`
 - [x] Alle minions dood → boss-modal werkt normaal
-- [x] `dmgBonus` speler telt mee op minion-hits (niet als D12-jackpot)
+- [x] `dmgBonus` speler telt mee op minion-hits
+- [x] One-shot laatste minion → samenvatting werkt (`minionIndex`)
 
 ---
 
@@ -237,7 +248,8 @@ Multiplayer (sessie 5-patroon): host voert D12 en gevechten in; guests zien moda
 
 | Sessie | Nodig voor |
 |--------|------------|
-| 3 | Boss-activatie, `resolveBoss`, retreat naar 56, win op 63 |
+| 3 | Boss-activatie, win op 63, genezer vak 56 |
+| 10 | Attack-roll combat, geen retreat, HP-overflow-fix |
 | 4 | Ambush D20-flow als inspiratie voor minion-checks |
 | 5 | Modal-sync, `serializeGame`, spectator-modals |
 | 7 | D12-modal-patroon (0.5), multiplier/fail-dmg, `dmgBonus` op hits, Firebase-sanitize |
@@ -266,7 +278,7 @@ Multiplayer (sessie 5-patroon): host voert D12 en gevechten in; guests zien moda
 
 ## Gerelateerd
 
-- Boss fight basis: `MD/sessie-3-boss-win.md`
+- Boss fight + combat: `MD/sessie-3-boss-win.md`, `MD/sessie-10-attack-roll-combat.md`
 - D12-patroon: `MD/sessie-7-mystery-vakjes.md`
 - Ambush mechanics: `MD/sessie-4-ambush.md`
 - Multiplayer sync: `MD/sessie-5-multiplayer.md`

@@ -178,7 +178,8 @@ Tijdens animatie: `tokensAnimating = true` → `moveBtn` / dice disabled via `up
 | `move` | Vooruit over pad |
 | `move` + `bounce` | Eerst naar min(`to`, 63), dan terug naar `bounce.position` |
 | `event-move` | Vooruit of achteruit (`direction`) |
-| `boss-retreat` | Achteruit naar vak 56 |
+| `boss-retreat` | *(verwijderd)* Was: achteruit naar vak 56 — boss/minion blijft nu op arena |
+| `healer-visit` / `full-heal` | Geen token-beweging; HP-update via `renderPlayers` |
 | `death` | Fade-out op `fromSpace` (via `findDeathFromSpace`) |
 
 ---
@@ -280,7 +281,7 @@ applyRemoteState (multiplayer.js)
 - [x] Event vooruit/terug
 - [x] Finish-bounce: heen + terug (host)
 - [x] Dood: fade-out
-- [x] Boss-retreat naar 56
+- [x] ~~Boss-retreat naar 56~~ — verwijderd (sessie 10); genezer op 56 i.p.v. retreat
 - [x] Geen dubbele zet tijdens animatie
 
 ### Multiplayer
@@ -310,7 +311,7 @@ applyRemoteState (multiplayer.js)
 |--------|------------|
 | 1 | Bord-layout, `spacePositions` |
 | 2 | `event-move`, forward/back |
-| 3 | Boss-retreat vak 56 |
+| 3 | ~~Boss-retreat vak 56~~ → genezer vak 56 (sessie 10) |
 | 5 | `syncAfterAction`, `applyRemoteState`, `refreshGameUI` |
 | 7 | Mystery-modals (bounce stopt tijdens modal) |
 

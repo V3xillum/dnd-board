@@ -6,6 +6,7 @@ const els = {
   board: document.getElementById('board'),
   playerList: document.getElementById('player-list'),
   playerName: document.getElementById('player-name'),
+  difficultySelect: document.getElementById('difficulty-select'),
   addBtn: document.getElementById('add-player-btn'),
   currentPlayer: document.getElementById('current-player'),
   diceInput: document.getElementById('dice-input'),
@@ -214,6 +215,7 @@ function startNewAdventure() {
   renderBoard();
   renderPlayers();
   updateTurnUI();
+  updateDifficultyUI();
   addLog('Nieuw avontuur — het bord is opnieuw geschud!');
   window.syncAfterAction?.();
   window.resetMultiplayerLog?.();
@@ -1482,7 +1484,31 @@ function describeEvents(events) {
 }
 
 function formatDcDisplay(baseDc, player) {
-  return String(getEffectiveDc(player, baseDc));
+  return String(getEffectiveDc(player, baseDc, game.difficultyLevel));
+}
+
+function updateDifficultyUI() {
+  if (!els.difficultySelect) return;
+  const level = String(game.difficultyLevel ?? 1);
+  if (els.difficultySelect.value !== level) {
+    els.difficultySelect.value = level;
+  }
+}
+
+function setDifficultyLevel(level) {
+  const parsed = Number.parseInt(String(level), 10);
+  const clamped = Number.isFinite(parsed)
+    ? Math.max(1, Math.min(window.DC_DIFFICULTY_MULTIPLIERS?.length ?? 5, parsed))
+    : 1;
+  if (game.difficultyLevel === clamped) return;
+
+  game.difficultyLevel = clamped;
+  updateDifficultyUI();
+
+  const mult = getDifficultyMultiplier(clamped);
+  const multLabel = mult === 1 ? '×1.0' : `×${mult.toFixed(1)}`;
+  addLog(`Moeilijkheidsgraad ${clamped} (${multLabel} op DC)`);
+  window.syncAfterAction?.();
 }
 
 function formatPlayerDcHint(player) {
@@ -3380,6 +3406,10 @@ els.playerName.addEventListener('keydown', (e) => {
   if (e.key === 'Enter') els.addBtn.click();
 });
 
+els.difficultySelect?.addEventListener('change', () => {
+  setDifficultyLevel(els.difficultySelect.value);
+});
+
 function clearDiceInput() {
   els.diceInput.value = '';
   els.diceInput.focus();
@@ -3437,6 +3467,7 @@ window.refreshGameUI = () => {
   renderBoard();
   renderPlayers();
   updateCombatRail();
+  updateDifficultyUI();
 };
 
 async function refreshGameUIFromRemote({ prevPositions, prevSpecialSpaces, isGuest = false } = {}) {
@@ -3458,6 +3489,7 @@ async function refreshGameUIFromRemote({ prevPositions, prevSpecialSpaces, isGue
   renderTokens();
   renderPlayers();
   updateCombatRail();
+  updateDifficultyUI();
 }
 
 window.refreshGameUIFromRemote = refreshGameUIFromRemote;
@@ -3473,6 +3505,7 @@ window.setMultiplayerReadOnly = (readOnly) => {
   document.querySelector('.app')?.classList.toggle('app--spectator', readOnly);
   els.playerName.disabled = readOnly;
   els.addBtn.disabled = readOnly;
+  if (els.difficultySelect) els.difficultySelect.disabled = readOnly;
   if (els.newAdventureBtn) els.newAdventureBtn.disabled = readOnly;
   if (readOnly) {
     els.moveBtn.disabled = true;
@@ -3484,6 +3517,7 @@ window.setMultiplayerReadOnly = (readOnly) => {
   }
 };
 
+updateDifficultyUI();
 renderBoard();
 renderPlayers();
 window.initMultiplayer?.();

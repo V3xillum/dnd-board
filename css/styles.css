@@ -118,6 +118,10 @@ body {
 .app--spectator .btn--new-adventure {
   display: none;
 }
+.app--spectator .difficulty-control {
+  opacity: 0.55;
+  pointer-events: none;
+}
 .confirm-modal__actions {
   display: flex;
   flex-wrap: wrap;
@@ -206,6 +210,32 @@ body {
   flex-direction: column;
 }
 
+.difficulty-control {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
+}
+.difficulty-label {
+  font-size: 0.72rem;
+  font-weight: 600;
+  color: #f4e4bc;
+  white-space: nowrap;
+}
+.difficulty-select {
+  min-width: 8.5rem;
+  padding: 0.35rem 0.65rem;
+  border: 1px solid rgba(201, 162, 39, 0.35);
+  border-radius: 999px;
+  background: rgba(0, 0, 0, 0.22);
+  color: #f4e4bc;
+  font: inherit;
+  font-size: 0.8rem;
+  cursor: pointer;
+}
+.difficulty-select:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
 .add-player {
   display: flex;
   gap: 0.5rem;

@@ -119,8 +119,19 @@ function getDcModifier(player) {
   return player?.nextDcMod ?? 0;
 }
 
-function getEffectiveDc(player, baseDc) {
-  const total = baseDc + getDcBonus(player) + getDcModifier(player);
+/** Moeilijkheidsgraad 1–5 → DC-multiplier op basis-DC (vóór streak/modifiers) */
+const DC_DIFFICULTY_MULTIPLIERS = [1, 1.1, 1.2, 1.3, 1.4, 1.5];
+
+function getDifficultyMultiplier(level = 1) {
+  const idx = Math.max(0, Math.min(DC_DIFFICULTY_MULTIPLIERS.length - 1, level - 1));
+  return DC_DIFFICULTY_MULTIPLIERS[idx];
+}
+
+function getEffectiveDc(player, baseDc, difficultyLevel, dcModOverride) {
+  const level = difficultyLevel ?? window.getGame?.()?.difficultyLevel ?? 1;
+  const scaled = Math.round(baseDc * getDifficultyMultiplier(level));
+  const mod = dcModOverride ?? getDcModifier(player);
+  const total = scaled + getDcBonus(player) + mod;
   return Math.max(1, total);
 }
 
@@ -154,6 +165,8 @@ class Game {
     this.ambushPits = {};
     /** Per vak: onthulde mystery-inhoud (path of ambush + multiplier) */
     this.revealedSpaces = {};
+    /** 1–5: multiplier op event-DC (×1.0 … ×1.5) */
+    this.difficultyLevel = 1;
   }
 
   copyAmbushConfig(source) {
@@ -940,7 +953,7 @@ class Game {
     }
 
     if (space.type === 'event') {
-      const effectiveDc = getEffectiveDc(player, space.dc);
+      const effectiveDc = getEffectiveDc(player, space.dc, this.difficultyLevel);
       events.push({
         type: 'landed',
         spaceNum: player.position,
@@ -1074,7 +1087,7 @@ class Game {
     const dcModApplied = player.nextDcMod ?? 0;
     player.nextDcMod = 0;
 
-    const effectiveDc = getEffectiveDc(player, config.dc);
+    const effectiveDc = getEffectiveDc(player, config.dc, this.difficultyLevel, dcModApplied);
     const isNat1 = !nat20 && nat1;
     const success = !isNat1 && (nat20 || (roll != null && roll >= effectiveDc));
 
@@ -1200,7 +1213,7 @@ class Game {
     const dcModApplied = player.nextDcMod ?? 0;
     player.nextDcMod = 0;
 
-    const effectiveDc = getEffectiveDc(player, config.dc);
+    const effectiveDc = getEffectiveDc(player, config.dc, this.difficultyLevel, dcModApplied);
     const isNat1 = !nat20 && nat1;
     const success = !isNat1 && (nat20 || (roll != null && roll >= effectiveDc));
 
@@ -1313,7 +1326,7 @@ class Game {
     const dcModApplied = player.nextDcMod ?? 0;
     player.nextDcMod = 0;
 
-    const effectiveDc = getEffectiveDc(player, config.dc);
+    const effectiveDc = getEffectiveDc(player, config.dc, this.difficultyLevel, dcModApplied);
     const isNat1 = !nat20 && nat1;
     const success = !isNat1 && (nat20 || (roll != null && roll >= effectiveDc));
 
@@ -1411,7 +1424,7 @@ class Game {
     player.nextDcMod = 0;
 
     const dcBonus = getDcBonus(player);
-    const effectiveDc = Math.max(1, config.dc + dcBonus + dcModApplied);
+    const effectiveDc = getEffectiveDc(player, config.dc, this.difficultyLevel, dcModApplied);
     const isNat1 = !nat20 && nat1;
     const success = !isNat1 && (nat20 || (roll != null && roll >= effectiveDc));
 
@@ -1584,6 +1597,8 @@ window.isOnBossArena = isOnBossArena;
 window.getPathDirection = getPathDirection;
 window.getDcBonus = getDcBonus;
 window.getDcModifier = getDcModifier;
+window.getDifficultyMultiplier = getDifficultyMultiplier;
+window.DC_DIFFICULTY_MULTIPLIERS = DC_DIFFICULTY_MULTIPLIERS;
 window.getEffectiveDc = getEffectiveDc;
 window.isCenterCell = isCenterCell;
 window.isCenterCovered = isCenterCovered;

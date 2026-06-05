@@ -80,7 +80,7 @@ const EVENT_POOL_RAW = {
   ambush: {
     "Acrobatics": [
       {
-        name: "Grotspin",
+        name: "Cave Spider",
         icon: "🕷️",
         dc: 10,
         ambushHp: 3,
@@ -91,7 +91,7 @@ const EVENT_POOL_RAW = {
     ],
     "Animal Handling": [
       {
-        name: "Schaduwwolf",
+        name: "Shadow Wolf",
         icon: "🐺",
         dc: 9,
         ambushHp: 2,
@@ -102,7 +102,7 @@ const EVENT_POOL_RAW = {
     ],
     "Athletics": [
       {
-        name: "Ork-verkenner",
+        name: "Orc Explorer",
         icon: "👁️",
         dc: 9,
         ambushHp: 2,
@@ -113,7 +113,7 @@ const EVENT_POOL_RAW = {
     ],
     "Combat": [
       {
-        name: "Orc-patrouille",
+        name: "Orc Patrol",
         icon: "⚔️",
         dc: 11,
         ambushHp: 4,
@@ -124,7 +124,7 @@ const EVENT_POOL_RAW = {
     ],
     "Constitution": [
       {
-        name: "Banshee-kreet",
+        name: "Banshee",
         icon: "😱",
         dc: 11,
         ambushHp: 2,
@@ -135,7 +135,7 @@ const EVENT_POOL_RAW = {
     ],
     "Insight": [
       {
-        name: "Sluipmoordenaar",
+        name: "Assasin",
         icon: "🗡️",
         dc: 10,
         ambushHp: 3,
@@ -146,22 +146,13 @@ const EVENT_POOL_RAW = {
     ],
     "Intimidation": [
       {
-        name: "Bandieten uit de kuil",
+        name: "Bandits",
         icon: "💰",
         dc: 11,
         ambushHp: 3,
         flavor: "De vloer verdwijnt met een precisie-klik. Je valt een meter — en als je kijkt staan bandieten langs de rand boven je, grijnzend neer.",
         successText: "Je blokt de eerste arm en gebruikt hem als katapult omhoog. Een bandiet wankelt achterover en de anderen deinzen verrast terug.",
         failText: "Ze raken je hard met de kolf van een bijlsteel. Je zit in hun kuil, hun lachen echoot van de wanden.",
-      },
-      {
-        name: "Ogre-poort",
-        icon: "🧌",
-        dc: 11,
-        ambushHp: 3,
-        flavor: "Een ogre blokkeert een smalle rotspoort. Hij wil geen woorden — alleen iets om te slaan.",
-        successText: "Je bluft hem met een verhaal over een grotere dreiging achter je. Hij twijfelt en wijkt.",
-        failText: "Hij lacht en zwaait. De klap landt voordat je kunt ontwijken.",
       },
     ],
     "Perception": [
@@ -210,12 +201,20 @@ const EVENT_POOL_RAW = {
   boss: {
     "Athletics": [
       {
-        name: "Stormreus",
+        name: "Storm Giant",
         icon: "⛈️",
         dc: 14,
         flavor: "Donder van voetstappen. Twaalf voet, breed geplant, een rotsblok in elke hand groot als een paard. Hij kijkt naar beneden — naar jou.",
         successText: "Je leest de stamprichting in zijn dijspieren een halve seconde te vroeg. Je schiet opzij en raakt zijn enkel — zijn zwakste punt.",
         failText: "De schokgolf van zijn stamp gooit je van je benen. Je knieën landen hard op koud steen en opstaan duurt te lang.",
+      },
+      {
+        name: "Hill Giant",
+        icon: "🪨",
+        dc: 13,
+        flavor: "Hij is niet slim, maar hij is groot, hongerig en heeft een boomstam die hij als knuppel gebruikt. Hij ruikt je voor hij je ziet.",
+        successText: "Je lokt hem in zijn eigen zwaai — hij mist, struikelt, en jij bent er al voor hij overeind is.",
+        failText: "De boomstam raakt je schouder met genoeg kracht om je te doen denken dat het gebroken is. Het is niet gebroken. Het voelt wel zo.",
       },
     ],
     "Combat": [
@@ -228,27 +227,43 @@ const EVENT_POOL_RAW = {
         failText: "Zijn schild voorspelt elke aanval. Je hebt geraakt, maar hij heeft harder geraakt. Likt je wonden, bereidt de volgende aanval voor.",
       },
       {
-        name: "Gevallen paladijn",
+        name: "Dark Paladin",
         icon: "⚔️",
         dc: 13,
         flavor: "Eens beschermde hij deze plek voor de goede goden. Nu zijn zijn ogen leeg en koud — goddelijk licht dat is omgekeerd. Hij herkent jullie en het maakt hem woester.",
         successText: "Een eerlijk duel. Je haalt zijn schild weg met een klassieke ontwijkmaneuver en zijn harnas kraakt onder de volgende slag.",
         failText: "Zijn gevallen zegen brandt nog in zijn slagen. Ze treffen je met een heilig vuur dat je doet wijken.",
       },
+      {
+        name: "Dracolich",
+        icon: "💀",
+        dc: 16,
+        flavor: "Een draak die de lich-rite onderging. Zijn vlees is weg, zijn schubben zijn los en zijn ogen zijn lege paarse vlammen. Hij vliegt geluidloos — botten maken geen wind.",
+        successText: "Je treft zijn schedel op de exacte plek waar zijn phylactery verborgen zit. De vlammen flikkeren. Hij gilt voor het eerst in honderd jaar.",
+        failText: "Zijn lich-adem is geen vuur — het is veroudering. Je voelt je spieren stijver worden dan een seconde geleden.",
+      },
     ],
     "Intimidation": [
       {
-        name: "Oude rode draak",
+        name: "Ancient Red Dragon",
         icon: "🐲",
         dc: 15,
         flavor: "De schatkamer ademt — de berg goud heeft schubben. De draak is groot, oud en buitengewoon zat van helden die denken dat ze een kans maken.",
         successText: "Je houdt zijn blik door drie lange ademhalingen. Een schram op zijn nekschilden — hij honoreert de moed van een klein wezen.",
         failText: "De waarschuwingsvlam raakt je in een golf van hitte. Je vest smelt gedeeltelijk en je terugwijken is minder heroïsch dan gepland.",
       },
+      {
+        name: "Ancient Black Dragon",
+        icon: "🐉",
+        dc: 16,
+        flavor: "Het moeras heeft hem gevoed en hij heeft het moeras gevormd. Zijn zuur heeft steden opgelost. Hij is niet kwaad — hij is gewoon ongeïnteresseerd, en dat is erger.",
+        successText: "Je vindt de oude wond onder zijn linkerkaak — een erfenis van een held die hem bijna versloeg. Hij trekt zich terug. Niet van angst. Van respect.",
+        failText: "Een straal zuur mist je gezicht maar treft je arm. Je mouw bestaat niet meer en de huid eronder heeft het ook moeilijk.",
+      },
     ],
     "Nature": [
       {
-        name: "Avatar van de Blight",
+        name: "Avatar of the Blight",
         icon: "🕸️",
         dc: 15,
         flavor: "Een enorme spin van wortels, schors en zwart sap trekt zich los uit het bos zelf.",
@@ -258,12 +273,36 @@ const EVENT_POOL_RAW = {
     ],
     "Religion": [
       {
-        name: "De Lijkgraaf",
+        name: "Reaper",
         icon: "💀",
         dc: 15,
         flavor: "Hij verzamelt zielen als anderen munten verzamelen. Jij bent een toevoeging aan de collectie.",
         successText: "Je spreekt zijn ware naam uit — vergeten door de levenden, maar niet door jou.",
         failText: "Zijn vinger raakt je voorhoofd. Je voelt iets vertrekken.",
+      },
+      {
+        name: "Lich",
+        icon: "🧙",
+        dc: 15,
+        flavor: "Hij heeft de dood overwonnen door alles op te geven wat de dood de moeite waard maakt om te vluchten. Nu zit hij hier, oneindig geduldig, omringd door eeuwen aan mislukte helden.",
+        successText: "Je vindt zijn phylactery — de ziel-anker — en houdt het omhoog. Voor het eerst in eeuwen ziet hij angst in zijn eigen ogen.",
+        failText: "Zijn spreuk treft je geest, niet je lichaam. Je vergeet even wie je bent. Even.",
+      },
+      {
+        name: "Death Knight",
+        icon: "🖤",
+        dc: 14,
+        flavor: "Een ridder die zijn eed brak en stierf in schande — maar niet bleef. Zijn zwaard brandt zwart en zijn ogen gloeien rood. Hij vecht niet voor een meester. Hij vecht uit principe.",
+        successText: "Je breekt zijn gevallen eed uit zijn zwaard met heilig staal. Het wapen dooft. Hij wankelt als een man die voor het eerst in jaren iets voelt.",
+        failText: "Zijn hellfire-zwaard laat een brandmerk op je schild dat er niet meer af gaat. De hitte ervan voel je nog lang daarna.",
+      },
+      {
+        name: "Green Hag",
+        icon: "🧙‍♀️",
+        dc: 14,
+        flavor: "Ze ziet er oud uit maar beweegt als water. Haar vingers zijn te lang, haar glimlach te breed, en ze kent je naam al voor je hem noemt.",
+        successText: "Je breekt haar naam-betovering door haar eigen naam hardop uit te spreken — die je ergens onderweg hebt gevonden. Ze deinst terug.",
+        failText: "Ze fluistert iets in een taal die je niet kent. Je arm gehoorzaamt haar voor drie tellen. Dat is lang genoeg.",
       },
     ],
   },

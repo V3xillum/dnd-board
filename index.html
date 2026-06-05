@@ -14,6 +14,15 @@
       <div id="multiplayer-bar" class="multiplayer-bar">
         <span id="mp-role" class="multiplayer-bar__role">Verbinden…</span>
         <div class="multiplayer-bar__actions">
+          <div class="difficulty-control">
+            <select id="difficulty-select" class="difficulty-select" title="DC ×1.0 tot ×1.5 (afgerond)">
+              <option value="1">1 — Normaal</option>
+              <option value="2">2 — Iets lastiger</option>
+              <option value="3">3 — Uitdagend</option>
+              <option value="4">4 — Zwaar</option>
+              <option value="5">5 — Heldenmoed</option>
+            </select>
+          </div>
           <button type="button" id="rules-open-btn" class="btn btn--rules" aria-haspopup="dialog" aria-controls="rules-modal">Spelregels</button>
           <button type="button" id="new-adventure-btn" class="btn btn--rules btn--new-adventure" aria-haspopup="dialog" aria-controls="confirm-modal">Nieuw avontuur</button>
           <button type="button" id="mp-copy-link" class="btn btn--rules">Deellink</button>

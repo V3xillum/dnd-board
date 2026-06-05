@@ -81,6 +81,7 @@
       bossHp: game.bossHp,
       bossMaxHp: game.bossMaxHp,
       bossConfig: game.bossConfig ? cloneSpecialSpaces(game.bossConfig) : null,
+      difficultyLevel: game.difficultyLevel ?? 1,
       bossMultiplier: game.bossMultiplier ?? 1,
       bossDmgPerHit: game.bossDmgPerHit ?? 1,
       bossRevealRoll: game.bossRevealRoll ?? null,
@@ -112,6 +113,7 @@
     game.bossHp = data.bossHp ?? 0;
     game.bossMaxHp = data.bossMaxHp ?? 0;
     game.bossConfig = data.bossConfig ? cloneSpecialSpaces(data.bossConfig) : null;
+    game.difficultyLevel = data.difficultyLevel ?? 1;
     game.bossMultiplier = data.bossMultiplier ?? 1;
     game.bossDmgPerHit = data.bossDmgPerHit ?? 1;
     game.bossRevealRoll = data.bossRevealRoll ?? null;

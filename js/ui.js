@@ -747,6 +747,7 @@ let activeEvent = null;
 let activeBoss = null;
 let activeAmbush = null;
 let syncedActiveModal = null;
+let pathModalCallback = null;
 
 function serializeModalConfig(config) {
   if (!config) return null;
@@ -1440,24 +1441,37 @@ function endBossTurn(onComplete) {
   onComplete?.();
 }
 
+function closePathModal() {
+  if (els.pathModal.classList.contains('hidden')) return;
+  els.pathModal.classList.add('hidden');
+  els.pathModal.classList.remove('path-modal--spectator');
+  syncModalScrollLock();
+  clearSyncedActiveModal();
+  const cb = pathModalCallback;
+  pathModalCallback = null;
+  cb?.();
+}
+
 function showPathModal(config, spaceNum, onComplete) {
+  closeEventModal();
   els.pathIcon.textContent = config.icon || '🚶';
   els.pathSpace.textContent = `Vak ${spaceNum ?? '?'}`;
   els.pathTitle.textContent = config.name;
   els.pathFlavor.textContent = config.flavor;
 
+  pathModalCallback = onComplete ?? null;
   els.pathModal.classList.remove('hidden');
+  els.pathModal.classList.remove('path-modal--spectator');
+  els.pathClose.textContent = 'Rust even uit';
+  els.pathClose.disabled = false;
   syncModalScrollLock();
-  syncModalInput('path', config, spaceNum);
 
-  const onClose = () => {
-    els.pathModal.classList.add('hidden');
-    syncModalScrollLock();
-    clearSyncedActiveModal();
-    onComplete?.();
-  };
+  try {
+    syncModalInput('path', config, spaceNum);
+  } catch (err) {
+    console.error('Path modal sync mislukt:', err);
+  }
 
-  els.pathClose.onclick = onClose;
   setTimeout(() => els.pathClose.focus(), 100);
 }
 
@@ -1728,6 +1742,11 @@ els.eventClose.addEventListener('click', () => {
   const handler = activeAmbush?.onClose ?? activeBoss?.onClose ?? activeEvent?.onClose;
   closeEventModal();
   handler?.();
+});
+
+els.pathClose.addEventListener('click', closePathModal);
+els.pathClose.addEventListener('keydown', (e) => {
+  if (e.key === 'Enter' && !els.pathModal.classList.contains('hidden')) closePathModal();
 });
 
 function showWinModal(winner) {

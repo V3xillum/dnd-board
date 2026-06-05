@@ -4,8 +4,11 @@ import {
   ref,
   set,
   get,
+  update,
   onValue,
 } from "https://www.gstatic.com/firebasejs/12.14.0/firebase-database.js";
+
+const HOST_STALE_MS = 45_000;
 
 const firebaseConfig = {
   apiKey: "AIzaSyDAqOQu0o94raZqDNHQfzq_leJl1XEAyIg",
@@ -42,16 +45,33 @@ window.onLastEvent = (gameId, callback) => onValue(gameRef(gameId, "lastEvent"),
   callback(snap.val());
 });
 
-window.claimHostIfEmpty = async (gameId, sessionId) => {
+window.claimHost = async (gameId, sessionId) => {
   const metaRef = gameRef(gameId, "meta");
   const snap = await get(metaRef);
-  const existing = snap.val()?.hostSessionId;
-  if (!existing) {
-    await set(metaRef, { hostSessionId: sessionId, phase: "playing" });
+  const meta = snap.val() ?? {};
+  const existing = meta.hostSessionId;
+  const lastSeen = meta.hostLastSeen ?? 0;
+  const now = Date.now();
+  const isStale = Boolean(lastSeen) && now - lastSeen > HOST_STALE_MS;
+
+  if (!existing || existing === sessionId || isStale) {
+    await set(metaRef, {
+      hostSessionId: sessionId,
+      phase: meta.phase ?? "playing",
+      hostLastSeen: now,
+    });
     return true;
   }
-  return existing === sessionId;
+  return false;
 };
+
+window.claimHostIfEmpty = window.claimHost;
+
+window.touchHostPresence = (gameId, sessionId) =>
+  update(gameRef(gameId, "meta"), {
+    hostSessionId: sessionId,
+    hostLastSeen: Date.now(),
+  });
 
 window.onGameMeta = (gameId, callback) => onValue(gameRef(gameId, "meta"), (snap) => {
   callback(snap.val());

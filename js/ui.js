@@ -243,8 +243,15 @@ function formatPlayerHp(player) {
   return filled + empty;
 }
 
-function getHpChangeFromEvents(events) {
-  return events?.find((e) => e.type === 'hp-change') ?? null;
+function getHpChangeFromEvents(events, playerName) {
+  if (!events?.length) return null;
+  const changes = events.filter(
+    (e) => e.type === 'hp-change' && (!playerName || e.player === playerName),
+  );
+  if (changes.length === 0) return null;
+  const totalDelta = changes.reduce((sum, e) => sum + e.delta, 0);
+  const last = changes[changes.length - 1];
+  return { ...last, delta: totalDelta };
 }
 
 function hasDeathInEvents(events) {
@@ -277,7 +284,7 @@ function buildResultHpHtml(events, player) {
     `;
   }
 
-  const hpEv = getHpChangeFromEvents(events);
+  const hpEv = getHpChangeFromEvents(events, player.name);
   if (!hpEv || !player) return '';
 
   const delta = hpEv.delta;
@@ -663,7 +670,7 @@ function describeEvents(events) {
       }
       case 'boss-hit':
         addLog(
-          `Raak op ${ev.bossName}! Nog ${ev.bossHp} schade nodig`,
+          `${ev.nat20 ? 'Kritiek treffer' : 'Raak'} op ${ev.bossName}! (−${ev.damage ?? 1} HP · nog ${ev.bossHp} nodig)`,
           'success',
         );
         break;
@@ -704,7 +711,7 @@ function describeEvents(events) {
       }
       case 'ambush-hit':
         addLog(
-          `Treffer op ${ev.ambushName}! Nog ${ev.ambushHp} ambusher-HP · ${ev.player} op ${ev.playerHp} HP`,
+          `${ev.nat20 ? 'Kritiek treffer' : 'Treffer'} op ${ev.ambushName}! (−${ev.damage ?? 1} HP · nog ${ev.ambushHp} ambusher-HP)`,
           'success',
         );
         break;
@@ -1267,7 +1274,9 @@ function handleAmbushSubmit() {
   els.eventFlavor.className = `event-card__flavor event-card__flavor--outcome event-card__flavor--${success ? 'success' : 'fail'}`;
 
   let effectText = success
-    ? `Ambusher verliest 1 HP — nog ${result.ambushHp} / ${result.ambushMaxHp}`
+    ? result.nat20
+      ? `Kritiek succes! Ambusher verliest 2 HP — nog ${result.ambushHp} / ${result.ambushMaxHp}`
+      : `Ambusher verliest 1 HP — nog ${result.ambushHp} / ${result.ambushMaxHp}`
     : result.nat1
       ? 'Mislukt + kritieke mislukking — jij verliest 2 HP'
       : 'Geen schade aan de ambusher · jij verliest 1 HP';
@@ -1391,7 +1400,9 @@ function handleBossSubmit() {
   els.eventFlavor.className = `event-card__flavor event-card__flavor--outcome event-card__flavor--${success ? 'success' : 'fail'}`;
 
   let effectText = success
-    ? `De eindbaas verliest 1 schade — nog ${game.bossHp} / ${game.bossMaxHp}`
+    ? result.nat20
+      ? `Kritiek succes! De eindbaas verliest 2 schade — nog ${game.bossHp} / ${game.bossMaxHp}`
+      : `De eindbaas verliest 1 schade — nog ${game.bossHp} / ${game.bossMaxHp}`
     : result.nat1
       ? 'Mislukt + kritieke mislukking — jij verliest 2 HP'
       : 'Geen schade aan de baas · jij verliest 1 HP';

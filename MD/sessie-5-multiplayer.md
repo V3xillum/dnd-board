@@ -1,151 +1,162 @@
-# Sessie 5 — Multiplayer via Firebase
+# Sessie 5 — Multiplayer via Firebase (spectator mode)
+
+**Status:** Fase A geïmplementeerd (naslag)
 
 ## Doel
-Het spel draait live voor meerdere spelers via een gedeelde URL. Iedereen kijkt naar dezelfde state. De actieve speler vult zelf zijn worp in. Geen server, geen backend — gewoon Firebase Realtime Database bovenop de bestaande GitHub Pages setup.
+Het spel draait live voor meerdere spelers via een gedeelde URL. Iedereen kijkt naar dezelfde state. **Alleen de host** speelt en voert worpen in; alle andere clients zijn read-only toeschouwers.
+
+Geen server, geen backend — Firebase Realtime Database bovenop de bestaande GitHub Pages setup.
+
+> **Volgende stap:** echte multiplayer (gast speelt zelf) → zie [sessie-6-multiplayer.md](sessie-6-multiplayer.md).
 
 ---
 
 ## Hoe het werkt
 
-Elke game krijgt een unieke ID (bijv. `draken-avond-42`). Die staat in de URL als `?game=draken-avond-42`. Iedereen met die URL ziet hetzelfde bord, dezelfde spelers, dezelfde beurt.
-
-Game state leeft in Firebase. De host maakt het spel aan. Alle andere clients luisteren naar Firebase en updaten de UI zodra er iets verandert. De actieve speler krijgt de invoervelden te zien; anderen zien alleen het resultaat.
+Elke game krijgt een unieke ID (bijv. `kerker-a3f9`). Die staat in de URL als `?game=kerker-a3f9`. Iedereen met die URL ziet hetzelfde bord, dezelfde spelers en dezelfde beurt.
 
 ```
-Host → schrijft naar Firebase → Firebase → alle clients ontvangen update
+Host → schrijft naar Firebase → Firebase → guests ontvangen update → UI + modals
 ```
+
+**Host:** eerste tab die het spel opent (claim via `meta/hostSessionId`). Speelt normaal, sidebar + modals actief.
+
+**Guest:** elke andere tab/browser. Ziet live mee, geen invoer. Status: *"Je kijkt mee (alleen lezen)"*.
+
+**Tip:** open altijd eerst de host-tab, kopieer daarna de link voor guests.
 
 ---
 
-## Wat je nodig hebt
+## Architectuurkeuze: module-bridge (Optie B1)
 
-1. **Firebase account** (gratis) — firebase.google.com
-2. **Nieuw project** aanmaken in de Firebase console
-3. **Realtime Database** inschakelen (niet Firestore — Realtime is simpeler voor dit usecase)
-4. De Firebase config (een klein JS-object met je API keys) in je code plakken
+`firebase.js` blijft een ES module (Firebase CDN imports). Alle andere scripts (`game.js`, `ui.js`, `multiplayer.js`) blijven klassieke scripts met `window.*`.
 
-Firebase Realtime Database heeft een gratis tier die ruimschoots genoeg is voor een avondje D&D.
+`firebase.js` exposeert helpers op `window` — geen `import` uit andere bestanden.
 
----
+Scriptvolgorde in `index.html`:
 
-## Architectuur
-
-### Wat verandert er niet
-- `game.js` — alle spellogica blijft lokaal, ongewijzigd
-- `events-data.js` — ongewijzigd
-- `index.html` — kleine toevoegingen (game ID invoer, speler-claim UI)
-
-### Wat er bij komt
-- `js/firebase.js` — verbinding + sync helpers
-- `js/multiplayer.js` — game aanmaken, joinen, state schrijven/lezen
-
-### Data structuur in Firebase
-```
-games/
-  draken-avond-42/
-    state/         ← geserialiseerde game state (spelers, posities, HP, boss, etc.)
-    lastEvent/     ← laatste log-entry voor live feed
-    activePlayer/  ← wie is er aan de beurt (player id)
-    phase/         ← 'lobby' | 'playing' | 'finished'
-```
-
----
-
-## Fases — bouw dit in volgorde
-
-### Fase A — Meekijken (MVP)
-**Doel:** host speelt, rest kijkt live mee.
-
-- Host opent `index.html?game=xyz` (of genereert een game ID)
-- Na elke zet schrijft de host de volledige game state naar Firebase
-- Andere clients openen dezelfde URL en lezen de state — UI update automatisch
-- Geen invoer voor kijkers, alleen live bord + log
-
-Dit is de kleinste stap en al waardevol: iedereen zit aan tafel en ziet hetzelfde scherm.
-
-**Wat de agent moet bouwen:**
-1. Bij pagina-load: lees `?game=` param uit de URL
-2. Als geen param: genereer een random game ID + zet in URL (`history.replaceState`)
-3. Na elke `game.move()` of `game.resolveEvent()`: schrijf `game state` naar Firebase
-4. Alle clients: luister naar Firebase (`onValue`) en roep `renderBoard()` + `renderPlayers()` aan bij elke update
-5. Detecteer of je de host bent (eerste verbinding, of aparte "host"-flag in Firebase)
-
-### Fase B — Speler-claim
-**Doel:** elke speler claimt zijn eigen poppetje.
-
-- Bij joinen: speler kiest zijn naam uit de lijst (of voegt toe)
-- Firebase slaat op welke `player.id` bij welke browser-session hoort
-- Invoervelden (dobbelsteen, event-worp) zijn alleen actief als jij aan de beurt bent
-- Andere spelers zien een "wacht op [naam]..." bericht
-
-**Wat de agent moet bouwen:**
-1. Lobby-scherm: naam invoeren + game ID tonen/kopiëren
-2. Bij joinen: schrijf `sessionId → player.id` naar Firebase
-3. In `ui.js`: check of `currentPlayer.id === myPlayerId` → toon/verberg invoer
-4. Host-only acties (speler toevoegen/verwijderen, nieuw avontuur) blijven host-only
-
-### Fase C — Volledig async (optioneel later)
-Spelers hoeven niet tegelijk online te zijn. State blijft in Firebase staan. Dit is een nice-to-have — voor een avondje samen spelen is fase B meer dan genoeg.
-
----
-
-## Wat de agent concreet moet doen
-
-### `js/firebase.js`
-```javascript
-// Firebase SDK laden via CDN (geen npm nodig)
-// Config object met jouw Firebase project keys
-// Twee exports:
-//   writeGameState(gameId, state)   → schrijft naar games/{gameId}/state
-//   onGameState(gameId, callback)   → luistert naar changes
-```
-
-Gebruik Firebase SDK v9 (modular) via CDN:
 ```html
 <script type="module" src="js/firebase.js"></script>
+<script src="js/events-data.js"></script>
+<script src="js/game.js"></script>
+<script src="js/multiplayer.js"></script>
+<script src="js/ui.js"></script>
 ```
-
-### `js/multiplayer.js`
-- `initMultiplayer()` — lees URL param, verbind met Firebase, bepaal host/guest
-- `syncAfterAction()` — roep aan na elke game-actie (move, resolveEvent, etc.)
-- `isMyTurn()` — vergelijk `activePlayer` in Firebase met lokale session
-- `onRemoteUpdate(state)` — deserialiseer Firebase state → `game` object → re-render
-
-### `index.html`
-Voeg toe boven het bord:
-- Game ID tonen + copy-knop
-- Kleine statusbalk: "Jij bent aan de beurt" / "Wacht op [naam]..."
-- Lobby-overlay (alleen bij eerste load zonder bestaande game)
 
 ---
 
-## Serialisatie van game state
+## Bestanden
 
-`Game` is een class met methodes — die kun je niet rechtstreeks naar Firebase schrijven. Bouw een `serializeGame(game)` en `deserializeGame(data)` functie:
+| Bestand | Rol |
+|---------|-----|
+| `js/firebase.js` | Firebase init + window-bridge (`writeGameState`, `onGameState`, `writeActiveModal`, …) |
+| `js/multiplayer.js` | Init, host/guest, serialize/deserialize, sync, log-feed |
+| `js/ui.js` | Sync-hooks na mutaties, `renderSpectatorModal()`, read-only UI |
+| `js/events-data.js` | `applySpecialSpaces()` — bord snapshot toepassen op guests |
+| `index.html` | Multiplayer-statusbalk + copy-knop |
+| `css/styles.css` | `.app--spectator`, `.event-modal--spectator`, … |
 
-```javascript
-// Alleen data, geen methodes
-serializeGame(game) → {
-  players: [...],
-  currentIndex: n,
-  bossActive: bool,
-  bossHp: n,
-  // etc.
-}
+`game.js` — spellogica ongewijzigd.
 
-// Herstel game object uit data
-deserializeGame(data) → game object met alle velden gevuld
+---
+
+## Firebase data structuur
+
+```
+games/{gameId}/
+  state/          ← volledige game state (serializeGame)
+  activeModal/    ← open modal voor live sync (apart pad, snelle update)
+  lastEvent/      ← laatste log-regel (live feed, geen volledige history)
+  meta/           ← hostSessionId, phase: 'playing'
 ```
 
-Zorg dat `SPECIAL_SPACES` niet mee geserialiseerd wordt — dat bouw je lokaal opnieuw via `buildSpecialSpaces()`. Wel het `seed` of de volledige `specialSpaces` snapshot opslaan zodat alle clients hetzelfde bord zien.
+### `state` bevat o.a.
+- `players`, `currentIndex`, `bossActive`, `bossHp`, `ambushPits`, …
+- `specialSpaces` — volledige snapshot van `SPECIAL_SPACES` (zelfde bord op alle clients)
+- `activeModal` — kopie van open modal (fallback na refresh)
+- `updatedBy`, `updatedAt` — echo-preventie
 
-**Belangrijk:** het bord wordt nu gegenereerd met een seed zodat host en guests exact hetzelfde bord zien. Voeg `boardSeed` toe aan de game state en gebruik die in `buildSpecialSpaces()`.
+### `lastEvent`
+```javascript
+{ seq, message, type, updatedBy, updatedAt }
+```
+`seq` = timestamp; guests dedupliceren op `seq`. Geen backfill van eerdere log bij late join.
+
+### `activeModal`
+```javascript
+{
+  type: 'event' | 'boss' | 'ambush' | 'path' | 'win',
+  phase: 'input' | 'outcome',
+  spaceNum: 42,
+  config: { name, icon, flavor, ability, dc, … },
+  outcome: { … }   // bij phase === 'outcome'
+}
+```
+Geen callbacks — die blijven lokaal op de host.
+
+---
+
+## Wat is gebouwd (Fase A)
+
+### Init & host-detectie
+1. Lees `?game=` uit URL; zo niet → genereer slug + `history.replaceState`
+2. `sessionId` in `sessionStorage` (`gbSessionId`)
+3. `claimHostIfEmpty` → schrijft `meta/hostSessionId` als leeg
+4. Host = `meta.hostSessionId === sessionId`
+
+### State-sync
+- `syncAfterAction()` na elke game-mutatie (alleen host)
+- `deserializeGame()` past game-object in-place aan op guests
+- `refreshGameUI()` → `renderBoard`, `renderPlayers`, combat rail
+- Host negeert eigen writes terug (`updatedBy === sessionId`)
+
+### Live log
+- `addLog()` → `syncLastEvent()` op host
+- Guests: `onLastEvent` → `appendRemoteLogEntry()`
+
+### Spectator modals
+Aparte functie **`renderSpectatorModal()`** — niet `showEventModal()` hergebruiken voor guests.
+
+| Modal | Guest ziet |
+|-------|------------|
+| event / boss / ambush | input: check + *"Host voert de check uit…"*; outcome: worp + resultaat |
+| path (rustig pad) | kaart + flavor, knop **"Rust even uit"** verborgen |
+| win | overwinningstekst, geen knop |
+
+Host-flow (`showEventModal`, `finishEventFlow`, `showPathModal`, …) blijft ongewijzigd voor guests.
+
+Sync-momenten:
+- modal open → `syncModalInput()`
+- na worp → `syncModalOutcome()`
+- sluiten → `clearSyncedActiveModal()` + `syncActiveModal(null)`
+
+Ambush/boss/events: **Doorgaan**-knop op host; guests zien outcome tot host doorgaat.
+
+Path-modal: host klikt **"Rust even uit"** (`closePathModal()` via vaste `addEventListener`).
+
+### UI
+- Statusbalk: host/guest-status + game ID + link kopiëren
+- `.app--spectator` — sidebar-invoer disabled
+- `.event-modal--spectator` / `.path-modal--spectator` — modals zonder invoer/sluitknop
+
+### Bord-sync
+`SPECIAL_SPACES`-snapshot in state (geen `boardSeed`). `applySpecialSpaces()` in `events-data.js` zet de globale `SPECIAL_SPACES` op guests.
+
+---
+
+## Sync-hooks in ui.js (host)
+
+`window.syncAfterAction?.()` na o.a.:
+- speler toevoegen/verwijderen
+- move, HP, event/boss/ambush resolve
+- beurt wissel (`advanceTurn`)
+- nieuw avontuur
+
+`advanceTurn` synct **na** auto-open van ambush/boss-modal (volgorde belangrijk).
 
 ---
 
 ## Veiligheid (Firebase Rules)
-
-Zet Firebase Database Rules zo in dat alleen lezen en schrijven mag voor clients met de game ID — geen authenticatie nodig voor een avondje spelen:
 
 ```json
 {
@@ -160,7 +171,17 @@ Zet Firebase Database Rules zo in dat alleen lezen en schrijven mag voor clients
 }
 ```
 
-Dit is open maar acceptabel voor een privé spelletjesavond. Voeg later eventueel een simpele host-token toe als je het iets veiliger wilt.
+Open rules — acceptabel voor privé avond. Zie sessie 6 voor aanscherping bij turn-based writes.
+
+---
+
+## Bekende beperkingen (bewust in Fase A)
+
+- Alleen host voert worpen in en beheert spelers
+- Geen speler-claim / geen `isMyTurn()`
+- Geen lobby-overlay
+- Log: alleen live feed (`lastEvent`), geen volledige history op guests
+- Geen async spelen (state verdwijnt als niemand meer kijkt)
 
 ---
 
@@ -168,14 +189,17 @@ Dit is open maar acceptabel voor een privé spelletjesavond. Voeg later eventuee
 
 | Sessie | Nodig voor |
 |--------|------------|
-| 1–4 | Alle spellogica, HP, boss, ambush |
-| 5A | Meekijken — kleinste stap, direct speelbaar |
-| 5B | Speler-claim — iedereen speelt zelf |
+| 1–4 | Spellogica, HP, boss, ambush |
+| 5 (deze) | Spectator mode — live meekijken |
+| 6 | Echte multiplayer — iedereen speelt zelf |
 
 ---
 
-## Na sessie 5
-- Fase C: async spelen (Firebase state blijft bewaard)
-- Lobby met game history
-- Board seed kiezen voor herhaalbare games
-- Spectator mode zonder naam-claim
+## Testchecklist
+
+1. Host opent pagina → game ID in URL, status *"Jij bent de host"*
+2. Guest (incognito) →zelfde URL → *"Je kijkt mee"*, invoer disabled
+3. Host beweegt → guest ziet token + log
+4. Host opent event/boss/ambush → guest ziet modal mee
+5. Host opent rustig pad → guest ziet kaart, host klikt *Rust even uit*
+6. 2 spelers in put, 1 sterft → host Doorgaan → volgende speler gevecht op beide schermen

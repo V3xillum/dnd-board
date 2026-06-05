@@ -9,6 +9,12 @@
   let pendingLocalWrite = false;
   let lastSeenLogSeq = -1;
   let hasRemoteState = false;
+  let hostHeartbeatTimer = null;
+  let hostTakeoverTimer = null;
+
+  const HOST_STALE_MS = 45_000;
+  const HOST_HEARTBEAT_MS = 15_000;
+  const HOST_TAKEOVER_CHECK_MS = 10_000;
 
   function getSessionId() {
     let id = sessionStorage.getItem(SESSION_KEY);
@@ -114,11 +120,6 @@
   function applyRemoteState(data) {
     if (!data || typeof window.getGame !== "function") return;
 
-    if (isHost && data.updatedBy === sessionId) {
-      pendingLocalWrite = false;
-      return;
-    }
-
     if (pendingLocalWrite && data.updatedBy === sessionId) {
       pendingLocalWrite = false;
       return;
@@ -179,6 +180,61 @@
     lastSeenLogSeq = -1;
   };
 
+  function setHostState(nextIsHost) {
+    if (nextIsHost === isHost) return;
+    isHost = nextIsHost;
+    window.setMultiplayerReadOnly?.(!isHost);
+    updateStatusBar();
+    if (isHost) {
+      startHostHeartbeat();
+      window.resyncActiveModalIfOpen?.();
+      return;
+    }
+    stopHostHeartbeat();
+  }
+
+  function startHostHeartbeat() {
+    stopHostHeartbeat();
+    if (!isHost || !gameId || typeof window.touchHostPresence !== "function") return;
+
+    const tick = () => {
+      if (!isHost || !gameId) return;
+      window.touchHostPresence(gameId, sessionId).catch((err) => {
+        console.warn("Host heartbeat mislukt:", err);
+      });
+    };
+
+    tick();
+    hostHeartbeatTimer = setInterval(tick, HOST_HEARTBEAT_MS);
+  }
+
+  function stopHostHeartbeat() {
+    if (hostHeartbeatTimer) {
+      clearInterval(hostHeartbeatTimer);
+      hostHeartbeatTimer = null;
+    }
+  }
+
+  function startHostTakeoverChecks() {
+    if (hostTakeoverTimer) return;
+
+    hostTakeoverTimer = setInterval(async () => {
+      if (isHost || !gameId || typeof window.claimHost !== "function") return;
+
+      try {
+        const claimed = await window.claimHost(gameId, sessionId);
+        if (claimed) setHostState(true);
+      } catch (err) {
+        console.warn("Host takeover check mislukt:", err);
+      }
+    }, HOST_TAKEOVER_CHECK_MS);
+  }
+
+  function isMetaHostStale(meta) {
+    if (!meta?.hostLastSeen) return false;
+    return Date.now() - meta.hostLastSeen > HOST_STALE_MS;
+  }
+
   function bindCopyButton() {
     const copyBtn = document.getElementById("mp-copy-link");
     if (!copyBtn || copyBtn.dataset.bound) return;
@@ -207,15 +263,31 @@
     bindCopyButton();
     updateStatusBar();
 
-    isHost = await window.claimHostIfEmpty(gameId, sessionId);
+    isHost = await window.claimHost(gameId, sessionId);
     window.setMultiplayerReadOnly?.(!isHost);
+    if (isHost) startHostHeartbeat();
+    startHostTakeoverChecks();
 
-    window.onGameMeta(gameId, (meta) => {
-      if (meta?.hostSessionId) {
-        isHost = meta.hostSessionId === sessionId;
-        window.setMultiplayerReadOnly?.(!isHost);
-        updateStatusBar();
+    window.onGameMeta(gameId, async (meta) => {
+      if (!meta?.hostSessionId) return;
+
+      if (meta.hostSessionId === sessionId) {
+        setHostState(true);
+        return;
       }
+
+      if (isMetaHostStale(meta)) {
+        try {
+          const claimed = await window.claimHost(gameId, sessionId);
+          setHostState(claimed);
+        } catch (err) {
+          console.warn("Host claim na stale meta mislukt:", err);
+          setHostState(false);
+        }
+        return;
+      }
+
+      setHostState(false);
     });
 
     window.onGameState(gameId, applyRemoteState);

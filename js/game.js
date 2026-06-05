@@ -714,7 +714,11 @@ class Game {
     }];
 
     if (success) {
-      pit.hp = Math.max(0, pit.hp - 1);
+      const hitDamage = nat20 ? 2 : 1;
+      pit.hp = Math.max(0, pit.hp - hitDamage);
+      if (nat20) {
+        events.push({ type: 'nat20', player: player.name });
+      }
       events.push({
         type: 'ambush-hit',
         ambushHp: pit.hp,
@@ -723,11 +727,9 @@ class Game {
         ambushName: config.name,
         playerHp: player.hp,
         spaceNum,
+        damage: hitDamage,
+        nat20,
       });
-      if (nat20) {
-        events.push({ type: 'nat20', player: player.name });
-        events.push(...this.mutateHp(player, 1));
-      }
     } else {
       this.applyCombatCheckFail(player, events, isNat1);
     }
@@ -821,18 +823,20 @@ class Game {
     let winner = null;
 
     if (success) {
-      this.bossHp = Math.max(0, this.bossHp - 1);
+      const hitDamage = nat20 ? 2 : 1;
+      this.bossHp = Math.max(0, this.bossHp - hitDamage);
+      if (nat20) {
+        events.push({ type: 'nat20', player: player.name });
+      }
       events.push({
         type: 'boss-hit',
         bossHp: this.bossHp,
         bossMaxHp: this.bossMaxHp,
         player: player.name,
         bossName: config.name,
+        damage: hitDamage,
+        nat20,
       });
-      if (nat20) {
-        events.push({ type: 'nat20', player: player.name });
-        events.push(...this.mutateHp(player, 1));
-      }
     } else {
       this.applyCombatCheckFail(player, events, isNat1);
     }

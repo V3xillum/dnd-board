@@ -1,14 +1,15 @@
-# Sessie 9 — Token-animatie op het bord
+# Sessie 9 — Token-animatie & modal-entrance
 
 **Status:** geïmplementeerd (naslag)
 
 ## Doel
-Speler-tokens krijgen visuele feedback op het bord — zonder gameplay-wijziging. `player.position` in `game.js` blijft leidend; animatie is puur UI.
+Visuele feedback op het bord en bij modals — zonder gameplay-wijziging. `player.position` in `game.js` blijft leidend; animatie is puur UI.
 
 1. **Actieve speler** — grotere token met gouden rand.
 2. **Wacht op worp** — subtiele bounce-animatie zolang de speler aan beurt is en mag dobbelen.
 3. **Verplaatsing** — token schuift vak voor vak naar de nieuwe positie, inclusief hoeken.
 4. **Multiplayer** — gasten zien dezelfde beweging (via position-diff), gesynchroniseerd direct na `syncAfterAction`.
+5. **Modal-kaarten** — subtiele scale-in bij openen; combat-modals iets intenser.
 
 ---
 
@@ -25,12 +26,56 @@ Speler-tokens krijgen visuele feedback op het bord — zonder gameplay-wijziging
 | Reduced motion | geen slide/bounce; lichte active scale |
 | Mystery onthulling | `cell--mystery-pulse-reveal` — gouden glow + icon-pop |
 | Mystery reset | `cell--mystery-pulse-reset` — paarse glow terug naar ❓ |
+| Modal calm | `event-card--enter-calm` / `event-modal__stack--enter-calm` — scale 0.88 → 1 |
+| Modal combat | `event-card--enter-combat` / `event-modal__stack--enter-combat` — scale 0.82 → 1.04 → 1 |
+| Modal win | `event-card--enter-win` — scale 0.85 → 1.02 → 1 |
+
+---
+
+## Modal-kaart animatie
+
+Kaarten schuiven niet meer via oude `slideUp`; ze **zoomen subtiel naar voren** bij openen. Backdrop blijft `fadeIn` op `.event-modal`.
+
+| Tier | Modals | Effect |
+|------|--------|--------|
+| **calm** | path, mystery (D12), gewone events | scale 0.88 → 1, ~380ms |
+| **combat** | ambush, boss, minion, boss-reveal, mystery-ambush onthulling, events `category: combat/trap` | scale 0.82 → 1.04 → 1, ~420ms |
+| **win** | win-modal | lichte overshoot, ~450ms |
+
+### Triggers (host)
+
+| Functie | Tier |
+|---------|------|
+| `showPathModal` | calm |
+| `showEventModal` | `getEventModalEnterTier(config)` |
+| `showMysteryModal` | calm |
+| `showMysteryRevealPhase` | calm (pad) / combat (ambush) |
+| `showBossRevealModal` / `showBossRevealRevealPhase` | combat |
+| `showAmbushModal` / `showBossModal` / `showBossMinionModal` | combat (hele `event-modal__stack` incl. turn-banner) |
+| `showWinModal` | win |
+
+### Helpers (`ui.js`)
+
+- `playModalCardEnter(modalEl, tier)` — class togglen + reflow zodat animatie opnieuw triggert (ook bij fase-wissel mystery/boss-reveal)
+- `getEventModalEnterTier(config)` — `combat` voor `category` combat/trap, anders `calm`
+- `playSpectatorModalEnter(modalEl, tier, activeModal)` — zelfde voor MP-gasten; alleen bij wijziging `type|phase|spaceNum` (geen herhaalde animatie bij elke Firebase-tick)
+
+### Multiplayer (gast)
+
+`renderSpectatorModal()` roept `playSpectatorModalEnter()` aan per modal-type. Mystery outcome: combat-tier als `config.revealType === 'ambush'`.
+
+### CSS
+
+Keyframes: `modal-enter-calm`, `modal-enter-combat`, `modal-enter-win` in `css/styles.css` (+ `scss/styles.scss`).  
+`prefers-reduced-motion`: geen scale-animatie op kaarten.
+
+**Let op:** tegel-pulse bij mystery-onthulling valt visueel weg zodra de modal direct opent — de modal-entrance levert het zichtbare effect.
 
 ---
 
 ## Mystery-tegel animatie
 
-Pulse-effect bij ❓ → onthuld en bij reset naar ❓ (geen flip-morph).
+Pulse-effect bij ❓ → onthuld en bij reset naar ❓ (geen flip-morph). Meest zichtbaar bij **reset** (pad/ambush kill), wanneer geen modal over het vak ligt.
 
 | Trigger | Host | Gast |
 |---------|------|------|
@@ -182,6 +227,8 @@ applyRemoteState (multiplayer.js)
 | Beurt-UI | `isPlayerWaitingToRoll()`, `updateTokenTurnStates()` |
 | MP gast | `snapshotTokenPositions()`, `hasTokenPositionChanges()`, `isLikelyGameReset()`, `repositionTokensToSnapshot()`, `refreshGameUIFromRemote()` |
 | Hooks | `handleMoveResult`, event/ambush/boss submits |
+| Modal entrance | `playModalCardEnter()`, `playSpectatorModalEnter()`, `getEventModalEnterTier()` |
+| Modal hooks | `showPathModal`, `showEventModal`, `showMysteryModal`, `showMysteryRevealPhase`, `showBossRevealModal`, `showBossRevealRevealPhase`, `showAmbushModal`, `showBossModal`, `showBossMinionModal`, `showWinModal`, `renderSpectatorModal` |
 
 ### `multiplayer.js`
 
@@ -195,6 +242,8 @@ applyRemoteState (multiplayer.js)
 - `.board { position: relative }`
 - `.token-layer`, `.token--active`, `.token--waiting`, `.token--moving`, `.token--dying`
 - `@keyframes token-wait-bounce`
+- `@keyframes modal-enter-calm`, `modal-enter-combat`, `modal-enter-win`
+- `.event-card--enter-*`, `.event-modal__stack--enter-*`
 - `@media (prefers-reduced-motion: reduce)`
 
 ### Ongewijzigd
@@ -242,6 +291,16 @@ applyRemoteState (multiplayer.js)
 
 ### Accessibility
 - [x] `prefers-reduced-motion`: geen slide/bounce
+- [x] `prefers-reduced-motion`: geen modal scale-in
+
+### Modal-entrance
+- [x] Path: calm scale-in
+- [x] Event: calm/combat op category
+- [x] Mystery: calm bij openen, opnieuw bij onthulling (combat bij ambush)
+- [x] Boss-reveal: combat (roll + reveal-fase)
+- [x] Ambush/boss/minion: combat (stack + banner)
+- [x] Win: win-tier
+- [x] MP-gast: zelfde animatie via `renderSpectatorModal`
 
 ---
 
@@ -262,7 +321,8 @@ applyRemoteState (multiplayer.js)
 - Apart Firebase `lastAnimation`-kanaal (bounce-overshoot 1:1 voor gast)
 - Diagonale / curved paths
 - Particles, geluid, trail
-- Mystery-onthulling / tegel-reset (sessie 7) — **pulse gebouwd**; flip-morph nog niet
+- Mystery flip-morph op tegel (pulse wel gebouwd; modal-entrance dekt onthulling visueel)
+- Landing-pause tussen token-slide en modal (~350ms) — nog niet gebouwd
 - Sessie 6 turn-based per device
 - Window-resize: tokens corrigeren pas bij volgende `renderTokens()`
 
@@ -274,6 +334,8 @@ applyRemoteState (multiplayer.js)
 - Snellere animatie bij lange zetten (optionele versnelling)
 - Resize-listener voor token-layer
 - Flip-animatie mystery-tegel (kaart omdraaien) i.p.v. pulse
+- Landing-pause vóór modal na token-animatie
+- Finetune modal scale/timing als calm/combat/win te veel of te weinig voelt
 
 ---
 

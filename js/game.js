@@ -119,19 +119,19 @@ function getDcModifier(player) {
   return player?.nextDcMod ?? 0;
 }
 
-/** Moeilijkheidsgraad 1–5 → DC-multiplier op basis-DC (vóór streak/modifiers) */
-const DC_DIFFICULTY_MULTIPLIERS = [1, 1.1, 1.2, 1.3, 1.4, 1.5];
+/** Moeilijkheidsgraad 1–5 → vaste +1 DC per stap (niveau 1 = +0, niveau 5 = +4) */
+const DC_DIFFICULTY_MAX_LEVEL = 5;
 
-function getDifficultyMultiplier(level = 1) {
-  const idx = Math.max(0, Math.min(DC_DIFFICULTY_MULTIPLIERS.length - 1, level - 1));
-  return DC_DIFFICULTY_MULTIPLIERS[idx];
+function getDifficultyDcBonus(level = 1) {
+  const clamped = Math.max(1, Math.min(DC_DIFFICULTY_MAX_LEVEL, level));
+  return clamped - 1;
 }
 
 function getEffectiveDc(player, baseDc, difficultyLevel, dcModOverride) {
   const level = difficultyLevel ?? window.getGame?.()?.difficultyLevel ?? 1;
-  const scaled = Math.round(baseDc * getDifficultyMultiplier(level));
+  const difficultyBonus = getDifficultyDcBonus(level);
   const mod = dcModOverride ?? getDcModifier(player);
-  const total = scaled + getDcBonus(player) + mod;
+  const total = baseDc + difficultyBonus + getDcBonus(player) + mod;
   return Math.max(1, total);
 }
 
@@ -165,7 +165,7 @@ class Game {
     this.ambushPits = {};
     /** Per vak: onthulde mystery-inhoud (path of ambush + multiplier) */
     this.revealedSpaces = {};
-    /** 1–5: multiplier op event-DC (×1.0 … ×1.5) */
+    /** 1–5: +0 … +4 op event-DC */
     this.difficultyLevel = 1;
   }
 
@@ -1597,8 +1597,8 @@ window.isOnBossArena = isOnBossArena;
 window.getPathDirection = getPathDirection;
 window.getDcBonus = getDcBonus;
 window.getDcModifier = getDcModifier;
-window.getDifficultyMultiplier = getDifficultyMultiplier;
-window.DC_DIFFICULTY_MULTIPLIERS = DC_DIFFICULTY_MULTIPLIERS;
+window.getDifficultyDcBonus = getDifficultyDcBonus;
+window.DC_DIFFICULTY_MAX_LEVEL = DC_DIFFICULTY_MAX_LEVEL;
 window.getEffectiveDc = getEffectiveDc;
 window.isCenterCell = isCenterCell;
 window.isCenterCovered = isCenterCovered;

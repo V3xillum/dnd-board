@@ -1498,16 +1498,16 @@ function updateDifficultyUI() {
 function setDifficultyLevel(level) {
   const parsed = Number.parseInt(String(level), 10);
   const clamped = Number.isFinite(parsed)
-    ? Math.max(1, Math.min(window.DC_DIFFICULTY_MULTIPLIERS?.length ?? 5, parsed))
+    ? Math.max(1, Math.min(window.DC_DIFFICULTY_MAX_LEVEL ?? 5, parsed))
     : 1;
   if (game.difficultyLevel === clamped) return;
 
   game.difficultyLevel = clamped;
   updateDifficultyUI();
 
-  const mult = getDifficultyMultiplier(clamped);
-  const multLabel = mult === 1 ? '×1.0' : `×${mult.toFixed(1)}`;
-  addLog(`Moeilijkheidsgraad ${clamped} (${multLabel} op DC)`);
+  const dcBonus = getDifficultyDcBonus(clamped);
+  const bonusLabel = dcBonus === 0 ? 'geen DC-bonus' : `DC +${dcBonus}`;
+  addLog(`Moeilijkheidsgraad ${clamped} (${bonusLabel})`);
   window.syncAfterAction?.();
 }
 

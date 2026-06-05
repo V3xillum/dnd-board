@@ -79,6 +79,10 @@ const els = {
   rulesCloseBtn: document.getElementById('rules-close-btn'),
   rulesCloseBottom: document.getElementById('rules-close-bottom'),
   legendRulesLink: document.getElementById('legend-rules-link'),
+  newAdventureBtn: document.getElementById('new-adventure-btn'),
+  confirmModal: document.getElementById('confirm-modal'),
+  confirmCancel: document.getElementById('confirm-cancel'),
+  confirmOk: document.getElementById('confirm-ok'),
 };
 
 function syncModalScrollLock() {
@@ -88,6 +92,7 @@ function syncModalScrollLock() {
     !els.mysteryModal.classList.contains('hidden') ||
     !els.bossRevealModal.classList.contains('hidden') ||
     !els.winModal.classList.contains('hidden') ||
+    (els.confirmModal && !els.confirmModal.classList.contains('hidden')) ||
     (els.rulesModal && !els.rulesModal.classList.contains('hidden'));
   document.body.classList.toggle('modal-open', open);
   updateTokenTurnStates();
@@ -163,6 +168,69 @@ function closeRulesModal() {
   if (!els.rulesModal) return;
   els.rulesModal.classList.add('hidden');
   syncModalScrollLock();
+}
+
+function forceCloseAllModals() {
+  els.winModal.classList.add('hidden');
+  els.winModal.classList.remove('win-modal--spectator');
+
+  els.eventModal.classList.add('hidden');
+  els.eventModal.classList.remove('event-modal--spectator');
+  activeEvent = null;
+  activeBoss = null;
+  activeBossMinion = null;
+  activeAmbush = null;
+  els.eventCard?.classList.remove('event-card--ambush');
+  removeAmbushModalExtras();
+
+  els.pathModal.classList.add('hidden');
+  els.pathModal.classList.remove('path-modal--spectator');
+  pathModalCallback = null;
+  pathModalSpaceNum = null;
+
+  els.mysteryModal.classList.add('hidden');
+  els.mysteryModal.classList.remove('mystery-modal--spectator');
+  els.mysteryCard?.classList.remove('event-card--jackpot');
+  activeMystery = null;
+
+  els.bossRevealModal.classList.add('hidden');
+  els.bossRevealModal.classList.remove('boss-reveal-modal--spectator');
+  els.bossRevealCard?.classList.remove('event-card--epic');
+  activeBossReveal = null;
+
+  els.confirmModal?.classList.add('hidden');
+  closeRulesModal();
+  clearSyncedActiveModal();
+  syncModalScrollLock();
+}
+
+function startNewAdventure() {
+  forceCloseAllModals();
+  game.reset();
+  if (typeof rebuildBoard === 'function') rebuildBoard();
+  els.gameLog.innerHTML = '';
+  updateBossPanel();
+  updateAmbushPanel();
+  renderBoard();
+  renderPlayers();
+  updateTurnUI();
+  addLog('Nieuw avontuur — het bord is opnieuw geschud!');
+  window.syncAfterAction?.();
+  window.resetMultiplayerLog?.();
+}
+
+function showNewAdventureConfirm() {
+  if (document.querySelector('.app')?.classList.contains('app--spectator')) return;
+  els.confirmModal?.classList.remove('hidden');
+  syncModalScrollLock();
+  playModalCardEnter(els.confirmModal, 'calm');
+  els.confirmCancel?.focus();
+}
+
+function closeNewAdventureConfirm() {
+  els.confirmModal?.classList.add('hidden');
+  syncModalScrollLock();
+  els.newAdventureBtn?.focus();
 }
 
 function parseDiceRoll(value, min, max = null) {
@@ -3344,21 +3412,17 @@ els.rulesModal?.addEventListener('click', (e) => {
   if (e.target === els.rulesModal) closeRulesModal();
 });
 
-els.winClose.addEventListener('click', () => {
-  els.winModal.classList.add('hidden');
-  syncModalScrollLock();
-  clearSyncedActiveModal();
-  game.reset();
-  if (typeof rebuildBoard === 'function') rebuildBoard();
-  els.gameLog.innerHTML = '';
-  updateBossPanel();
-  updateAmbushPanel();
-  renderBoard();
-  renderPlayers();
-  addLog('Nieuw avontuur — het bord is opnieuw geschud!');
-  window.syncAfterAction?.();
-  window.resetMultiplayerLog?.();
+els.newAdventureBtn?.addEventListener('click', showNewAdventureConfirm);
+els.confirmCancel?.addEventListener('click', closeNewAdventureConfirm);
+els.confirmOk?.addEventListener('click', () => {
+  closeNewAdventureConfirm();
+  startNewAdventure();
 });
+els.confirmModal?.addEventListener('click', (e) => {
+  if (e.target === els.confirmModal) closeNewAdventureConfirm();
+});
+
+els.winClose.addEventListener('click', startNewAdventure);
 
 window.getGame = () => game;
 window.getActiveModal = () => syncedActiveModal;
@@ -3409,6 +3473,7 @@ window.setMultiplayerReadOnly = (readOnly) => {
   document.querySelector('.app')?.classList.toggle('app--spectator', readOnly);
   els.playerName.disabled = readOnly;
   els.addBtn.disabled = readOnly;
+  if (els.newAdventureBtn) els.newAdventureBtn.disabled = readOnly;
   if (readOnly) {
     els.moveBtn.disabled = true;
     els.diceInput.disabled = true;

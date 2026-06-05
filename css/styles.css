@@ -58,13 +58,6 @@ body {
   padding-bottom: 0.5rem;
   border-bottom: 2px solid rgba(201, 162, 39, 0.3);
 }
-.header__row {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  justify-content: center;
-  gap: 0.75rem 1.25rem;
-}
 .header h1 {
   margin: 0;
   font-size: 2rem;
@@ -82,25 +75,58 @@ body {
   flex-wrap: wrap;
   align-items: center;
   justify-content: center;
-  gap: 0.5rem 1rem;
-  margin-top: 0.75rem;
-  padding: 0.5rem 0.75rem;
-  border-radius: 8px;
+  gap: 0.65rem 1rem;
+  margin-top: 0.85rem;
+  padding: 0.55rem 0.85rem;
+  border-radius: 999px;
   background: rgba(44, 24, 16, 0.55);
   border: 1px solid rgba(201, 162, 39, 0.35);
   font-size: 0.85rem;
 }
-#mp-status {
+.multiplayer-bar__role {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 4.25rem;
+  padding: 0.35rem 0.85rem;
+  border-radius: 999px;
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
   color: #f4e4bc;
+  background: rgba(0, 0, 0, 0.22);
+  border: 1px solid rgba(201, 162, 39, 0.35);
 }
-#mp-game-id {
+.multiplayer-bar__role--host {
   color: #e8c84a;
-  font-family: monospace;
+  border-color: rgba(232, 200, 74, 0.55);
+  background: rgba(201, 162, 39, 0.12);
 }
-.btn--small {
-  padding: 0.25rem 0.65rem;
-  font-size: 0.78rem;
-  border-radius: 14px;
+.multiplayer-bar__role--guest {
+  color: #c8d4e8;
+  border-color: rgba(160, 180, 210, 0.45);
+  background: rgba(80, 100, 130, 0.18);
+}
+.multiplayer-bar__actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+}
+.app--spectator .btn--new-adventure {
+  display: none;
+}
+.confirm-modal__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.65rem;
+  justify-content: center;
+  margin-top: 1.25rem;
+}
+.confirm-modal__actions .btn--primary {
+  min-width: 11rem;
 }
 .app--spectator .add-player,
 .app--spectator .dice-controls,

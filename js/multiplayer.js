@@ -129,23 +129,17 @@
   }
 
   function updateStatusBar() {
-    const statusEl = document.getElementById("mp-status");
-    const gameIdEl = document.getElementById("mp-game-id");
-    if (!statusEl || !gameIdEl) return;
-
-    gameIdEl.textContent = gameId ? `Spel: ${gameId}` : "";
+    const roleEl = document.getElementById("mp-role");
+    if (!roleEl) return;
 
     if (isHost) {
-      statusEl.textContent = "Jij bent de host — speel en anderen kijken mee";
+      roleEl.textContent = "Host";
+      roleEl.className = "multiplayer-bar__role multiplayer-bar__role--host";
       return;
     }
 
-    if (hasRemoteState) {
-      statusEl.textContent = "Je kijkt mee (alleen lezen)";
-      return;
-    }
-
-    statusEl.textContent = "Wacht op host…";
+    roleEl.textContent = "Gast";
+    roleEl.className = "multiplayer-bar__role multiplayer-bar__role--guest";
   }
 
   function applyRemoteState(data) {
@@ -297,7 +291,7 @@
         await navigator.clipboard.writeText(window.location.href);
         copyBtn.textContent = "Gekopieerd!";
         setTimeout(() => {
-          copyBtn.textContent = "Link kopiëren";
+          copyBtn.textContent = "Deellink";
         }, 2000);
       } catch {
         copyBtn.textContent = "Kopiëren mislukt";

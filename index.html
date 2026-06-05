@@ -9,15 +9,15 @@
 <body>
   <div class="app">
     <header class="header">
-      <div class="header__row">
-        <h1>⚔️ D&amp;D Ganzenbord</h1>
-        <button type="button" id="rules-open-btn" class="btn btn--rules" aria-haspopup="dialog" aria-controls="rules-modal">Spelregels</button>
-      </div>
+      <h1>⚔️ D&amp;D Ganzenbord</h1>
       <p class="subtitle">Rol je dobbelstenen, overleef de checks, bereik de schat!</p>
       <div id="multiplayer-bar" class="multiplayer-bar">
-        <span id="mp-status">Verbinden…</span>
-        <span id="mp-game-id"></span>
-        <button type="button" id="mp-copy-link" class="btn btn--small">Link kopiëren</button>
+        <span id="mp-role" class="multiplayer-bar__role">Verbinden…</span>
+        <div class="multiplayer-bar__actions">
+          <button type="button" id="rules-open-btn" class="btn btn--rules" aria-haspopup="dialog" aria-controls="rules-modal">Spelregels</button>
+          <button type="button" id="new-adventure-btn" class="btn btn--rules btn--new-adventure" aria-haspopup="dialog" aria-controls="confirm-modal">Nieuw avontuur</button>
+          <button type="button" id="mp-copy-link" class="btn btn--rules">Deellink</button>
+        </div>
       </div>
     </header>
 
@@ -26,7 +26,7 @@
         <h2>Spelers</h2>
         <div class="add-player">
           <input type="text" id="player-name" placeholder="Naam avonturier" maxlength="20">
-          <button id="add-player-btn" class="btn btn--primary">Toevoegen</button>
+          <button id="add-player-btn" class="btn btn--primary">+</button>
         </div>
         <ul id="player-list" class="player-list"></ul>
       </section>
@@ -259,6 +259,19 @@
         <p class="event-card__flavor" id="path-flavor"></p>
         <p class="path-card__note">Geen ability check — even ademhalen en doorlopen.</p>
         <button type="button" id="path-close" class="btn btn--primary btn--wide">Rust even uit</button>
+      </div>
+    </div>
+  </div>
+
+  <div id="confirm-modal" class="event-modal hidden" role="dialog" aria-modal="true" aria-labelledby="confirm-title">
+    <div class="event-card event-card--confirm">
+      <div class="event-card__frame">
+        <h2 id="confirm-title" class="event-card__title">Nieuw avontuur?</h2>
+        <p class="event-card__flavor">Alle spelers, voortgang en het huidige bord worden gewist. Dit kan niet ongedaan worden gemaakt.</p>
+        <div class="confirm-modal__actions">
+          <button type="button" id="confirm-cancel" class="btn btn--rules">Annuleren</button>
+          <button type="button" id="confirm-ok" class="btn btn--primary">Ja, opnieuw beginnen</button>
+        </div>
       </div>
     </div>
   </div>

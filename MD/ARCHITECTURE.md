@@ -85,7 +85,6 @@ firebase.js (module)
 ### DC / difficulty (`game/dc.js` → `window`)
 
 - `getEffectiveDc`, `getDcBonus`, `getDcModifier`, `getDifficultyDcBonus`
-- `calcEventSuccessSteps`, `applyMovementBonus`
 - `BASE_SUCCESS_STEPS`, `OVERSHOOT_DIVISOR`, `DC_DIFFICULTY_MAX_LEVEL` (ook via `settings.js`)
 - Laadt vóór `game.js` — gebruikt door `Game`, `ui/players.js`, `ui/modals/events.js`
 

@@ -348,7 +348,6 @@ class Game {
     const onFinish = this.players.find((p) => p.position === FINISH_SPACE);
     if (!onFinish) return null;
 
-    this.clearMovementBonusOnFinish(onFinish);
     this.gameOver = true;
     this.winner = onFinish;
     return onFinish;
@@ -362,7 +361,7 @@ class Game {
       position: 0,
       hp: DEFAULT_HP,
       maxHp: DEFAULT_MAX_HP,
-      movementBonus: 0,
+      pendingDeathReturnRoll: false,
       dmgBonus: 0,
       dcStreak: 0,
       nextDcMod: 0,
@@ -625,8 +624,118 @@ class Game {
     return { events, valid: true, passTurn: true };
   }
 
+  needsDeathReturnRoll(player) {
+    return Boolean(player?.pendingDeathReturnRoll);
+  }
+
+  /** Laagste vak van medespelers; ≥ genezer → vak 56; solo → vak 56. */
+  getDeathReturnTeleportTarget(player) {
+    const healerSpace = HEALER_SPACE;
+    const others = this.players.filter((p) => p.id !== player.id);
+
+    if (others.length === 0) {
+      return { space: healerSpace, reason: 'solo' };
+    }
+
+    const lowestPos = Math.min(...others.map((p) => p.position));
+    if (lowestPos >= healerSpace) {
+      return { space: healerSpace, reason: 'catch-up-healer', referencePos: lowestPos };
+    }
+
+    return { space: lowestPos, reason: 'catch-up-player', referencePos: lowestPos };
+  }
+
   /**
-   * Centrale HP-mutatie. Bij 0 HP: death (start, HP vol, movementBonus +1).
+   * D4 second chance na death — eerste beurt op start.
+   * 1: niets · 2: teleport catch-up · 3: max HP · 4: +1 dmg
+   */
+  resolveDeathReturnRoll(player, roll) {
+    if (!player || this.gameOver || !player.pendingDeathReturnRoll) {
+      return { events: [], valid: false };
+    }
+    if (roll < 1 || roll > 4) {
+      return { events: [], valid: false };
+    }
+
+    player.pendingDeathReturnRoll = false;
+    const events = [{
+      type: 'death-return-roll',
+      player: player.name,
+      roll,
+    }];
+
+    if (roll === 1) {
+      events.push({ type: 'death-return-none', player: player.name });
+      return { events, valid: true };
+    }
+
+    if (roll === 2) {
+      const target = this.getDeathReturnTeleportTarget(player);
+      const from = player.position;
+      player.position = target.space;
+
+      events.push({
+        type: 'death-return-teleport',
+        player: player.name,
+        from,
+        to: target.space,
+        reason: target.reason,
+        referencePos: target.referencePos ?? null,
+      });
+
+      const pit = this.getPitAt(target.space);
+      if (pit && pit.hp > 0 && pit.playerIds.some((id) => id !== player.id)) {
+        const joined = this.joinOrStartPit(player, target.space);
+        if (joined && (joined.kind === 'join' || joined.kind === 'already')) {
+          const { config, pit: activePit } = joined;
+          if (joined.kind === 'join') {
+            const allies = activePit.playerIds
+              .filter((id) => id !== player.id)
+              .map((id) => this.players.find((p) => p.id === id)?.name)
+              .filter(Boolean);
+
+            events.push({
+              type: 'ambush-join',
+              name: config.name,
+              icon: config.icon,
+              ambushHp: activePit.hp,
+              ambushMaxHp: activePit.maxHp,
+              player: player.name,
+              allies,
+              spaceNum: target.space,
+            });
+          }
+
+          return { events, valid: true, needsAmbush: this.isPlayerInPit(player) };
+        }
+      }
+
+      return { events, valid: true };
+    }
+
+    if (roll === 3) {
+      const healInfo = this.healPlayerToFull(player, events);
+      events.push({
+        type: 'death-return-max-hp',
+        player: player.name,
+        from: healInfo.from,
+        to: healInfo.to,
+        healed: healInfo.healed,
+      });
+      return { events, valid: true };
+    }
+
+    if (roll === 4) {
+      this.grantDmgBonus(player, events);
+      events.push({ type: 'death-return-dmg', player: player.name });
+      return { events, valid: true };
+    }
+
+    return { events: [], valid: false };
+  }
+
+  /**
+   * Centrale HP-mutatie. Bij 0 HP: death (start, respawn-HP, D4 second chance volgende beurt).
    * @returns {object[]} events voor describeEvents()
    */
   mutateHp(player, delta) {
@@ -648,34 +757,24 @@ class Game {
     if (player.hp <= 0) {
       player.position = 0;
       player.hp = DEFAULT_HP;
-      player.movementBonus = (player.movementBonus ?? 0) + 1;
+      player.pendingDeathReturnRoll = true;
       player.shortRestsUsed = 0;
       events.push({
         type: 'death',
         player: player.name,
         hp: player.hp,
-        movementBonus: player.movementBonus,
       });
     }
 
     return events;
   }
 
-  clearMovementBonusOnFinish(player) {
-    if (player?.movementBonus) {
-      player.movementBonus = 0;
-    }
-  }
-
-  /** Overshoot voorbij vak 63: kaats terug; catch-up bonus verbruikt (zelfde als finish bereiken). */
+  /** Overshoot voorbij vak 63: kaats terug naar binnen het bord. */
   applyFinishOvershootBounce(player, pos) {
     const overshoot = pos - TOTAL_SPACES;
-    const hadBonus = (player.movementBonus ?? 0) > 0;
-    this.clearMovementBonusOnFinish(player);
     return {
       position: Math.max(0, TOTAL_SPACES - overshoot),
       overshoot,
-      movementBonusCleared: hadBonus,
     };
   }
 
@@ -706,17 +805,14 @@ class Game {
     }
 
     const from = player.position;
-    const effectiveSteps = applyMovementBonus(player, steps);
-    let pos = from + effectiveSteps;
+    let pos = from + steps;
     const events = [
       ...leadEvents,
       {
         type: 'move',
         from,
         to: pos,
-        steps: effectiveSteps,
-        baseSteps: steps,
-        movementBonus: player.movementBonus ?? 0,
+        steps,
         player: player.name,
       },
     ];
@@ -729,7 +825,6 @@ class Game {
         position: pos,
         overshoot: bounce.overshoot,
         player: player.name,
-        movementBonusCleared: bounce.movementBonusCleared,
       });
     }
 
@@ -796,7 +891,6 @@ class Game {
         };
       }
 
-      this.clearMovementBonusOnFinish(player);
       this.gameOver = true;
       this.winner = player;
       events.push({ type: 'finish', player: player.name });
@@ -954,7 +1048,6 @@ class Game {
     }
 
     if (space.type === 'finish') {
-      this.clearMovementBonusOnFinish(player);
       this.gameOver = true;
       this.winner = player;
       events.push({ type: 'finish', player: player.name });

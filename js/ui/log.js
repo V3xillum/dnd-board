@@ -32,19 +32,16 @@ function addLog(message, type = '') {
 function describeEvents(events) {
   const hasShortRest = events.some((e) => e.type === 'short-rest');
   const hasLongRest = events.some((e) => e.type === 'long-rest');
+  const hasDeathReturnMaxHp = events.some((e) => e.type === 'death-return-max-hp');
 
   events.forEach((ev) => {
     switch (ev.type) {
       case 'move': {
-        const bonusNote =
-          ev.movementBonus > 0 && ev.baseSteps != null && ev.steps !== ev.baseSteps
-            ? ` (${ev.baseSteps}+${ev.movementBonus} catch-up)`
-            : '';
-        addLog(`${ev.player} verplaatst ${ev.steps} vakje(s)${bonusNote} → vak ${ev.to}`);
+        addLog(`${ev.player} verplaatst ${ev.steps} vakje(s) → vak ${ev.to}`);
         break;
       }
       case 'hp-change': {
-        if (hasShortRest || hasLongRest) break;
+        if (hasShortRest || hasLongRest || hasDeathReturnMaxHp) break;
         const verb = ev.delta < 0 ? 'verliest' : 'herstelt';
         const amount = Math.abs(ev.delta);
         addLog(
@@ -55,18 +52,40 @@ function describeEvents(events) {
       }
       case 'death':
         addLog(
-          `${ev.player} valt uit! Terug naar start · ${window.DEFAULT_HP} HP · +${ev.movementBonus} beweging (catch-up)`,
+          `${ev.player} valt uit! Terug naar start · ${window.DEFAULT_HP} HP · D4 second chance volgende beurt`,
           'warn',
         );
         break;
       case 'bounce': {
-        let msg = `Te ver! Terugkaatsen naar vak ${ev.position}`;
-        if (ev.movementBonusCleared && ev.player) {
-          msg += ` — ${ev.player}: catch-up bonus verbruikt`;
-        }
-        addLog(msg, 'warn');
+        addLog(`Te ver! Terugkaatsen naar vak ${ev.position}`, 'warn');
         break;
       }
+      case 'death-return-roll':
+        addLog(`${ev.player} second chance D4: ${ev.roll}`, 'special');
+        break;
+      case 'death-return-none':
+        addLog(`${ev.player}: pech — gewoon opnieuw beginnen op start`, 'warn');
+        break;
+      case 'death-return-teleport': {
+        if (ev.reason === 'catch-up-player') {
+          addLog(`${ev.player}: catch-up teleport naar vak ${ev.to}`, 'success');
+        } else {
+          addLog(
+            `${ev.player}: zwaar gewond afgevoerd naar de genezer (vak ${ev.to}) — geen heal`,
+            'special',
+          );
+        }
+        break;
+      }
+      case 'death-return-max-hp':
+        addLog(
+          `${ev.player}: volledig hersteld (${ev.from} → ${ev.to} HP) — start op vak 0`,
+          'success',
+        );
+        break;
+      case 'death-return-dmg':
+        addLog(`${ev.player}: second chance — permanente +1 schade-bonus`, 'success');
+        break;
       case 'landed':
         if (ev.name) addLog(`Landt op: ${ev.icon} ${ev.name}`, 'special');
         break;
@@ -124,15 +143,8 @@ function describeEvents(events) {
         break;
       case 'event-move': {
         const dir = ev.direction === 'back' ? 'terug' : 'vooruit';
-        const bonusNote =
-          ev.movementBonus > 0 &&
-          ev.direction === 'forward' &&
-          ev.baseSteps != null &&
-          ev.steps !== ev.baseSteps
-            ? ` (${ev.baseSteps}+${ev.movementBonus} catch-up)`
-            : '';
         addLog(
-          `${ev.player} ${ev.steps} vakje(s) ${dir}${bonusNote} → vak ${ev.to}`,
+          `${ev.player} ${ev.steps} vakje(s) ${dir} → vak ${ev.to}`,
           ev.direction === 'back' ? 'fail' : 'success',
         );
         break;

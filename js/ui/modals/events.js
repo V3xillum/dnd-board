@@ -488,13 +488,18 @@ function closePathModal() {
   pathModalSpaceNum = null;
   const skipMysteryReset = pathModalSkipMysteryReset;
   pathModalSkipMysteryReset = false;
+  const skipRestSideEffects = pathModalSkipRestSideEffects;
+  pathModalSkipRestSideEffects = false;
   const cb = pathModalCallback;
   pathModalCallback = null;
 
   const events = [];
-  game.resetDcStreakOnRest(game.currentPlayer, events);
 
-  if (spaceNum != null && !skipMysteryReset) {
+  if (!skipRestSideEffects) {
+    game.resetDcStreakOnRest(game.currentPlayer, events);
+  }
+
+  if (spaceNum != null && !skipMysteryReset && !skipRestSideEffects) {
     events.push(...game.resetMysteryPathAfterRest(spaceNum));
   }
 
@@ -572,6 +577,147 @@ function showHealerModal(config, spaceNum, healInfo, onComplete) {
     });
   } catch (err) {
     console.error('Healer modal sync mislukt:', err);
+  }
+  playModalCardEnter(els.pathModal, 'calm');
+
+  setTimeout(() => els.pathClose.focus(), 100);
+}
+
+function buildDeathReturnModalView(result, player) {
+  const outcomes = window.DEATH_RETURN_OUTCOMES ?? {};
+  const rollEv = result.events?.find((e) => e.type === 'death-return-roll');
+  const roll = rollEv?.roll ?? '?';
+
+  if (result.events?.some((e) => e.type === 'death-return-none')) {
+    const base = outcomes.none ?? {};
+    return {
+      roll,
+      config: base,
+      tag: 'Second chance',
+      note: 'Geen effect — je begint opnieuw op vak 0. Daarna normale beurt (2× D6).',
+      closeLabel: base.closeLabel ?? 'Verder',
+      spaceNum: 0,
+    };
+  }
+
+  const teleport = result.events?.find((e) => e.type === 'death-return-teleport');
+  if (teleport) {
+    const ambushJoin = result.events?.find((e) => e.type === 'ambush-join');
+    if (ambushJoin) {
+      const base = outcomes.teleportPit ?? {};
+      const allies = ambushJoin.allies?.length
+        ? ` Samen met ${ambushJoin.allies.join(', ')}.`
+        : '';
+      return {
+        roll,
+        config: base,
+        tag: 'Second chance',
+        note: `Teleport naar vak ${teleport.to} — je springt meteen in het gevecht tegen ${ambushJoin.name}.${allies}`,
+        closeLabel: base.closeLabel ?? 'Verder',
+        spaceNum: teleport.to,
+      };
+    }
+
+    if (teleport.reason === 'catch-up-player') {
+      const base = outcomes.teleportPlayer ?? {};
+      return {
+        roll,
+        config: base,
+        tag: 'Second chance',
+        note: `Catch-up naar vak ${teleport.to} (laagste medespeler). Daarna normale beurt (2× D6).`,
+        closeLabel: base.closeLabel ?? 'Verder',
+        spaceNum: teleport.to,
+      };
+    }
+
+    const base = outcomes.teleportHealer ?? {};
+    const soloNote = teleport.reason === 'solo' ? 'Geen medespelers —' : 'Iedereen staat ver voor —';
+    return {
+      roll,
+      config: base,
+      tag: 'Second chance',
+      note: `${soloNote} afgevoerd naar vak ${teleport.to}. Geen heal, geen DC-reset. Daarna normale beurt (2× D6).`,
+      closeLabel: base.closeLabel ?? 'Verder',
+      spaceNum: teleport.to,
+    };
+  }
+
+  const maxHpEv = result.events?.find((e) => e.type === 'death-return-max-hp');
+  if (maxHpEv) {
+    const base = outcomes.maxHp ?? {};
+    return {
+      roll,
+      config: base,
+      tag: 'Second chance',
+      note: maxHpEv.healed
+        ? `Volledig hersteld: ${maxHpEv.from} → ${maxHpEv.to} HP. Je blijft op vak 0.`
+        : `Je zat al op max HP (${player?.hp ?? maxHpEv.to}). Je blijft op vak 0.`,
+      closeLabel: base.closeLabel ?? 'Verder',
+      spaceNum: 0,
+    };
+  }
+
+  if (result.events?.some((e) => e.type === 'death-return-dmg')) {
+    const dmgEv = result.events?.find((e) => e.type === 'dmg-bonus');
+    const base = outcomes.dmg ?? {};
+    return {
+      roll,
+      config: base,
+      tag: 'Second chance',
+      note: `Permanente +1 schade-bonus (totaal +${dmgEv?.dmgBonus ?? player?.dmgBonus ?? 1}). Je blijft op vak 0.`,
+      closeLabel: base.closeLabel ?? 'Verder',
+      spaceNum: 0,
+    };
+  }
+
+  return {
+    roll,
+    config: { icon: '🎲', name: 'Second chance', flavor: 'Het lot heeft gesproken.' },
+    tag: 'Second chance',
+    note: `D4: ${roll}`,
+    closeLabel: 'Verder',
+    spaceNum: player?.position ?? 0,
+  };
+}
+
+function showDeathReturnModal(result, onComplete) {
+  const player = game.currentPlayer;
+  const view = buildDeathReturnModalView(result, player);
+  const { config, tag, note, closeLabel, spaceNum, roll } = view;
+
+  closeEventModal();
+  els.pathIcon.textContent = config.icon || '🎲';
+  els.pathSpace.textContent = `D4: ${roll} · vak ${spaceNum ?? '?'}`;
+  els.pathTitle.textContent = config.name || 'Second chance';
+  els.pathFlavor.textContent = config.flavor || '';
+  if (els.pathTag) els.pathTag.textContent = tag;
+  if (els.pathNote) els.pathNote.textContent = note;
+
+  pathModalCallback = onComplete ?? null;
+  pathModalSpaceNum = null;
+  pathModalSkipMysteryReset = true;
+  pathModalSkipRestSideEffects = true;
+  els.pathModal.classList.remove('hidden');
+  els.pathModal.classList.remove('path-modal--spectator');
+  els.pathClose.textContent = closeLabel;
+  els.pathClose.disabled = false;
+  syncModalScrollLock();
+
+  try {
+    setSyncedActiveModal({
+      type: 'death-return',
+      phase: 'outcome',
+      spaceNum: spaceNum ?? null,
+      config: serializeModalConfig(config),
+      outcome: {
+        roll,
+        tag,
+        note,
+        closeLabel,
+      },
+    });
+  } catch (err) {
+    console.error('Death return modal sync mislukt:', err);
   }
   playModalCardEnter(els.pathModal, 'calm');
 

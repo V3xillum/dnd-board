@@ -747,7 +747,7 @@ async function handleCombatSpecialSaveSubmit() {
 
   let saveResult;
   try {
-    saveResult = game.resolveCombatSpecialSave(ctx, saveRoll);
+    saveResult = game.resolveCombatSpecialSave(ctx, saveRoll, { playerNat1: flow.playerNat1 });
   } catch (err) {
     console.error(err);
     return;

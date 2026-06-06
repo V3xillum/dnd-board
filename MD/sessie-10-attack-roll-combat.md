@@ -31,7 +31,7 @@ Modal toont **AC** (niet Attack +X). Geen host Hit/Miss voor de speler.
 3. **Nat 1:** auto-miss op speler → vijand raakt **zichzelf** voor **1 HP**. Geen schade op de speler.
 4. **Anders:** host klikt **Hit** of **Miss**.
 5. Bij hit: schade `ceil(dmg × multiplier)` op speler (×2 bij vijand-Nat 20, zie punt 2).
-6. Speler had **Nat 1** op eigen aanval → bij vijand-hit extra **+1 HP** bovenop berekende schade.
+6. Speler had **Nat 1** op eigen aanval → in de vijand-fase extra **+1 HP** bovenop berekende schade (normale hit **en** special attack).
 
 **Meerdere HP-verlies:** schade loopt via `applyRepeatedHpDamage()` — stopt zodra de speler **sterft** (geen overflow op respawn-HP).
 
@@ -41,6 +41,7 @@ Modal toont **AC** (niet Attack +X). Geen host Hit/Miss voor de speler.
 - Speler rolt saving throw, vult totaal in.
 - **Automatische** vergelijking vs `specialAttack.dc`.
 - Slagen → `specialAttack.dmgSuccess` HP; falen → `specialAttack.dmgFail` HP (via `applyRepeatedHpDamage`).
+- Speler had **Nat 1** op eigen aanval → **+1 HP** bovenop `dmgSuccess` / `dmgFail` (zelfde regel als punt 6).
 
 ### Mystery-ambush reset
 - Verslaat een speler een ambush die via **❓-D12** is onthuld, dan wordt het vak na `finalizeCombatRound` weer **❓** (`resetMysterySpace`).
@@ -170,7 +171,7 @@ Zie ook `js/EVENTS.md` voor auteur-checklist.
 | Speler | `resolveCombatPlayerAttack(ctx, roll, { nat20, nat1 })` |
 | Vijand roll | `rollCombatEnemyAttack(ctx)` → `{ roll, total, attackBonus, nat20, nat1 }` |
 | Vijand hit | `resolveCombatEnemyAttack(ctx, { hit, enemyRoll, playerNat1 })` |
-| Special | `resolveCombatSpecialSave(ctx, saveRoll)` |
+| Special | `resolveCombatSpecialSave(ctx, saveRoll, { playerNat1 })` |
 | Schade-loop | `applyRepeatedHpDamage(player, events, hits)` — stopt bij `death` |
 | Heal vak 56 | `healPlayerToFull(player, events)` |
 | Afronding | `finalizeCombatRound(ctx, events, { wasMysteryAmbush })` — pit-clear, mystery-reset, `pass-turn`, boss-defeated (geen retreat) |

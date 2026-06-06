@@ -1,6 +1,6 @@
 # Ganzenbord — architectuur (levend document)
 
-**Status:** actueel na stap 6 (sessie 11) — `ui.js` opgesplitst.
+**Status:** actueel na sessie 11b — `game/*` splits compleet.
 
 Dit bestand is bedoeld voor **mens én agent**: waar zit wat, in welke volgorde laden scripts, welke globals zijn publiek API. Na 10+ sessies en 8000+ regels JS is dit de snelste ingang.
 
@@ -25,7 +25,10 @@ Dit bestand is bedoeld voor **mens én agent**: waar zit wat, in welke volgorde 
 |---------|---------|----------------------|
 | `js/settings.js` | ~55 | Tune-bare constanten — **single source of truth** |
 | `js/events-data.js` | ~1640 | Event-pool, boss/ambush data, `buildSpecialSpaces()` |
-| `js/game.js` | ~1800 | `Game` class, regels, combat resolve, bord-layout helpers |
+| `js/game/board-layout.js` | ~90 | Spiral layout, `buildSpacePositions`, `getPathDirection` |
+| `js/game/dc.js` | ~75 | `getEffectiveDc`, `calcEventSuccessSteps`, movement bonus |
+| `js/game/combat.js` | ~455 | Combat resolve — `Game.prototype` mixin |
+| `js/game.js` | ~1210 | `Game` class, orchestratie (move, mystery, boss) |
 | `js/multiplayer.js` | ~370 | Serialize/deserialize game state, Firebase sync |
 | `js/ui/dom.js` | ~170 | `game`, `els`, parse helpers, cell styling |
 | `js/ui/state.js` | ~18 | Gedeelde mutable UI-state (combat flow, modals, tokensAnimating) |
@@ -46,7 +49,10 @@ Dit bestand is bedoeld voor **mens én agent**: waar zit wat, in welke volgorde 
 firebase.js (module)
 → settings.js
 → events-data.js
+→ game/board-layout.js
+→ game/dc.js
 → game.js
+→ game/combat.js
 → multiplayer.js
 → ui/dom.js
 → ui/state.js
@@ -70,11 +76,29 @@ firebase.js (module)
 - `GAME_SETTINGS` — genest object (board, player, movement, boss, difficulty, boardGen, ui)
 - Aliases: `DEFAULT_HP`, `DEFAULT_MAX_HP`, `TOTAL_SPACES`, `FINISH_SPACE`, `BOSS_SPACE`, `BASE_SUCCESS_STEPS`, `OVERSHOOT_DIVISOR`, `DC_DIFFICULTY_MAX_LEVEL`, `HEALER_SPACE`, `PATH_RATIO`, `AMBUSH_RATIO`
 
+### Bord-layout (`game/board-layout.js` → `window`)
+
+- `buildSpiralLayout`, `buildSpacePositions`, `getPathDirection`
+- `isCenterCell`, `isCenterCovered`, `getCenterAnchor`
+- Laadt vóór `game.js` — gebruikt door `Game` constructor en `ui/board.js`
+
+### DC / difficulty (`game/dc.js` → `window`)
+
+- `getEffectiveDc`, `getDcBonus`, `getDcModifier`, `getDifficultyDcBonus`
+- `calcEventSuccessSteps`, `applyMovementBonus`
+- `BASE_SUCCESS_STEPS`, `OVERSHOOT_DIVISOR`, `DC_DIFFICULTY_MAX_LEVEL` (ook via `settings.js`)
+- Laadt vóór `game.js` — gebruikt door `Game`, `ui/players.js`, `ui/modals/events.js`
+
+### Combat resolve (`game/combat.js` → `Game.prototype`)
+
+- `buildCombatContext`, `resolveCombatPlayerAttack`, `rollCombatEnemyAttack`, `resolveCombatEnemyAttack`
+- `resolveCombatSpecialSave`, `finalizeCombatRound`, `applyRepeatedHpDamage`
+- Laadt **ná** `game.js` — mixin op `Game.prototype`; UI roept `game.*` aan
+
 ### Game / regels (`game.js` → `window`)
 
 - `Game`, `TOTAL_SPACES`, `FINISH_SPACE`, `BOSS_SPACE`
-- `DEFAULT_HP`, `DEFAULT_MAX_HP`, `BASE_SUCCESS_STEPS`, `OVERSHOOT_DIVISOR`
-- `getEffectiveDc`, `getDcBonus`, `applyMovementBonus`, `isOnBossArena`, …
+- `DEFAULT_HP`, `DEFAULT_MAX_HP`, `isOnBossArena`, …
 
 ### Bord-data (`events-data.js` → `window`)
 
@@ -155,10 +179,11 @@ firebase.js (module)
 js/
   settings.js
   events-data.js
-  game.js                  ← slanker; combat/layout later splits (stap 7)
+  game.js                  ✅ orchestratie (~1210 regels)
   game/
-    combat.js              ← (later) resolveCombat*, finalizeCombatRound
-    board-layout.js        ← (later) spiral, space positions
+    board-layout.js        ✅ sub-stap A (11b)
+    dc.js                  ✅ sub-stap B (11b)
+    combat.js              ✅ sub-stap C (11b)
   multiplayer.js
   ui/
     dom.js                 ✅
@@ -221,6 +246,7 @@ events-data.js  →  game.js  →  multiplayer.js  →  ui/*
 | Tokens / animatie | `MD/sessie-9-token-animatie.md` |
 | Attack-roll combat | `MD/sessie-10-attack-roll-combat.md` |
 | **Refactor-plan** | `MD/sessie-11-refactor-architecture.md` |
+| **Game-splits (11b)** | `MD/sessie-11b-game-splits.md` |
 | Event-auteur | `js/EVENTS.md` |
 
 ---
@@ -229,6 +255,9 @@ events-data.js  →  game.js  →  multiplayer.js  →  ui/*
 
 | Datum | Wijziging |
 |-------|-----------|
+| 2025-06 | Sessie 11b sub-stap C: `js/game/combat.js` — combat resolve via `Game.prototype` mixin |
+| 2025-06 | Sessie 11b sub-stap B: `js/game/dc.js` — DC helpers, event-stappen, movement bonus |
+| 2025-06 | Sessie 11b sub-stap A: `js/game/board-layout.js` — spiral, posities, pad-richting |
 | 2025-06 | Stap 6: `ui.js` opgesplitst → dom, board, players, modals/core, modals/events, flow, bootstrap |
 | 2025-06 | Stap 5: `js/ui/modals/combat.js` — combat modal flow |
 | 2025-06 | Stap 4: `js/ui/tokens.js` — token layer + animatie |

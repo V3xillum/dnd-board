@@ -218,6 +218,7 @@ function updateInputAccess() {
 - `renderSpectatorModal` voor clients waar `!canPlayInteractively()`
 - Guard in `core.js`: `if (canPlayInteractively()) return;` i.p.v. `if (isMultiplayerHost()) return;`
 - Spectator-wachtteksten aanpassen: *"Host beslist…"* → *"[naam] beslist…"* of generiek *"Speler aan beurt…"*
+- Bij verlies van beurt (`updateInputAccess` → `!canPlayInteractively()`): interactieve modal lokaal sluiten — vangnet naast `activeModal: null` (zie edge case mid-modal)
 
 **Kritiek: modal auto-open alleen op turn-owner device**
 
@@ -346,8 +347,20 @@ Geen wijziging t.o.v. sessie 5 — `serializeGame` / `deserializeGame` in `multi
 | Gast refresh | `sessionId` uit sessionStorage →zelfde speler |
 | Gast zonder join (spectator) | Read-only, geen worpen (optioneel) |
 | 2 spelers, 1 tab each | Beurt wisselt invoer tussen tabs |
-| Beurt wissel mid-modal | Remote sluit spectator modal; turn-owner opent interactief |
+| Beurt wissel mid-modal | Zie detail hieronder — `activeModal: null` sluit modals op alle clients; nieuwe turn-owner opent fris |
 | A doet short rest | Alleen A's tab: D4 invoer + sync; B wacht |
+
+### Beurt wissel mid-modal (detail)
+
+**Scenario:** A zit halverwege een event-modal (bijv. combat) en verliest de beurt of het spel gaat door — denk aan death → `nextTurn()` springt naar B terwijl A's modal nog open staat.
+
+**Wie sluit wat:**
+
+1. **Client die de beurt afrondt** (meestal nog A, vlak vóór `advanceTurn`) roept `closeEventModal()` / equivalent aan en daarna `clearSyncedActiveModal()` — dat schrijft `activeModal: null` naar Firebase plus een verse `state`-sync met de nieuwe `currentIndex`.
+2. **B (wachtend, spectator)** ontvangt `onActiveModal(null)` → `renderSpectatorModal(null)` roept eerst `closeSpectatorModals()` aan (regel 310–311 in `core.js`) en stopt — A's modal verdwijnt op B's scherm. Daarna triggert `applyRemoteState` → `updateInputAccess()`: B krijgt invoer. Indien nodig opent `updateTurnUI()` / `advanceTurn()` op B's device **lokaal** een nieuwe interactieve modal (bijv. ambush voor B).
+3. **A (ex turn-owner)** sluit de interactieve modal lokaal in dezelfde flow als stap 1 — A is de writer en krijgt geen echo via `onActiveModal`. Als A's modal toch blijft hangen (race), moet `updateInputAccess()` bij `!canPlayInteractively()` een `forceCloseAllModals()`-achtige cleanup doen.
+
+**Kern:** één write naar `activeModal: null` is het broadcast-signaal dat iedereen de modal dicht moet hebben; pas daarna mag de nieuwe turn-owner een **nieuwe** modal openen en syncen. Nooit twee modals tegelijk laten staan — altijd eerst null, dan eventueel nieuwe modal.
 
 ---
 

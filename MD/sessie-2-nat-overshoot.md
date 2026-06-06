@@ -74,7 +74,7 @@ Het oude gedrag (random 1–3 achteruit bij fail) is **verwijderd** uit `resolve
 - Bonus-2× D6 **verdubbeld** (`moveAfterEventBonus`: `steps * 2`).
 - +1 HP via `mutateHp(player, 1)` (death-regels uit sessie 1).
 - **Geen** DC-streak reset en **geen** `nextDcMod = -2` meer (oud gedrag verwijderd).
-- Bij succes: DC-streak **+1** zoals bij een gewone geslaagde check.
+- Bij succes: DC-streak **+5** zoals bij een gewone geslaagde check.
 
 **Oud vs nieuw:** vroeger reset Nat 20 streak en gaf −2 DC op de volgende check — dat zit er niet meer in.
 
@@ -103,12 +103,13 @@ Het oude gedrag (random 1–3 achteruit bij fail) is **verwijderd** uit `resolve
 
 | Uitkomst | dcStreak |
 |----------|----------|
-| Slagen (incl. Nat 20) | +1 |
+| Slagen (incl. Nat 20) | +5 |
 | Mislukken / Nat 1 | reset naar 0 |
+| Rustig pad / genezer | reset naar 0 bij sluiten path-modal (**Rust even uit** / **Bedankt, zuster**) |
 
 Streak verhoogt `effectiveDc` op volgende event-checks **en** op speler-AC in combat (`+dcStreak` via `getEffectiveDc`).
 
-Reset bij mislukte event-check **en** bij gemiste speler-aanval in combat (ambush/boss/minion) — zie `MD/sessie-10-attack-roll-combat.md`.
+Reset bij mislukte event-check, bij gemiste speler-aanval in combat (ambush/boss/minion), en bij rust via `closePathModal()` → `resetDcStreakOnRest()` in `game.js` (rustig pad, mystery-pad na D12 1–2, genezer vak 56). Alleen `dcStreak` — `nextDcMod` blijft staan.
 
 ---
 

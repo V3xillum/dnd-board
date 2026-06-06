@@ -186,6 +186,8 @@ Plaats onder `EVENT_POOL_RAW.boss.<ability>` — **geen** `ambushHp`:
 
 In `PATH_TILES` — alleen `name`, `icon`, `flavor`. Geen `dc` / `category`.
 
+Bij sluiten van de path-modal (**Rust even uit**) reset `closePathModal()` → `resetDcStreakOnRest()` de opgebouwde DC-streak van successen. Mystery-pad (D12 → 1–2) gebruikt dezelfde modal en dezelfde reset.
+
 ---
 
 ## Vaste vakjes (niet uit de pool)
@@ -193,7 +195,7 @@ In `PATH_TILES` — alleen `name`, `icon`, `flavor`. Geen `dc` / `category`.
 | Vak | Bron in `events-data.js` |
 |-----|---------------------------|
 | 1, 63 | In `buildSpecialSpaces()` ingebakken |
-| 56 | `HEALER_TILE` (genezerhutje — vol HP bij landing) |
+| 56 | `HEALER_TILE` (genezerhutje — vol HP bij landing; DC-streak reset bij **Bedankt, zuster**) |
 | 62 | Random uit `BOSS_POOL` |
 
 Vak 56 zit **niet** in de shuffle van 2–61.

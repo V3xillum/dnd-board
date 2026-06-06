@@ -491,14 +491,19 @@ function closePathModal() {
   const cb = pathModalCallback;
   pathModalCallback = null;
 
+  const events = [];
+  game.resetDcStreakOnRest(game.currentPlayer, events);
+
   if (spaceNum != null && !skipMysteryReset) {
-    const events = game.resetMysteryPathAfterRest(spaceNum);
-    if (events.length > 0) {
-      describeEvents(events);
-      renderBoard();
-      playMysteryResetFromEvents(events);
-      window.syncAfterAction?.();
-    }
+    events.push(...game.resetMysteryPathAfterRest(spaceNum));
+  }
+
+  if (events.length > 0) {
+    describeEvents(events);
+    renderBoard();
+    renderPlayers();
+    playMysteryResetFromEvents(events);
+    window.syncAfterAction?.();
   }
 
   cb?.();
@@ -512,7 +517,7 @@ function showPathModal(config, spaceNum, onComplete) {
   els.pathFlavor.textContent = config.flavor;
   if (els.pathTag) els.pathTag.textContent = 'Rustig pad';
   if (els.pathNote) {
-    els.pathNote.textContent = 'Geen ability check — even ademhalen en doorlopen.';
+    els.pathNote.textContent = 'Geen ability check — even ademhalen. Je DC-streak reset wanneer je verder gaat.';
   }
 
   pathModalCallback = onComplete ?? null;
@@ -542,9 +547,10 @@ function showHealerModal(config, spaceNum, healInfo, onComplete) {
   els.pathFlavor.textContent = config.flavor;
   if (els.pathTag) els.pathTag.textContent = 'Genezer';
   if (els.pathNote) {
+    const streakNote = ' Je DC-streak reset wanneer je verder gaat.';
     els.pathNote.textContent = healInfo?.healed
-      ? `De cleric herstelt je volledig: ${healInfo.from} → ${healInfo.to} HP.`
-      : 'Je voelt je al topfit — de cleric knikt begripvol en zegent je verder.';
+      ? `De cleric herstelt je volledig: ${healInfo.from} → ${healInfo.to} HP.${streakNote}`
+      : `Je voelt je al topfit — de cleric knikt begripvol en zegent je verder.${streakNote}`;
   }
 
   pathModalCallback = onComplete ?? null;

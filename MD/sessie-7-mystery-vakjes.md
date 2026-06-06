@@ -15,7 +15,7 @@ Boss blijft op **vak 62** (preview-tegel); boss zit **niet** in de D12-tabel.
 
 | Roll | Uitkomst | Modifier |
 |------|----------|----------|
-| 1–2 | Rustig pad (`pickRandomPath()` uit `PATH_TILES`) | — |
+| 1–2 | Rustig pad (`pickRandomPath()` uit `PATH_TILES`) | DC-streak reset bij **Rust even uit** |
 | 3–8 | Ambush × 1 | normale HP en fail-dmg |
 | 9–11 | Ambush × 1.5 | HP en fail-dmg afgerond naar boven |
 | 12 | Ambush × 2 + **jackpot** | zware ambush; bij winst permanente +1 `dmgBonus` |
@@ -35,14 +35,14 @@ Een onthulling is **tijdelijk** — niet permanent voor het hele spel.
 
 | Uitkomst | Afhandeling | Daarna |
 |----------|-------------|--------|
-| **Rustig pad** | Path-modal → knop **Rust even uit** | `resetMysteryPathAfterRest()` → weer `❓` |
+| **Rustig pad** | Path-modal → knop **Rust even uit** | `resetMysteryPathAfterRest()` → weer `❓`; `resetDcStreakOnRest()` → DC-streak 0 |
 | **Ambush** | Put-flow (sessie 4) → vijand op 0 HP | `resetMysterySpace()` → weer `❓` |
 
 **Tijdens een actieve onthulling** (nog niet afgehandeld):
 - Opnieuw landen op hetzelfde vak → **geen D12**, direct pad of ambush uit `revealedSpaces`.
 - Bord toont tussentijds de onthulde kleur (pad / ambush).
 
-**Gewone pad-vakjes** (via `PATH_RATIO`, niet via mystery) resetten **niet** — die staan niet in `revealedSpaces`.
+**Gewone pad-vakjes** (via `PATH_RATIO`, niet via mystery) resetten het vak **niet** naar `❓` — die staan niet in `revealedSpaces`. DC-streak reset wel via dezelfde **Rust even uit**-knop.
 
 ### `dmgBonus` (speler)
 
@@ -128,7 +128,7 @@ Mystery-tegel bij generatie:
 | Fase 2 | Onthulling + badge (Versterkte vijand / Gevaarlijk / jackpot) |
 | Pad | Knop **Verder lopen** → `showPathModal()` |
 | Ambush | Knop **Gevecht beginnen** → `startRevealedAmbush()` → ambush-modal |
-| Path reset | `closePathModal()` → `resetMysteryPathAfterRest()` als mystery-pad |
+| Path reset | `closePathModal()` → `resetMysteryPathAfterRest()` als mystery-pad; `resetDcStreakOnRest()` altijd bij sluiten |
 | Bord | `cell--mystery-unrevealed` voor `type: 'mystery'` |
 | Flow | `continueAfterLand()` → `needsMysteryRoll` vóór ambush/boss/event |
 | Sync | `activeModal` type `mystery`; `serializeModalConfig()` zonder `undefined` |

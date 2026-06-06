@@ -4,6 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>D&amp;D Ganzenbord</title>
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>⚔️</text></svg>">
   <link rel="stylesheet" href="css/styles.css">
 </head>
 <body>
@@ -58,6 +59,16 @@
           </label>
           <p class="dice-hint">Gooi twee D6 en vul het totaal in.</p>
           <button id="move-btn" class="btn btn--primary" disabled>Verplaats</button>
+        </div>
+        <div class="rest-controls">
+          <div class="rest-controls__buttons">
+            <button type="button" id="short-rest-btn" class="btn btn--rest" disabled>Short Rest (nog 2×)</button>
+            <button type="button" id="long-rest-btn" class="btn btn--rest" disabled>Long Rest (vol HP)</button>
+          </div>
+          <label class="rest-controls__d4" for="short-rest-d4-input">
+            D4 worp
+            <input type="number" id="short-rest-d4-input" min="1" max="4" placeholder="1–4" inputmode="numeric">
+          </label>
         </div>
       </section>
 
@@ -334,7 +345,7 @@
           <h3 class="rules-section__title">Event-checks (D20)</h3>
           <p>Vul je <strong>totale worp</strong> in (D20 + modifiers, geen maximum). <strong>Kritiek succes</strong> en <strong>kritiek mislukking</strong> gelden alleen als je die optie aanvinkt — een worp van 20 of 1 telt niet automatisch mee.</p>
           <ul>
-            <li><strong>Slagen:</strong> 1 basisvak + overshoot: elke 2 punten boven de DC = 1 extra vak (afgerond naar beneden).</li>
+            <li><strong>Slagen:</strong> gooi daarna opnieuw <strong>2× D6</strong> om te verplaatsen (zelfde beurt).</li>
             <li><strong>Mislukken:</strong> geen beweging, beurt voorbij, DC-streak reset.</li>
           </ul>
         </section>
@@ -342,7 +353,7 @@
         <section class="rules-section">
           <h3 class="rules-section__title">Kritiek succes / mislukking — event</h3>
           <ul>
-            <li><strong>Kritiek succes:</strong> gegarandeerd slagen · dubbele basisstap · +1 HP (max 5, start 3).</li>
+            <li><strong>Kritiek succes:</strong> gegarandeerd slagen · bonus-2× D6 <strong>verdubbeld</strong> · +1 HP (max 5, start 3).</li>
             <li><strong>Nat 1:</strong> geen beweging · −1 HP · beurt voorbij · volgende beurt overslaan.</li>
           </ul>
         </section>
@@ -364,9 +375,10 @@
           <p>Combat-gevechten gebruiken <strong>attack rolls</strong>, geen DC-checks. De host beslist hit of miss.</p>
           <ul>
             <li><strong>Speler:</strong> gooi D20 + modifiers, vul totaal in — hit als worp ≥ <strong>AC</strong> (Nat 20/1 via checkbox).</li>
+            <li><strong>Miss (inclusief Nat 1):</strong> geen schade op vijand, <strong>DC-streak reset</strong>, daarna vijand-aanval.</li>
             <li><strong>Normale hit:</strong> <strong>1 + schade-bonus</strong> op vijand; Nat 20 → <strong>2 + bonus</strong>.</li>
             <li><strong>Vijand:</strong> app rolt D20 + to hit modifier (bijv. 16 + 3 = 19 To hit); host klikt Hit of Miss.</li>
-            <li><strong>Eindbaas special attack:</strong> 25% kans na vijand-hit → saving throw vs DC (automatisch in app).</li>
+            <li><strong>Eindbaas special attack:</strong> 25% kans i.p.v. normale aanval → saving throw vs DC (automatisch in app).</li>
           </ul>
           <p>Kritiek succes/mislukking alleen via checkbox — totale worp 20 of 1 telt niet automatisch.</p>
         </section>
@@ -446,9 +458,24 @@
     </div>
   </div>
   <script type="module" src="js/firebase.js"></script>
+  <!-- Laadvolgorde: settings → events-data → game/board-layout → game/dc → game → game/combat → multiplayer → ui/* -->
+  <script src="js/settings.js"></script>
   <script src="js/events-data.js"></script>
+  <script src="js/game/board-layout.js"></script>
+  <script src="js/game/dc.js"></script>
   <script src="js/game.js"></script>
+  <script src="js/game/combat.js"></script>
   <script src="js/multiplayer.js"></script>
-  <script src="js/ui.js"></script>
+  <script src="js/ui/dom.js"></script>
+  <script src="js/ui/state.js"></script>
+  <script src="js/ui/log.js"></script>
+  <script src="js/ui/board.js"></script>
+  <script src="js/ui/tokens.js"></script>
+  <script src="js/ui/players.js"></script>
+  <script src="js/ui/modals/core.js"></script>
+  <script src="js/ui/modals/combat.js"></script>
+  <script src="js/ui/modals/events.js"></script>
+  <script src="js/ui/flow.js"></script>
+  <script src="js/ui/bootstrap.js"></script>
 </body>
 </html>

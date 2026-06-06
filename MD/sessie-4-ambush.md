@@ -39,7 +39,7 @@ Het bord toont per ambush-vak een tegel uit `AMBUSH_POOL` (bij generatie). De **
 | **Nat 20** | Gegarandeerd slagen → ambusher **−2 HP**. Geen speler-heal, geen movement. |
 | **Nat 1** | Mislukt (−1 HP speler) **plus** kritieke mislukking (−1 HP extra, `nat1`-event). Totaal −2 HP. Geen `skipNextTurn`. Alleen via checkbox (totale worp = 1 telt niet automatisch). |
 
-Geen DC-streak-updates in `resolveAmbushRoll` (zoals boss).
+Geen DC-streak **+5** bij combat-treffer. Bij **miss of Nat 1** op speler-aanval: streak reset (zelfde als mislukte event-check) — zie `resolveCombatPlayerAttack` in `js/game/combat.js`.
 
 ### Meerdere spelers, één put
 - Zelfde `pit.hp` voor alle deelnemers op dat vak.

@@ -1,6 +1,6 @@
 # Sessie 11 — Refactor: settings, splits & architectuur
 
-**Status:** gepland (nog niet uitgevoerd)
+**Status:** deels uitgevoerd — stap 6 UI-splits af; stap 7 (game.js) optioneel.
 
 ## Doel
 
@@ -174,10 +174,13 @@ window.DEFAULT_MAX_HP = GAME_SETTINGS.player.maxHp;
 
 ### Stap 7 — `game.js` splits (optioneel, laatste)
 
+**Uitgewerkt plan:** [sessie-11b-game-splits.md](./sessie-11b-game-splits.md) — sub-stappen A (layout), B (dc, optioneel), C (combat via prototype-mixin).
+
 | Bestand | Inhoud |
 |---------|--------|
+| `js/game/board-layout.js` | spiral, `buildSpacePositions`, `getPathDirection` |
+| `js/game/dc.js` *(optioneel)* | `getEffectiveDc`, `calcEventSuccessSteps`, … |
 | `js/game/combat.js` | `resolveCombat*`, `finalizeCombatRound`, `applyRepeatedHpDamage` |
-| `js/game/board-layout.js` | spiral, `buildSpacePositions` |
 | `js/game.js` | `Game` class, `resolveSpace`, `move`, exports |
 
 **Test:** zelfde als combat + movement + win/lose.
@@ -241,6 +244,7 @@ Minimaal dit pad doorlopen:
 ## Gerelateerd
 
 - Architectuur (levend): `MD/ARCHITECTURE.md`
+- **Game-splits (11b):** `MD/sessie-11b-game-splits.md`
 - Combat (recent): `MD/sessie-10-attack-roll-combat.md`
 - Tokens: `MD/sessie-9-token-animatie.md`
 - Multiplayer sync: `MD/sessie-6-multiplayer.md`
@@ -252,9 +256,10 @@ Minimaal dit pad doorlopen:
 | Stap | Status | Datum |
 |------|--------|-------|
 | 1 ARCHITECTURE skelet | ✅ | 2025-06 |
-| 2 settings.js | ⬜ | |
-| 3 ui/log.js | ⬜ | |
-| 4 ui/tokens.js | ⬜ | |
-| 5 ui/modals/combat.js | ⬜ | |
-| 6 overige UI splits | ⬜ | |
-| 7 game splits | ⬜ | |
+| 2 settings.js | ✅ | 2025-06 |
+| 3 ui/log.js | ✅ | 2025-06 |
+| 3b ui/state.js | ✅ | 2025-06 |
+| 4 ui/tokens.js | ✅ | 2025-06 |
+| 5 ui/modals/combat.js | ✅ | 2025-06 |
+| 6 overige UI splits | ✅ | 2025-06 |
+| 7 game splits | ✅ | 2025-06 |

@@ -60,6 +60,16 @@
           <p class="dice-hint">Gooi twee D6 en vul het totaal in.</p>
           <button id="move-btn" class="btn btn--primary" disabled>Verplaats</button>
         </div>
+        <div class="rest-controls">
+          <div class="rest-controls__buttons">
+            <button type="button" id="short-rest-btn" class="btn btn--rest" disabled>Short Rest (nog 2×)</button>
+            <button type="button" id="long-rest-btn" class="btn btn--rest" disabled>Long Rest (vol HP)</button>
+          </div>
+          <label class="rest-controls__d4" for="short-rest-d4-input">
+            D4 worp
+            <input type="number" id="short-rest-d4-input" min="1" max="4" placeholder="1–4" inputmode="numeric">
+          </label>
+        </div>
       </section>
 
       <section class="panel panel--log">

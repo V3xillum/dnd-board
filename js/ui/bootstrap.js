@@ -110,6 +110,51 @@ els.diceInput.addEventListener('keydown', (e) => {
   if (e.key === 'Enter') els.moveBtn.click();
 });
 
+function handleShortRest() {
+  const player = game.currentPlayer;
+  if (!player || game.gameOver) return;
+
+  const roll = parseDiceRoll(els.shortRestD4Input.value, 1, 4);
+  if (roll === null) {
+    addLog('Vul een D4-worp in (1–4).', 'warn');
+    return;
+  }
+
+  const result = game.takeShortRest(player, roll);
+  if (!result.valid) {
+    addLog('Korte rust is nu niet mogelijk.', 'warn');
+    return;
+  }
+
+  describeEvents(result.events);
+  renderPlayers();
+  updateTurnUI();
+  els.shortRestD4Input.value = '';
+  advanceTurn();
+}
+
+function handleLongRest() {
+  const player = game.currentPlayer;
+  if (!player || game.gameOver) return;
+
+  const result = game.takeLongRest(player);
+  if (!result.valid) {
+    addLog('Lange rust is nu niet mogelijk.', 'warn');
+    return;
+  }
+
+  describeEvents(result.events);
+  renderPlayers();
+  updateTurnUI();
+  advanceTurn();
+}
+
+els.shortRestBtn?.addEventListener('click', handleShortRest);
+els.longRestBtn?.addEventListener('click', handleLongRest);
+els.shortRestD4Input?.addEventListener('keydown', (e) => {
+  if (e.key === 'Enter') handleShortRest();
+});
+
 els.hpMinusBtn.addEventListener('click', () => adjustCurrentPlayerHp(-1));
 els.hpPlusBtn.addEventListener('click', () => adjustCurrentPlayerHp(1));
 
@@ -169,6 +214,7 @@ async function refreshGameUIFromRemote({ prevPositions, prevSpecialSpaces, isGue
   renderPlayers();
   updateCombatRail();
   updateDifficultyUI();
+  updateTurnUI();
 }
 
 window.refreshGameUIFromRemote = refreshGameUIFromRemote;
@@ -179,13 +225,15 @@ window.setMultiplayerReadOnly = (readOnly) => {
   els.addBtn.disabled = readOnly;
   if (els.difficultySelect) els.difficultySelect.disabled = readOnly;
   if (els.newAdventureBtn) els.newAdventureBtn.disabled = readOnly;
+  updateTurnUI();
   if (readOnly) {
     els.moveBtn.disabled = true;
     els.diceInput.disabled = true;
     els.hpMinusBtn.disabled = true;
     els.hpPlusBtn.disabled = true;
-  } else {
-    updateTurnUI();
+    if (els.shortRestBtn) els.shortRestBtn.disabled = true;
+    if (els.longRestBtn) els.longRestBtn.disabled = true;
+    if (els.shortRestD4Input) els.shortRestD4Input.disabled = true;
   }
 };
 

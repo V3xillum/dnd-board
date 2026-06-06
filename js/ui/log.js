@@ -30,6 +30,9 @@ function addLog(message, type = '') {
 }
 
 function describeEvents(events) {
+  const hasShortRest = events.some((e) => e.type === 'short-rest');
+  const hasLongRest = events.some((e) => e.type === 'long-rest');
+
   events.forEach((ev) => {
     switch (ev.type) {
       case 'move': {
@@ -41,6 +44,7 @@ function describeEvents(events) {
         break;
       }
       case 'hp-change': {
+        if (hasShortRest || hasLongRest) break;
         const verb = ev.delta < 0 ? 'verliest' : 'herstelt';
         const amount = Math.abs(ev.delta);
         addLog(
@@ -104,6 +108,19 @@ function describeEvents(events) {
         break;
       }
       case 'full-heal':
+        if (hasLongRest) break;
+        break;
+      case 'short-rest':
+        addLog(
+          `${ev.player} neemt een korte rust — herstelt ${ev.delta} HP (D4: ${ev.roll})`,
+          'success',
+        );
+        break;
+      case 'long-rest':
+        addLog(
+          `${ev.player} neemt een lange rust — volledig hersteld (${ev.from} → ${ev.to} HP)`,
+          'success',
+        );
         break;
       case 'event-move': {
         const dir = ev.direction === 'back' ? 'terug' : 'vooruit';

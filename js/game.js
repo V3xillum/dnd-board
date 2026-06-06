@@ -367,6 +367,8 @@ class Game {
       dcStreak: 0,
       nextDcMod: 0,
       skipNextTurn: false,
+      shortRestsUsed: 0,
+      longRestUsed: false,
     });
   }
 
@@ -571,6 +573,51 @@ class Game {
     return { healed: true, alreadyFull: false, from, to };
   }
 
+  takeShortRest(player, d4Roll) {
+    if (!player) return { events: [], valid: false };
+    if ((player.shortRestsUsed ?? 0) >= 2) return { events: [], valid: false };
+    if (player.hp >= player.maxHp) return { events: [], valid: false };
+    if (d4Roll < 1 || d4Roll > 4) return { events: [], valid: false };
+
+    const events = [];
+    player.shortRestsUsed = (player.shortRestsUsed ?? 0) + 1;
+    const hpEvents = this.mutateHp(player, d4Roll);
+    const healed = hpEvents.find((e) => e.type === 'hp-change');
+
+    events.push({
+      type: 'short-rest',
+      player: player.name,
+      roll: d4Roll,
+      from: healed?.from ?? player.hp,
+      to: healed?.to ?? player.hp,
+      delta: healed?.delta ?? 0,
+      shortRestsUsed: player.shortRestsUsed,
+    });
+    events.push(...hpEvents);
+
+    return { events, valid: true, passTurn: true };
+  }
+
+  takeLongRest(player) {
+    if (!player) return { events: [], valid: false };
+    if (player.longRestUsed) return { events: [], valid: false };
+    if (player.hp >= player.maxHp) return { events: [], valid: false };
+
+    const events = [];
+    player.longRestUsed = true;
+    const healInfo = this.healPlayerToFull(player, events);
+
+    events.push({
+      type: 'long-rest',
+      player: player.name,
+      from: healInfo.from,
+      to: healInfo.to,
+      longRestUsed: true,
+    });
+
+    return { events, valid: true, passTurn: true };
+  }
+
   /**
    * Centrale HP-mutatie. Bij 0 HP: death (start, HP vol, movementBonus +1).
    * @returns {object[]} events voor describeEvents()
@@ -595,6 +642,7 @@ class Game {
       player.position = 0;
       player.hp = DEFAULT_HP;
       player.movementBonus = (player.movementBonus ?? 0) + 1;
+      player.shortRestsUsed = 0;
       events.push({
         type: 'death',
         player: player.name,

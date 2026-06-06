@@ -135,6 +135,33 @@ function updateHpControls() {
   els.hpDisplay.title = `${cp.hp} / ${cp.maxHp} HP`;
 }
 
+function updateRestControls({ inputLocked = false, bonusMoveActive = false } = {}) {
+  const cp = game.currentPlayer;
+  const show = cp && !game.gameOver;
+  const locked = inputLocked || bonusMoveActive || !show;
+
+  if (!els.shortRestBtn || !els.longRestBtn) return;
+
+  const shortRemaining = show ? Math.max(0, 2 - (cp.shortRestsUsed ?? 0)) : 0;
+  const shortBlocked = locked || shortRemaining <= 0 || !cp || cp.hp >= cp.maxHp;
+  const longBlocked = locked || !cp || cp.longRestUsed || cp.hp >= cp.maxHp;
+
+  els.shortRestBtn.disabled = shortBlocked;
+  els.longRestBtn.disabled = longBlocked;
+
+  els.shortRestBtn.textContent = shortRemaining > 0
+    ? `Short Rest (nog ${shortRemaining}×)`
+    : 'Short Rest (op)';
+
+  els.longRestBtn.textContent = cp?.longRestUsed
+    ? 'Long Rest (gebruikt)'
+    : 'Long Rest (vol HP)';
+
+  if (els.shortRestD4Input) {
+    els.shortRestD4Input.disabled = shortBlocked;
+  }
+}
+
 function adjustCurrentPlayerHp(delta) {
   const player = game.currentPlayer;
   if (!player || game.gameOver) return;
@@ -358,6 +385,7 @@ function updateTurnUI() {
     els.moveBtn.disabled = true;
     els.diceInput.disabled = true;
     updateHpControls();
+    updateRestControls();
     return;
   }
 
@@ -366,6 +394,7 @@ function updateTurnUI() {
     els.moveBtn.disabled = true;
     els.diceInput.disabled = false;
     updateHpControls();
+    updateRestControls();
     return;
   }
 
@@ -394,12 +423,14 @@ function updateTurnUI() {
     document.body.classList.contains('modal-open')
     && (activeAmbush !== null || activeBossMinion !== null || activeBoss !== null || activeEvent !== null);
   const inputLocked = tokensAnimating || inAmbush || onBossArena || modalNeedsInput;
+  const bonusMoveActive = Boolean(game.pendingEventBonusMove);
   els.moveBtn.disabled = inputLocked;
   els.diceInput.disabled = inputLocked;
   if (els.moveBtn) {
     els.moveBtn.textContent = game.pendingEventBonusMove ? 'Bonus worp' : 'Verplaats';
   }
   updateHpControls();
+  updateRestControls({ inputLocked, bonusMoveActive });
 
   if (window.isMultiplayerHost?.() && inAmbush && activeAmbush === null
       && els.eventModal.classList.contains('hidden')) {

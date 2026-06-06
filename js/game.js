@@ -573,6 +573,13 @@ class Game {
     return { healed: true, alreadyFull: false, from, to };
   }
 
+  /** Rustige tegels en genezer: opgebouwde DC-streak van successen resetten bij sluiten path-modal. */
+  resetDcStreakOnRest(player, events) {
+    if (!player?.dcStreak) return;
+    player.dcStreak = 0;
+    events.push({ type: 'dc-streak-reset', player: player.name });
+  }
+
   takeShortRest(player, d4Roll) {
     if (!player) return { events: [], valid: false };
     if ((player.shortRestsUsed ?? 0) >= 2) return { events: [], valid: false };
@@ -1052,7 +1059,6 @@ class Game {
       this.pendingEventBonusMove = null;
       events.push({ type: 'dc-streak-reset', player: player.name });
       events.push({ type: 'nat1', player: player.name });
-      events.push(...this.mutateHp(player, -1));
       player.skipNextTurn = true;
       events.push({ type: 'pass-turn', player: player.name });
       return {

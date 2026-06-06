@@ -57,6 +57,7 @@ Modal toont **AC** (niet Attack +X). Geen host Hit/Miss voor de speler.
 - Vast vak **`HEALER_TILE`** (`type: 'healer'`) — geen shuffle.
 - Landing → `healPlayerToFull()` zet HP naar `player.maxHp` → path-modal als genezer (`showHealerModal`).
 - Al vol HP → geen mutatie, wel flavor-modal.
+- Sluiten modal (**Bedankt, zuster**) → `closePathModal()` → `resetDcStreakOnRest()` (DC-streak reset, geen mystery-reset).
 - Zie `events-data.js`: `HEALER_SPACE`, `HEALER_TILE` (aliases `ENCAMPMENT_*` deprecated).
 
 ### Wat blijft hetzelfde

@@ -74,7 +74,7 @@ Het oude gedrag (random 1–3 achteruit bij fail) is **verwijderd** uit `resolve
 - Bonus-2× D6 **verdubbeld** (`moveAfterEventBonus`: `steps * 2`).
 - +1 HP via `mutateHp(player, 1)` (death-regels uit sessie 1).
 - **Geen** DC-streak reset en **geen** `nextDcMod = -2` meer (oud gedrag verwijderd).
-- Bij succes: DC-streak **+1** zoals bij een gewone geslaagde check.
+- Bij succes: DC-streak **+5** zoals bij een gewone geslaagde check.
 
 **Oud vs nieuw:** vroeger reset Nat 20 streak en gaf −2 DC op de volgende check — dat zit er niet meer in.
 
@@ -87,10 +87,10 @@ Het oude gedrag (random 1–3 achteruit bij fail) is **verwijderd** uit `resolve
 **Effect:**
 
 - Geen beweging.
-- −1 HP via `mutateHp(player, -1)`.
+- Geen HP-verlies (alleen tempo-straf t.o.v. gewone mislukking).
 - `player.skipNextTurn = true` — bij de **volgende** `nextTurn()` wordt deze speler overgeslagen en het vlagje gereset.
 - `dcStreak` reset.
-- Events: `nat1`, `hp-change` (indien van toepassing), `pass-turn`.
+- Events: `nat1`, `dc-streak-reset`, `pass-turn`.
 - Return: `passTurn: true`, `nat1: true`.
 
 **Beurt overslaan:** `Game.nextTurn()` retourneert `{ skippedPlayer: naam | null }`. `ui.js` → `advanceTurn()` logt: *"[speler] slaat een beurt over"*.
@@ -103,12 +103,13 @@ Het oude gedrag (random 1–3 achteruit bij fail) is **verwijderd** uit `resolve
 
 | Uitkomst | dcStreak |
 |----------|----------|
-| Slagen (incl. Nat 20) | +1 |
+| Slagen (incl. Nat 20) | +5 |
 | Mislukken / Nat 1 | reset naar 0 |
+| Rustig pad / genezer | reset naar 0 bij sluiten path-modal (**Rust even uit** / **Bedankt, zuster**) |
 
 Streak verhoogt `effectiveDc` op volgende event-checks **en** op speler-AC in combat (`+dcStreak` via `getEffectiveDc`).
 
-Reset bij mislukte event-check **en** bij gemiste speler-aanval in combat (ambush/boss/minion) — zie `MD/sessie-10-attack-roll-combat.md`.
+Reset bij mislukte event-check, bij gemiste speler-aanval in combat (ambush/boss/minion), en bij rust via `closePathModal()` → `resetDcStreakOnRest()` in `game.js` (rustig pad, mystery-pad na D12 1–2, genezer vak 56). Alleen `dcStreak` — `nextDcMod` blijft staan.
 
 ---
 
@@ -151,7 +152,7 @@ Relevante `type`-waarden in de event-array (voor log + debugging):
 - Succes → modal sluit → sidebar “Bonus worp”, 2× D6.
 - Nat 20 op check → bonus-worp verdubbeld (8 → 16).
 - Fail → geen beweging, beurt voorbij.
-- Nat 1 → −1 HP, beurt voorbij, volgende ronde beurt overslaan.
+- Nat 1 → beurt voorbij, DC-streak reset, volgende ronde beurt overslaan (geen HP).
 - Bonus-worp landt op event → ketting zonder beurtwissel.
 
 ---
@@ -160,4 +161,4 @@ Relevante `type`-waarden in de event-array (voor log + debugging):
 
 - Boss (`MD/sessie-3-boss-win.md`)
 - Ambush tiles (`MD/sessie-4-ambush.md`) — die sessie moet Nat 1/20 expliciet hergebruiken waar passend
-- HP-verlies op **normale** mislukte checks (alleen Nat 1 en event-specifieke effecten later)
+- HP-verlies op **normale** mislukte event-checks (event-specifieke effecten later)

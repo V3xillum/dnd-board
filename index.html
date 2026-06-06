@@ -338,14 +338,36 @@
 
         <section class="rules-section">
           <h3 class="rules-section__title">Basisbeurt</h3>
-          <p>Gooi <strong>2× D6</strong>, vul het totaal in (2–12) en verplaats. Op event-vakjes, ❓-vakjes (D12), in de put, bij beschermers of bij de eindbaas gebruik je een ability check in plaats van dobbelstenen.</p>
+          <p>Gooi <strong>2× D6</strong>, vul het totaal in (2–12) en verplaats. Je start met <strong>3 HP</strong> (max <strong>6</strong>).</p>
+          <p>Andere situaties vervangen de dobbelsteen:</p>
+          <ul>
+            <li><strong>Event-vakjes</strong> (kleur op het bord) → D20 ability check</li>
+            <li><strong>❓-vakje</strong> → D12-onthulling</li>
+            <li><strong>Put, beschermers, eindbaas</strong> → attack rolls (geen D20-check)</li>
+          </ul>
+        </section>
+
+        <section class="rules-section">
+          <h3 class="rules-section__title">HP, death &amp; catch-up</h3>
+          <ul>
+            <li>Bij <strong>0 HP</strong>: terug naar start (vak 0), HP terug naar <strong>3</strong>, <strong>+1 catch-up bonus</strong> op vooruit-beweging (stapelt per death).</li>
+            <li>Catch-up bonus telt mee bij normale 2× D6 én bij bonus-worp na een geslaagde event-check.</li>
+            <li>Bonus verdwijnt bij win op vak 63 <strong>of</strong> als je voorbij 63 schiet en terugkaatst (overshoot).</li>
+            <li><strong>Overshoot:</strong> ga je voorbij vak 63, dan kaats je terug (<code>63 − overshoot</code>) — geen win.</li>
+          </ul>
+        </section>
+
+        <section class="rules-section">
+          <h3 class="rules-section__title">Moeilijkheidsgraad</h3>
+          <p>Via de dropdown in de header (niveau 1–5). Telt op alle event-DC’s en combat-AC’s: niveau 1 = <strong>+0</strong>, niveau 5 = <strong>+4</strong>.</p>
         </section>
 
         <section class="rules-section">
           <h3 class="rules-section__title">Event-checks (D20)</h3>
-          <p>Vul je <strong>totale worp</strong> in (D20 + modifiers, geen maximum). <strong>Kritiek succes</strong> en <strong>kritiek mislukking</strong> gelden alleen als je die optie aanvinkt — een worp van 20 of 1 telt niet automatisch mee.</p>
+          <p>Alleen op gekleurde event-vakjes. Vul je <strong>totale worp</strong> in (D20 + modifiers, geen maximum). <strong>Kritiek succes</strong> en <strong>kritiek mislukking</strong> gelden alleen als je die optie aanvinkt — een worp van 20 of 1 telt niet automatisch mee.</p>
           <ul>
-            <li><strong>Slagen:</strong> gooi daarna opnieuw <strong>2× D6</strong> om te verplaatsen (zelfde beurt).</li>
+            <li><strong>Slagen:</strong> gooi daarna opnieuw <strong>2× D6</strong> om te verplaatsen (zelfde beurt). Land je opnieuw op een event-vakje, dan volgt direct een nieuwe check — event-ketting in dezelfde beurt.</li>
+            <li>Elke geslaagde check verhoogt je <strong>DC-streak +5</strong> (volgende event-DC’s én combat-AC zwaarder). Streak stijgt <strong>niet</strong> bij combat-hits.</li>
             <li><strong>Mislukken:</strong> geen beweging, beurt voorbij, DC-streak reset.</li>
           </ul>
         </section>
@@ -353,31 +375,33 @@
         <section class="rules-section">
           <h3 class="rules-section__title">Kritiek succes / mislukking — event</h3>
           <ul>
-            <li><strong>Kritiek succes:</strong> gegarandeerd slagen · bonus-2× D6 <strong>verdubbeld</strong> · +1 HP (max 5, start 3).</li>
-            <li><strong>Nat 1:</strong> geen beweging · −1 HP · beurt voorbij · volgende beurt overslaan.</li>
+            <li><strong>Kritiek succes:</strong> gegarandeerd slagen · bonus-2× D6 <strong>verdubbeld</strong> · +1 HP (max 6, start 3).</li>
+            <li><strong>Nat 1:</strong> geen beweging · beurt voorbij · DC-streak reset · volgende beurt overslaan (geen HP-verlies).</li>
           </ul>
         </section>
 
         <section class="rules-section">
           <h3 class="rules-section__title">Onbekend gevaar (❓)</h3>
-          <p>Eerste landing op een <strong>❓-vakje</strong>: gooi een <strong>D12</strong> (1–12) om te onthullen wat er schuilgaat.</p>
+          <p>Eerste landing op een <strong>❓-vakje</strong>: gooi een <strong>D12</strong> (1–12) om te onthullen wat er schuilgaat. Is het vak al onthuld maar nog niet afgehandeld, dan <strong>geen nieuwe D12</strong> — direct pad of ambush.</p>
           <ul>
-            <li><strong>1–2:</strong> rustig pad — loop door zonder check.</li>
+            <li><strong>1–2:</strong> rustig pad — loop door zonder check; DC-streak reset bij <strong>Rust even uit</strong>.</li>
             <li><strong>3–8:</strong> ambush (normale vijand-HP).</li>
-            <li><strong>9–11:</strong> versterkte ambush (×1,5 HP en zwaardere mislukking).</li>
-            <li><strong>12:</strong> zware ambush (×2) + <strong>jackpot</strong> — versla de vijand voor permanente <strong>+1 schade-bonus</strong> op gevechts-hits.</li>
+            <li><strong>9–11:</strong> versterkte ambush (×1,5 HP, hardere vijand-hits).</li>
+            <li><strong>12:</strong> zware ambush (×2 HP, hardere hits) + <strong>jackpot</strong> — versla de vijand voor permanente <strong>+1 schade-bonus</strong> op gevechts-hits.</li>
           </ul>
           <p>Na het pad of na verslaan van de ambush wordt het vak weer <strong>❓</strong> — volgende keer opnieuw D12.</p>
         </section>
 
         <section class="rules-section">
           <h3 class="rules-section__title">Gevechten — attack rolls (ambush, beschermers, eindbaas)</h3>
-          <p>Combat-gevechten gebruiken <strong>attack rolls</strong>, geen DC-checks. De host beslist hit of miss.</p>
+          <p>Combat gebruikt <strong>attack rolls</strong>, geen D20 ability checks.</p>
           <ul>
-            <li><strong>Speler:</strong> gooi D20 + modifiers, vul totaal in — hit als worp ≥ <strong>AC</strong> (Nat 20/1 via checkbox).</li>
+            <li><strong>Speler:</strong> gooi D20 + modifiers, vul totaal in — hit als worp ≥ <strong>AC</strong> (Nat 20/1 via checkbox; app beslist automatisch).</li>
             <li><strong>Miss (inclusief Nat 1):</strong> geen schade op vijand, <strong>DC-streak reset</strong>, daarna vijand-aanval.</li>
             <li><strong>Normale hit:</strong> <strong>1 + schade-bonus</strong> op vijand; Nat 20 → <strong>2 + bonus</strong>.</li>
-            <li><strong>Vijand:</strong> app rolt D20 + to hit modifier (bijv. 16 + 3 = 19 To hit); host klikt Hit of Miss.</li>
+            <li><strong>Vijand:</strong> app rolt D20 + to hit modifier (bijv. 16 + 3 = 19 To hit); host klikt Hit of Miss (behalve Nat 20/1).</li>
+            <li><strong>Vijand Nat 20:</strong> dubbele schade op speler. <strong>Vijand Nat 1:</strong> geen schade op speler; vijand −1 HP op zichzelf.</li>
+            <li><strong>Speler Nat 1</strong> op eigen aanval: bij een vijand-hit in dezelfde ronde <strong>+1 extra HP</strong> schade (normale aanval én special attack).</li>
             <li><strong>Eindbaas special attack:</strong> 25% kans i.p.v. normale aanval → saving throw vs DC (automatisch in app).</li>
           </ul>
           <p>Kritiek succes/mislukking alleen via checkbox — totale worp 20 of 1 telt niet automatisch.</p>
@@ -394,13 +418,28 @@
 
         <section class="rules-section">
           <h3 class="rules-section__title">Ambush (de put)</h3>
-          <p>Je blijft op het vak tot <strong>jij of de ambusher op 0 HP</strong> is. Daarna normaal verder. Geen tweede put op hetzelfde vak (behalve via een nieuwe ❓-onthulling).</p>
-          <p>1 attack-roll ronde per beurt (speler-aanval → eventuele vijand-aanval), geen normale verplaatsing zolang je in de put zit.</p>
+          <p>Je blijft op het vak tot <strong>jij of de ambusher op 0 HP</strong> is. Daarna normaal verder. Meerdere spelers op hetzelfde vak delen <strong>één vijand</strong> en dezelfde HP — iedereen in de put vecht één ronde per eigen beurt.</p>
+          <p>1 attack-roll ronde per beurt (speler-aanval → eventuele vijand-aanval), geen normale verplaatsing zolang je in de put zit. Na verslaan van een ❓-ambush wordt het vak weer <strong>❓</strong>.</p>
+        </section>
+
+        <section class="rules-section">
+          <h3 class="rules-section__title">Rustig pad</h3>
+          <p>Beige vakjes zonder ability check — even ademhalen. Geen D20, geen bewegingseffect. Klik <strong>Rust even uit</strong> om door te gaan; je <strong>DC-streak reset</strong> (opgebouwde +DC van eerdere successen vervalt).</p>
         </section>
 
         <section class="rules-section">
           <h3 class="rules-section__title">Genezer (vak 56)</h3>
-          <p>Land je op <strong>vak 56</strong>, dan herstelt de cleric je naar <strong>vol HP</strong>. Al vol? Dan gebeurt er niets — alleen wat vriendelijke woorden.</p>
+          <p>Land je op <strong>vak 56</strong>, dan herstelt de cleric je naar <strong>vol HP</strong> (max 6). Al vol? Dan gebeurt er niets — alleen wat vriendelijke woorden. Bij <strong>Bedankt, zuster</strong> reset ook je <strong>DC-streak</strong>. Kost geen beurt.</p>
+        </section>
+
+        <section class="rules-section">
+          <h3 class="rules-section__title">Rust (Short &amp; Long Rest)</h3>
+          <p>Via knoppen in het beurt-paneel — vervangt je hele beurt (geen dobbelsteen). Niet mogelijk in de put, op 62/63, tijdens een open modal of bonus-worp.</p>
+          <ul>
+            <li><strong>Short Rest:</strong> gooi een D4 (1–4), herstel dat aantal HP. Max <strong>2× per leven</strong> (reset bij death).</li>
+            <li><strong>Long Rest:</strong> terug naar <strong>vol HP</strong>. Max <strong>1× per avontuur</strong> (blijft verbruikt na death).</li>
+          </ul>
+          <p>De genezer op vak 56 is sterker: geen beurt kosten, onbeperkt zolang je het vak bereikt.</p>
         </section>
 
         <section class="rules-section">
@@ -408,8 +447,8 @@
           <p>Eerste landing op <strong>vak 62 of 63</strong> (zolang de eindbaas nog niet actief is): gooi een <strong>D12</strong> — het lot bepaalt hoe zwaar het eindgevecht wordt. Daarna <strong>geen tweede D12</strong> in dezelfde fight.</p>
           <ul>
             <li><strong>1–4:</strong> standaard — boss-HP = <strong>3 × aantal spelers</strong>, geen beschermers.</li>
-            <li><strong>5–10:</strong> versterkt (×1,5 HP, zwaardere vijand-schade) + <strong>1 beschermer</strong>.</li>
-            <li><strong>11:</strong> episch (×2 HP, zwaardere vijand-schade) + <strong>1 beschermer</strong>.</li>
+            <li><strong>5–10:</strong> versterkt (×1,5 HP, hardere vijand-hits) + <strong>1 beschermer</strong>.</li>
+            <li><strong>11:</strong> episch (×2 HP, hardere hits) + <strong>1 beschermer</strong>.</li>
             <li><strong>12:</strong> episch (×2 HP) + <strong>3 beschermers</strong>.</li>
           </ul>
           <p>Beschermers gebruiken dezelfde attack-roll flow; versla ze allemaal voordat je de eindbaas kunt raken.</p>
@@ -418,8 +457,8 @@
         <section class="rules-section">
           <h3 class="rules-section__title">Eindbaas &amp; winnen</h3>
           <ul>
-            <li>Na de D12-onthulling vecht je op <strong>62/63</strong>: eerst eventuele <strong>beschermers</strong>, dan de eindbaas (gedeelde boss-schade).</li>
-            <li><strong>1 gevechtsronde per beurt</strong> (attack rolls) — je blijft op <strong>62/63</strong> tot de baas verslagen is, je uitvalt, of je wint.</li>
+            <li>Na de D12-onthulling vecht je op <strong>62/63</strong>: eerst eventuele <strong>beschermers</strong>, dan de eindbaas (gedeelde boss-HP).</li>
+            <li><strong>1 gevechtsronde per beurt</strong> (attack rolls) — je blijft op <strong>62/63</strong> tot de baas verslagen is, je uitvalt, of je wint. Spelers elders op het bord spelen normaal door.</li>
             <li><strong>Geen win</strong> tot de baas verslagen is; daarna wint wie op <strong>vak 63</strong> staat.</li>
           </ul>
         </section>

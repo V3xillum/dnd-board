@@ -17,8 +17,9 @@ Normale vak-events (trap, combat, magic, …) blijven DC-checks.
 2. Vult totaal in; **Nat 20 / Nat 1** alleen via checkbox (totaal 20/1 telt niet automatisch).
 3. **Automatische hit:** worp ≥ **AC** (`config.dc` + difficulty-modifiers via `getEffectiveDc`).
 4. **Nat 20:** auto-hit → schade `2 + dmgBonus` op vijand.
-5. **Nat 1:** auto-miss → geen schade; vijand-fase volgt wel (tenzij vijand al verslagen).
-6. **Normale hit:** schade `1 + dmgBonus` op vijand.
+5. **Nat 1:** auto-miss → geen schade; **DC-streak reset**; vijand-fase volgt wel (tenzij vijand al verslagen).
+6. **Normale miss** (worp < AC): geen schade op vijand; **DC-streak reset**; daarna vijand-fase.
+7. **Normale hit:** schade `1 + dmgBonus` op vijand.
 
 Modal toont **AC** (niet Attack +X). Geen host Hit/Miss voor de speler.
 
@@ -60,7 +61,8 @@ Modal toont **AC** (niet Attack +X). Geen host Hit/Miss voor de speler.
 
 ### Wat blijft hetzelfde
 - Gedeelde HP (put / boss), death-flow, jackpot `dmgBonus`, D12 boss-reveal (één keer per fight), combat-rail, beurt-prioriteit.
-- `getEffectiveDc` voor speler-AC; DC-streak / `nextDcMod` worden bij speler-aanval wel verbruikt (`nextDcMod = 0` na worp).
+- `getEffectiveDc` voor speler-AC (`config.dc` + moeilijkheidsgraad + `dcStreak` + `nextDcMod`); `nextDcMod = 0` na worp.
+- **DC-streak:** reset bij miss/Nat 1 op speler-aanval (`resolveCombatPlayerAttack` → `dc-streak-reset`); geen +5 bij treffer (streak +5 blijft alleen bij geslaagde **event**-checks).
 
 ---
 
@@ -70,7 +72,7 @@ Modal toont **AC** (niet Attack +X). Geen host Hit/Miss voor de speler.
 |---|----------------------|-------------------------|
 | Speler-worp | vs `effectiveDc` (auto) | vs **AC** (auto) |
 | Speler hit/miss | Automatisch | Automatisch (geen host) |
-| Mislukken | Direct speler-schade | Vijand-aanvalsfase |
+| Mislukken | Direct speler-schade + DC-streak reset | Vijand-aanvalsfase + **DC-streak reset** |
 | Vijand-worp | Geen | Auto D20+attackBonus; host Hit/Miss (behalve Nat 20/1) |
 | Nat 20/1 speler | Op check | Op speler-aanval |
 | Nat 20/1 vijand | — | Dubbele dmg op speler / **1 HP** self damage op vijand |
@@ -222,7 +224,7 @@ Zo worden speler-/vijand-events **niet dubbel** gelogd of dubbel op HP toegepast
 ## Handmatige testchecklist
 
 - [ ] Ambush: speler hit → **player-outcome** → vijand counter → **enemy-outcome** → samenvatting
-- [ ] Ambush: speler miss → geen vijand-schade → vijand aanvalt
+- [ ] Ambush: speler miss → geen vijand-schade → **DC-streak reset** → vijand aanvalt
 - [ ] Speler Nat 20 → auto-hit, `2 + dmgBonus`
 - [ ] Speler Nat 1 → auto-miss; bij vijand-hit `dmg + 1` extra
 - [ ] Vijand Nat 20 → auto-hit, dubbele schade op speler

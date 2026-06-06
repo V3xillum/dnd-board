@@ -137,6 +137,9 @@
           });
           attackEvent.bossHp = this.bossHp;
         }
+      } else {
+        player.dcStreak = 0;
+        events.push({ type: 'dc-streak-reset', player: player.name });
       }
 
       const enemyDefeated = ctx.type === 'ambush'

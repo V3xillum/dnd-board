@@ -131,7 +131,9 @@ Geen aparte bonussen voor “DC+5” / “DC+10” — alleen basis + overshoot-
 | Slagen (incl. Nat 20) | +1 |
 | Mislukken / Nat 1 | reset naar 0 |
 
-Streak verhoogt `effectiveDc` op volgende event-checks (`+dcStreak`).
+Streak verhoogt `effectiveDc` op volgende event-checks **en** op speler-AC in combat (`+dcStreak` via `getEffectiveDc`).
+
+Reset bij mislukte event-check **en** bij gemiste speler-aanval in combat (ambush/boss/minion) — zie `MD/sessie-10-attack-roll-combat.md`.
 
 ---
 

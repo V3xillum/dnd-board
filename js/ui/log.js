@@ -119,7 +119,7 @@ function describeEvents(events) {
         );
         break;
       case 'dc-streak-reset':
-        addLog(`${ev.player}: DC-streak gereset na mislukte check`, 'warn');
+        addLog(`${ev.player}: DC-streak gereset`, 'warn');
         break;
       case 'pass-turn':
         addLog(`${ev.player} mislukt de check — beurt voorbij`, 'fail');

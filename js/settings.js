@@ -1,6 +1,6 @@
 /**
  * Tune-bare spelconstanten — single source of truth.
- * Laadt vóór events-data.js, game.js en ui.js.
+ * Laadt vóór events-data.js, game.js en ui/*.
  */
 const GAME_SETTINGS = {
   board: {

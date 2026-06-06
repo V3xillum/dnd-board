@@ -1,6 +1,6 @@
 /**
  * Combat modal flow: fases, finishCombatRound, enemy hit/miss, special save.
- * Vereist: els, game (ui.js), state (ui/state.js), tokens, log, modal sync helpers (ui.js)
+ * Vereist: els, game (ui/dom.js), state (ui/state.js), tokens, log, modal sync (ui/modals/core.js)
  */
 
 function createCombatFlowState(onComplete, combatConfig = null, spaceNum = null, minionIndex = null) {

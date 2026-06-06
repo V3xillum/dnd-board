@@ -19,7 +19,7 @@ Handleiding voor **nieuwe tegels** in `events-data.js`. Spelregels (put, boss, N
 |---------|------------------|
 | `events-data.js` | `EVENT_POOL_RAW`, `PATH_TILES`, optioneel `PATH_RATIO` / `AMBUSH_RATIO` |
 | `game.js` | Alleen als je **nieuw gedrag** wilt (niet voor een extra kaart in de pool) |
-| `ui.js` | Alleen bij nieuwe `category` (nieuwe bordkleur in `EVENT_CATEGORY_CLASS`) |
+| `ui/dom.js` | Alleen bij nieuwe `category` (nieuwe bordkleur in `EVENT_CATEGORY_CLASS`) |
 
 Na **Nieuw avontuur** draait `rebuildBoard()` → `buildSpecialSpaces()` opnieuw.
 
@@ -108,7 +108,7 @@ Voeg een object toe in de juiste bucket van `EVENT_POOL_RAW`:
 
 Filter: `eventsExceptBosses()` → `eventsByDc(...)`.
 
-**Categories (bordkleur):** `trap`, `combat`, `magic`, `social`, `loot`, `mystery`, `wild`, `fey` → `cell--*` in `ui.js`.
+**Categories (bordkleur):** `trap`, `combat`, `magic`, `social`, `loot`, `mystery`, `wild`, `fey` → `cell--*` in `ui/dom.js`.
 
 ---
 
@@ -230,8 +230,8 @@ Optioneel later: JSON + `fetch()` i.p.v. één groot bestand.
 
 ---
 
-## Wanneer wél `game.js` / `ui.js`
+## Wanneer wél `game.js` / `ui/dom.js`
 
-- Nieuwe `category` → kleur/class in `ui.js`.
+- Nieuwe `category` → kleur/class in `ui/dom.js`.
 - Andere DC-verdeling op het bord → `buildSpecialSpaces()` / `eventsByDc`.
 - Ander spelmechaniek (geen D20-put meer, tier 2, …) → aparte feature + `MD/`-doc.

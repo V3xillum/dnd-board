@@ -1,5 +1,5 @@
 /**
- * Gedeelde mutable UI-state — laadt vóór ui.js, tokens.js en combat.js.
+ * Gedeelde mutable UI-state — laadt na ui/dom.js, vóór tokens/combat/events.
  * var i.p.v. let: classic scripts delen geen let-scope tussen bestanden.
  */
 var tokensAnimating = false;

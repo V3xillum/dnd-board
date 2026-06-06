@@ -1,6 +1,6 @@
 /**
  * Event-log: describeEvents, addLog, prependLogEntry
- * Vereist: els (ui.js), window.syncLastEvent (multiplayer.js)
+ * Vereist: els (ui/dom.js), window.syncLastEvent (multiplayer.js)
  */
 function formatEnemyAttackLogEffect(ev) {
   if (ev.nat1 && ev.selfDamage) {

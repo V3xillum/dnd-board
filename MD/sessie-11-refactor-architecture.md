@@ -1,6 +1,6 @@
 # Sessie 11 — Refactor: settings, splits & architectuur
 
-**Status:** gepland (nog niet uitgevoerd)
+**Status:** deels uitgevoerd — stap 6 UI-splits af; stap 7 (game.js) optioneel.
 
 ## Doel
 
@@ -257,5 +257,5 @@ Minimaal dit pad doorlopen:
 | 3b ui/state.js | ✅ | 2025-06 |
 | 4 ui/tokens.js | ✅ | 2025-06 |
 | 5 ui/modals/combat.js | ✅ | 2025-06 |
-| 6 overige UI splits | ⬜ | |
+| 6 overige UI splits | ✅ | 2025-06 |
 | 7 game splits | ⬜ | |

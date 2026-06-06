@@ -1,7 +1,7 @@
 /**
  * Token layer, animatie, position-diff (multiplayer gast).
- * Vereist: els, game (ui.js), tokensAnimating + modal state (ui/state.js),
- * prefersReducedMotion, updateTurnUI (ui.js), isOnBossArena (game.js)
+ * Vereist: els, game (ui/dom.js), tokensAnimating + modal state (ui/state.js),
+ * prefersReducedMotion (ui/board.js), updateTurnUI (ui/players.js), isOnBossArena (game.js)
  */
 
 function getOrCreateTokenLayer() {

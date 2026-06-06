@@ -23,28 +23,40 @@ Dit bestand is bedoeld voor **mens én agent**: waar zit wat, in welke volgorde 
 
 | Bestand | ~regels | Verantwoordelijkheid |
 |---------|---------|----------------------|
-| `js/settings.js` | — | *(gepland)* tune-bare constanten — **single source of truth** |
+| `js/settings.js` | ~55 | Tune-bare constanten — **single source of truth** |
 | `js/events-data.js` | ~1640 | Event-pool, boss/ambush data, `buildSpecialSpaces()` |
 | `js/game.js` | ~1800 | `Game` class, regels, combat resolve, bord-layout helpers |
 | `js/multiplayer.js` | ~370 | Serialize/deserialize game state, Firebase sync |
-| `js/ui.js` | ~4180 | DOM, bord, tokens, modals, combat-UI, log, bootstrap |
+| `js/ui.js` | ~2693 | DOM, bord, modal open/close, bootstrap |
+| `js/ui/modals/combat.js` | ~759 | Combat flow: fases, finishCombatRound, enemy/special save |
+| `js/ui/state.js` | ~18 | Gedeelde mutable UI-state (combat flow, modals, tokensAnimating) |
+| `js/ui/tokens.js` | ~413 | Token layer, animatie, `snapshotTokenPositions` |
+| `js/ui/log.js` | ~340 | Event-log: `describeEvents`, `addLog`, `prependLogEntry` |
 | `js/firebase.js` | ~80 | Firebase init (ES module) |
 
 ### Laadvolgorde (`index.html`)
 
 ```
 firebase.js (module)
+→ settings.js
 → events-data.js
 → game.js
 → multiplayer.js
+→ ui/state.js
+→ ui/tokens.js
 → ui.js
+→ ui/log.js
+→ ui/modals/combat.js
 ```
-
-*(Na sessie 11 stap 2: `settings.js` vóór `events-data.js`.)*
 
 ---
 
 ## Globals — publieke API (niet alles refactoren)
+
+### Settings (`settings.js` → `window`)
+
+- `GAME_SETTINGS` — genest object (board, player, movement, boss, difficulty, boardGen, ui)
+- Aliases: `DEFAULT_HP`, `DEFAULT_MAX_HP`, `TOTAL_SPACES`, `FINISH_SPACE`, `BOSS_SPACE`, `BASE_SUCCESS_STEPS`, `OVERSHOOT_DIVISOR`, `DC_DIFFICULTY_MAX_LEVEL`, `HEALER_SPACE`, `PATH_RATIO`, `AMBUSH_RATIO`
 
 ### Game / regels (`game.js` → `window`)
 
@@ -60,6 +72,30 @@ firebase.js (module)
 ### Multiplayer (`multiplayer.js` → `window`)
 
 - `syncAfterAction`, `isMultiplayerHost`, `getActiveModal`, `refreshGameUIFromRemote`, …
+
+### UI state (`ui/state.js`)
+
+- `tokensAnimating`, `activeAmbush`, `activeBoss`, `activeBossMinion`, `activeEvent`, `activeMystery`, `activeBossReveal`
+- `syncedActiveModal`, `pathModalCallback`, `pathModalSpaceNum`, `pathModalSkipMysteryReset`, `activeCombatActionHandler`
+- Laadt vóór `ui.js` — `var` voor cross-script shared scope (geen bundler)
+
+### UI combat modal (`ui/modals/combat.js`)
+
+- `createCombatFlowState`, `getCombatFlowType`, `finishCombatRound`, `handleCombatPlayerSubmit`
+- Enemy fases: `startEnemyAttackPhase`, `handleCombatEnemyHit`, `showSpecialSavePhase`
+- Helpers: `setCombatFooter`, `resetCombatModalPhases`, `buildCombatOutcomeHtml`, `setEventCheckForCombat`
+- Laadt na `ui.js` en `ui/log.js`
+
+### UI tokens (`ui/tokens.js`)
+
+- `renderTokens`, `syncTokensAfterEvents`, `animateFromEvents`, position-diff voor multiplayer-gast
+- `window.snapshotTokenPositions`
+- Laadt vóór `ui.js` (bootstrap roept `renderTokens` aan)
+
+### UI log (`ui/log.js`)
+
+- `describeEvents`, `addLog`, `prependLogEntry`, `formatEnemyAttackLogEffect`
+- `window.appendRemoteLogEntry`, `window.clearGameLog` (multiplayer)
 
 ### UI (`ui.js` → deels `window`)
 
@@ -152,6 +188,11 @@ events-data.js  →  game.js  →  multiplayer.js  →  ui/*
 
 | Datum | Wijziging |
 |-------|-----------|
+| 2025-06 | Stap 5: `js/ui/modals/combat.js` — combat modal flow |
+| 2025-06 | Stap 4: `js/ui/tokens.js` — token layer + animatie |
+| 2025-06 | Stap 3b: `js/ui/state.js` — gedeelde mutable UI-state |
+| 2025-06 | Stap 3: `js/ui/log.js` — event-log uit ui.js geëxtraheerd |
+| 2025-06 | Stap 2: `js/settings.js` — centrale constanten + backwards-compat aliases |
 | 2025-06 | Skelet aangemaakt (sessie 11 planning) |
 
 *(Per voltooide split: bestand toevoegen, laadvolgorde, globals bijwerken.)*

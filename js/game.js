@@ -1,19 +1,20 @@
-const TOTAL_SPACES = 63;
-const FINISH_SPACE = 63;
-const BOSS_SPACE = 62;
-const PATH_SPACES = 62;
-const BOSS_HP_PER_PLAYER = 3;
+const { board, player, movement, boss, difficulty } = window.GAME_SETTINGS;
+const TOTAL_SPACES = board.totalSpaces;
+const FINISH_SPACE = board.finishSpace;
+const BOSS_SPACE = board.bossSpace;
+const PATH_SPACES = board.pathSpaces;
+const BOSS_HP_PER_PLAYER = boss.hpPerPlayer;
 
 function isOnBossArena(position) {
   return position === BOSS_SPACE || position === FINISH_SPACE;
 }
-const BOARD_SIZE = 9;
-const DEFAULT_HP = 3;
-const DEFAULT_MAX_HP = 6;
+const BOARD_SIZE = board.boardSize;
+const DEFAULT_HP = player.startHp;
+const DEFAULT_MAX_HP = player.maxHp;
 
-/** Geslaagde event-check: basisstappen + overshoot (alleen tunen in code) */
-const BASE_SUCCESS_STEPS = 1;
-const OVERSHOOT_DIVISOR = 2;
+/** Geslaagde event-check: basisstappen + overshoot (alleen tunen in settings.js) */
+const BASE_SUCCESS_STEPS = movement.baseSuccessSteps;
+const OVERSHOOT_DIVISOR = movement.overshootDivisor;
 
 function isCenterCell(r, c) {
   const start = Math.floor(BOARD_SIZE / 2) - 1;
@@ -119,7 +120,7 @@ function getDcModifier(player) {
 }
 
 /** Moeilijkheidsgraad 1–5 → vaste +1 DC per stap (niveau 1 = +0, niveau 5 = +4) */
-const DC_DIFFICULTY_MAX_LEVEL = 5;
+const DC_DIFFICULTY_MAX_LEVEL = difficulty.maxLevel;
 
 function getDifficultyDcBonus(level = 1) {
   const clamped = Math.max(1, Math.min(DC_DIFFICULTY_MAX_LEVEL, level));
@@ -482,7 +483,6 @@ class Game {
     if (!player || !ctx?.config) {
       return {
         events: [],
-        triggerSpecial: false,
         died: false,
         effectiveHit: false,
         enemyNat20: false,
@@ -521,7 +521,6 @@ class Game {
 
     events.push(attackEvent);
 
-    let triggerSpecial = false;
     const multiplier = ctx.type === 'ambush'
       ? (ctx.pit.dmgPerHit ?? 1)
       : (this.bossDmgPerHit ?? 1);
@@ -552,16 +551,12 @@ class Game {
       const { applied } = this.applyRepeatedHpDamage(player, events, damage);
       attackEvent.damage = applied;
       attackEvent.playerHp = player.hp;
-
-      if (ctx.type === 'boss' && config.specialAttack && Math.random() < 0.25) {
-        triggerSpecial = true;
-      }
     }
 
+    const died = events.some((e) => e.type === 'death');
     return {
       events,
-      triggerSpecial,
-      died: events.some((e) => e.type === 'death'),
+      died,
       effectiveHit,
       enemyNat20,
       enemyNat1,

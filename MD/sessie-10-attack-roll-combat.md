@@ -36,10 +36,11 @@ Modal toont **AC** (niet Attack +X). Geen host Hit/Miss voor de speler.
 **Meerdere HP-verlies:** schade loopt via `applyRepeatedHpDamage()` — stopt zodra de speler **sterft** (geen overflow op respawn-HP).
 
 ### Special attack (boss only)
-- **25% kans** na succesvolle vijand-hit op eindbaas (niet minions/ambush).
+- **25% kans** aan start van de vijand-fase: eindbaas gebruikt **special attack i.p.v.** normale to-hit-aanval (niet minions/ambush).
+- Geen normale vijand-hit in dezelfde ronde wanneer special wordt gekozen.
 - Speler rolt saving throw, vult totaal in.
 - **Automatische** vergelijking vs `specialAttack.dc`.
-- Slagen → `specialAttack.dmgSuccess` HP; falen → `specialAttack.dmgFail` HP (ook via `applyRepeatedHpDamage`).
+- Slagen → `specialAttack.dmgSuccess` HP; falen → `specialAttack.dmgFail` HP (via `applyRepeatedHpDamage`).
 
 ### Mystery-ambush reset
 - Verslaat een speler een ambush die via **❓-D12** is onthuld, dan wordt het vak na `finalizeCombatRound` weer **❓** (`resetMysterySpace`).
@@ -86,8 +87,8 @@ Elke ronde is opgesplitst in duidelijke stappen. Tussenstappen gebruiken de **gr
 | `player-roll` | Aanvalsworp invoeren + AC |
 | `player-outcome` | Treffer/Mis + schade/HP → knop **Vijand aanvalt →** (of **Samenvatting →** als vijand verslagen) |
 | `enemy-hit` | Vijand-worp + host Hit/Miss (overgeslagen bij Nat 20/1) |
-| `enemy-outcome` | Vijand-resultaat → knop **Samenvatting →** (of special attack) |
-| `special-save` | Saving throw invoeren (boss) |
+| `enemy-outcome` | Vijand-resultaat → knop **Samenvatting →** |
+| `special-save` | Saving throw invoeren (boss; i.p.v. normale aanval) |
 | `outcome` | **Samenvatting** (zonder speler-aanvalsworp) → **Doorgaan op avontuur** |
 
 ```mermaid
@@ -102,18 +103,19 @@ sequenceDiagram
   UI->>Speler: player-outcome (Treffer/Mis)
   Speler->>UI: Vijand aanvalt →
   alt vijand nog leeft
-    Game->>UI: rollCombatEnemyAttack
-    alt vijand Nat 20 of Nat 1
-      UI->>Game: resolveCombatEnemyAttack (auto)
-    else normaal
-      UI->>Host: worp + Hit / Miss
-      Host->>Game: resolveCombatEnemyAttack
-    end
-    UI->>Speler: enemy-outcome
-    Speler->>UI: Samenvatting →
-    opt boss + 25% + enemy hit
+    alt boss 25% special i.p.v. normale aanval
       Speler->>UI: saving throw totaal
       UI->>Game: resolveCombatSpecialSave
+    else normale aanval
+      Game->>UI: rollCombatEnemyAttack
+      alt vijand Nat 20 of Nat 1
+        UI->>Game: resolveCombatEnemyAttack (auto)
+      else normaal
+        UI->>Host: worp + Hit / Miss
+        Host->>Game: resolveCombatEnemyAttack
+      end
+      UI->>Speler: enemy-outcome
+      Speler->>UI: Samenvatting →
     end
   else vijand verslagen op speler-hit
     Speler->>UI: Samenvatting → (direct)
@@ -184,7 +186,7 @@ Legacy log-type `boss-retreat` kan nog in oude logs voorkomen; wordt niet meer g
 |-----------|--------------|
 | Flow state | `createCombatFlowState(onComplete, combatConfig, spaceNum, minionIndex)` — bewaart `combatConfig`, `spaceNum`, `wasMysteryAmbush`, `minionIndex`, `eventsAppliedCount` |
 | Config lookup | `getCombatConfig()` — fallback `getPitAt` / `flow.combatConfig` (nodig na kill op 0 HP) |
-| Fases | `player-roll` → `player-outcome` → `enemy-hit` → `enemy-outcome` → `special-save` → `outcome` |
+| Fases | `player-roll` → `player-outcome` → (`special-save` **of** `enemy-hit` → `enemy-outcome`) → `outcome` |
 | Tussenknop | `#event-close` herlabeld per fase (niet `#event-combat-action` als primair pad) |
 | Vijand Hit/Miss | `#event-enemy-hit`, `#event-enemy-miss` in `#event-enemy-roll` |
 | Vijand-worp | `#event-enemy-roll-display` — formaat `roll + bonus = total To hit` |
@@ -228,7 +230,7 @@ Zo worden speler-/vijand-events **niet dubbel** gelogd of dubbel op HP toegepast
 - [ ] Meerdere dmg hits + dood → respawn op start met vol `DEFAULT_HP` (geen overflow)
 - [ ] Mystery-ambush verslagen → vak wordt weer ❓
 - [ ] Boss minion: zelfde flow; **blijf op 62/63** na ronde
-- [ ] Boss: special attack ~25% na vijand-hit; save auto vs DC
+- [ ] Boss: special attack ~25% i.p.v. normale aanval; save auto vs DC
 - [ ] Laatste minion one-shot → **Samenvatting →** werkt (`minionIndex` + `resolveBossMinionForContext`)
 - [ ] Boss verslagen op 62 → geen tweede D12; doorlopen naar 63 voor win
 - [ ] Genezer vak 56 → vol HP; al vol → geen HP-change

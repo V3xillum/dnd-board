@@ -48,8 +48,8 @@ const PATH_TILES = [
   { name: 'Hartslag onder de aarde', icon: '❤️', flavor: 'Wanneer je even stilstaat, denk je iets te voelen onder je voeten. Niet een trilling. Niet een aardbeving. Meer alsof de grond zelf één langzame hartslag geeft voordat alles weer stil wordt.' },
 ];
 
-/** Vast genezer-vak op het bord */
-const HEALER_SPACE = 56;
+/** Vast genezer-vak op het bord (tune in settings.js) */
+const HEALER_SPACE = window.GAME_SETTINGS.board.healerSpace;
 const HEALER_TILE = {
   name: 'Genezerhutje',
   icon: '✨',
@@ -62,9 +62,9 @@ const ENCAMPMENT_SPACE = HEALER_SPACE;
 const ENCAMPMENT_TILE = HEALER_TILE;
 
 const GUARDIAN_EVENT_NAME = 'Laatste wachter';
-const PATH_RATIO = 0.38;
-/** ~8% van event-slots wordt ambush-put; tune 0.05 subtieler, 0.12 gevaarlijker */
-const AMBUSH_RATIO = 0.08;
+const PATH_RATIO = window.GAME_SETTINGS.boardGen.pathRatio;
+/** ~8% van event-slots wordt ambush-put; tune in settings.js (0.05 subtieler, 0.12 gevaarlijker) */
+const AMBUSH_RATIO = window.GAME_SETTINGS.boardGen.ambushRatio;
 
 /** Zet geneste pool (category → ability → events) om naar platte array voor de engine. */
 function flattenEventPool(nested) {
@@ -115,8 +115,7 @@ function defaultBossSpecialAttack(ev) {
 function enrichCombatEvent(ev) {
   if (ev.category !== 'ambush' && ev.category !== 'boss') return ev;
   const dc = ev.dc ?? 10;
-  const heavyDmg = ev.name === 'Orc Patrol'
-    || ev.name === 'Ancient Red Dragon'
+  const heavyDmg = ev.name === 'Ancient Red Dragon'
     || ev.name === 'Ancient Black Dragon'
     || ev.name === 'Dracolich';
   const enriched = {

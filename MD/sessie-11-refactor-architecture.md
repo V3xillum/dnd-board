@@ -252,9 +252,10 @@ Minimaal dit pad doorlopen:
 | Stap | Status | Datum |
 |------|--------|-------|
 | 1 ARCHITECTURE skelet | ✅ | 2025-06 |
-| 2 settings.js | ⬜ | |
-| 3 ui/log.js | ⬜ | |
-| 4 ui/tokens.js | ⬜ | |
-| 5 ui/modals/combat.js | ⬜ | |
+| 2 settings.js | ✅ | 2025-06 |
+| 3 ui/log.js | ✅ | 2025-06 |
+| 3b ui/state.js | ✅ | 2025-06 |
+| 4 ui/tokens.js | ✅ | 2025-06 |
+| 5 ui/modals/combat.js | ✅ | 2025-06 |
 | 6 overige UI splits | ⬜ | |
 | 7 game splits | ⬜ | |

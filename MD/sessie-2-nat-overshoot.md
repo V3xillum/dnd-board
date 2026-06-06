@@ -87,10 +87,10 @@ Het oude gedrag (random 1–3 achteruit bij fail) is **verwijderd** uit `resolve
 **Effect:**
 
 - Geen beweging.
-- −1 HP via `mutateHp(player, -1)`.
+- Geen HP-verlies (alleen tempo-straf t.o.v. gewone mislukking).
 - `player.skipNextTurn = true` — bij de **volgende** `nextTurn()` wordt deze speler overgeslagen en het vlagje gereset.
 - `dcStreak` reset.
-- Events: `nat1`, `hp-change` (indien van toepassing), `pass-turn`.
+- Events: `nat1`, `dc-streak-reset`, `pass-turn`.
 - Return: `passTurn: true`, `nat1: true`.
 
 **Beurt overslaan:** `Game.nextTurn()` retourneert `{ skippedPlayer: naam | null }`. `ui.js` → `advanceTurn()` logt: *"[speler] slaat een beurt over"*.
@@ -152,7 +152,7 @@ Relevante `type`-waarden in de event-array (voor log + debugging):
 - Succes → modal sluit → sidebar “Bonus worp”, 2× D6.
 - Nat 20 op check → bonus-worp verdubbeld (8 → 16).
 - Fail → geen beweging, beurt voorbij.
-- Nat 1 → −1 HP, beurt voorbij, volgende ronde beurt overslaan.
+- Nat 1 → beurt voorbij, DC-streak reset, volgende ronde beurt overslaan (geen HP).
 - Bonus-worp landt op event → ketting zonder beurtwissel.
 
 ---
@@ -161,4 +161,4 @@ Relevante `type`-waarden in de event-array (voor log + debugging):
 
 - Boss (`MD/sessie-3-boss-win.md`)
 - Ambush tiles (`MD/sessie-4-ambush.md`) — die sessie moet Nat 1/20 expliciet hergebruiken waar passend
-- HP-verlies op **normale** mislukte checks (alleen Nat 1 en event-specifieke effecten later)
+- HP-verlies op **normale** mislukte event-checks (event-specifieke effecten later)

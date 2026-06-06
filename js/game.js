@@ -1059,7 +1059,6 @@ class Game {
       this.pendingEventBonusMove = null;
       events.push({ type: 'dc-streak-reset', player: player.name });
       events.push({ type: 'nat1', player: player.name });
-      events.push(...this.mutateHp(player, -1));
       player.skipNextTurn = true;
       events.push({ type: 'pass-turn', player: player.name });
       return {

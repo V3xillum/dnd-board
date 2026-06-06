@@ -968,7 +968,7 @@ function endEventTurn(onComplete) {
 function formatEventMoveResult(result, events) {
   if (hasDeathInEvents(events)) return 'Uitgevallen — je begint opnieuw op het startvak.';
 
-  if (result.nat1) return 'Kritiek mislukking! Beurt voorbij.';
+  if (result.nat1) return 'Kritiek mislukking! Beurt voorbij — volgende beurt overslaan.';
 
   if (result.passTurn) return 'Mislukt — beurt voorbij.';
 

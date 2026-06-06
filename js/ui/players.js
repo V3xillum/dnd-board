@@ -370,7 +370,11 @@ function updateTurnUI() {
   }
 
   let turnText = `${cp.name} is aan de beurt`;
-  if (game.pendingExtraTurn) turnText += ' (extra beurt!)';
+  if (game.pendingEventBonusMove) {
+    turnText += game.pendingEventBonusMove.nat20
+      ? ' — bonus 2× D6 (Nat 20: verdubbeld!)'
+      : ' — bonus 2× D6 na event';
+  } else if (game.pendingExtraTurn) turnText += ' (extra beurt!)';
   const activeMinion = game.getActiveBossMinion?.();
   if (activeMinion) {
     turnText += ` — 👹 ${activeMinion.config.name}`;
@@ -392,6 +396,9 @@ function updateTurnUI() {
   const inputLocked = tokensAnimating || inAmbush || onBossArena || modalNeedsInput;
   els.moveBtn.disabled = inputLocked;
   els.diceInput.disabled = inputLocked;
+  if (els.moveBtn) {
+    els.moveBtn.textContent = game.pendingEventBonusMove ? 'Bonus worp' : 'Verplaats';
+  }
   updateHpControls();
 
   if (window.isMultiplayerHost?.() && inAmbush && activeAmbush === null

@@ -19,6 +19,8 @@ class Game {
     this.layout = buildSpiralLayout();
     this.spacePositions = buildSpacePositions(this.layout);
     this.pendingExtraTurn = false;
+    /** Na geslaagde event-check: bonus 2× D6 (Nat 20 verdubbelt die worp) */
+    this.pendingEventBonusMove = null;
     this.gameOver = false;
     this.winner = null;
     this.bossActive = false;
@@ -637,24 +639,32 @@ class Game {
     return this.players[this.currentIndex] ?? null;
   }
 
-  move(steps) {
+  move(steps, options = {}) {
+    const { leadEvents = [] } = options;
     const player = this.currentPlayer;
     if (!player || this.gameOver) {
+      return { events: [], winner: null, needsEvent: false, needsPath: false, needsAmbush: false };
+    }
+
+    if (this.pendingEventBonusMove) {
       return { events: [], winner: null, needsEvent: false, needsPath: false, needsAmbush: false };
     }
 
     const from = player.position;
     const effectiveSteps = applyMovementBonus(player, steps);
     let pos = from + effectiveSteps;
-    const events = [{
-      type: 'move',
-      from,
-      to: pos,
-      steps: effectiveSteps,
-      baseSteps: steps,
-      movementBonus: player.movementBonus ?? 0,
-      player: player.name,
-    }];
+    const events = [
+      ...leadEvents,
+      {
+        type: 'move',
+        from,
+        to: pos,
+        steps: effectiveSteps,
+        baseSteps: steps,
+        movementBonus: player.movementBonus ?? 0,
+        player: player.name,
+      },
+    ];
 
     if (pos > TOTAL_SPACES) {
       const bounce = this.applyFinishOvershootBounce(player, pos);
@@ -670,6 +680,28 @@ class Game {
 
     player.position = Math.max(0, pos);
     return this.resolveSpace(player, events);
+  }
+
+  /** Bonus 2× D6 na geslaagde event-check (Nat 20 op check verdubbelt deze worp). */
+  moveAfterEventBonus(rawSteps) {
+    const bonus = this.pendingEventBonusMove;
+    const player = this.currentPlayer;
+    if (!bonus || !player || this.gameOver) {
+      return { events: [], winner: null, needsEvent: false, needsPath: false, needsAmbush: false };
+    }
+
+    this.pendingEventBonusMove = null;
+    const moveSteps = bonus.nat20 ? rawSteps * 2 : rawSteps;
+
+    return this.move(moveSteps, {
+      leadEvents: [{
+        type: 'event-bonus-move',
+        roll: rawSteps,
+        steps: moveSteps,
+        nat20Doubled: bonus.nat20,
+        player: player.name,
+      }],
+    });
   }
 
   resolveSpace(player, events) {
@@ -941,98 +973,6 @@ class Game {
     return { events, winner: null, needsEvent: false, needsPath: false };
   }
 
-  /**
-   * Verplaatsing na een event-check.
-   * @param {boolean} chainEvents — bij succes: nieuw event op landingsvak; bij falen: altijd false
-   */
-  moveAfterEvent(player, steps, events, chainEvents) {
-    const from = player.position;
-    const direction = steps >= 0 ? 'forward' : 'back';
-    const effectiveSteps = applyMovementBonus(player, steps);
-    const amount = Math.abs(effectiveSteps);
-    let pos = from + effectiveSteps;
-
-    if (effectiveSteps > 0 && pos > TOTAL_SPACES) {
-      const bounce = this.applyFinishOvershootBounce(player, pos);
-      pos = bounce.position;
-      events.push({
-        type: 'bounce',
-        position: pos,
-        overshoot: bounce.overshoot,
-        player: player.name,
-        movementBonusCleared: bounce.movementBonusCleared,
-      });
-    }
-
-    player.position = Math.max(0, pos);
-    events.push({
-      type: 'event-move',
-      from,
-      to: player.position,
-      steps: amount,
-      baseSteps: Math.abs(steps),
-      movementBonus: player.movementBonus ?? 0,
-      direction,
-      player: player.name,
-    });
-
-    if (player.position === FINISH_SPACE) {
-      if (this.bossActive) {
-        events.push({
-          type: 'boss-guard',
-          player: player.name,
-          name: this.bossConfig?.name,
-        });
-        return {
-          winner: null,
-          needsEvent: false,
-          needsPath: false,
-          needsBoss: true,
-          eventConfig: null,
-          pathConfig: null,
-        };
-      }
-
-      this.clearMovementBonusOnFinish(player);
-      this.gameOver = true;
-      this.winner = player;
-      events.push({ type: 'finish', player: player.name });
-      return {
-        winner: player,
-        needsEvent: false,
-        needsPath: false,
-        eventConfig: null,
-        pathConfig: null,
-      };
-    }
-
-    if (!chainEvents) {
-      return {
-        winner: null,
-        needsEvent: false,
-        needsPath: false,
-        eventConfig: null,
-        pathConfig: null,
-      };
-    }
-
-    const chain = this.resolveSpace(player, events);
-    return {
-      winner: chain.winner,
-      needsEvent: chain.needsEvent ?? false,
-      needsPath: chain.needsPath ?? false,
-      needsBoss: chain.needsBoss ?? false,
-      needsBossMinion: chain.needsBossMinion ?? false,
-      needsBossReveal: chain.needsBossReveal ?? false,
-      bossRevealSpaceNum: chain.bossRevealSpaceNum ?? null,
-      needsAmbush: chain.needsAmbush ?? false,
-      needsMysteryRoll: chain.needsMysteryRoll ?? false,
-      mysterySpaceNum: chain.mysterySpaceNum ?? null,
-      eventConfig: chain.eventConfig ?? null,
-      pathConfig: chain.pathConfig ?? null,
-    };
-  }
-
   resolveEvent(roll, config, options = {}) {
     const { nat20 = false, nat1 = false } = options;
     const player = this.currentPlayer;
@@ -1061,6 +1001,7 @@ class Game {
 
     if (isNat1) {
       player.dcStreak = 0;
+      this.pendingEventBonusMove = null;
       events.push({ type: 'dc-streak-reset', player: player.name });
       events.push({ type: 'nat1', player: player.name });
       events.push(...this.mutateHp(player, -1));
@@ -1083,15 +1024,9 @@ class Game {
     }
 
     if (success) {
-      const overshootRoll = roll ?? (nat20 ? 20 : 0);
-      const breakdown = calcEventSuccessSteps(roll, effectiveDc, { nat20 });
-      const steps = breakdown.total;
-
       events.push({
-        type: 'event-steps',
-        ...breakdown,
-        effectiveDc,
-        overshootRoll,
+        type: 'event-success',
+        nat20,
         player: player.name,
       });
 
@@ -1110,33 +1045,32 @@ class Game {
         player: player.name,
       });
 
-      const moveResult = this.moveAfterEvent(player, steps, events, true);
+      this.pendingEventBonusMove = { nat20 };
+
       return {
         events,
-        winner: moveResult.winner,
-        needsEvent: moveResult.needsEvent,
-        needsPath: moveResult.needsPath,
-        needsBoss: moveResult.needsBoss ?? false,
-        needsBossMinion: moveResult.needsBossMinion ?? false,
-        needsBossReveal: moveResult.needsBossReveal ?? false,
-        bossRevealSpaceNum: moveResult.bossRevealSpaceNum ?? null,
-        needsAmbush: moveResult.needsAmbush ?? false,
-        needsMysteryRoll: moveResult.needsMysteryRoll ?? false,
-        mysterySpaceNum: moveResult.mysterySpaceNum ?? null,
-        eventConfig: moveResult.eventConfig,
-        pathConfig: moveResult.pathConfig,
+        winner: null,
+        needsEvent: false,
+        needsPath: false,
+        needsBoss: false,
+        needsBossMinion: false,
+        needsBossReveal: false,
+        bossRevealSpaceNum: null,
+        needsAmbush: false,
+        needsMysteryRoll: false,
+        mysterySpaceNum: null,
+        eventConfig: null,
+        pathConfig: null,
         passTurn: false,
-        moveSteps: steps,
-        moveBreakdown: breakdown,
-        moveDirection: 'forward',
+        needsBonusMove: true,
         nat20,
         nat1: false,
         effectiveDc,
-        overshootRoll,
       };
     }
 
     player.dcStreak = 0;
+    this.pendingEventBonusMove = null;
     events.push({ type: 'dc-streak-reset', player: player.name });
     events.push({ type: 'pass-turn', player: player.name });
     return {
@@ -1189,6 +1123,7 @@ class Game {
     this.players = [];
     this.currentIndex = 0;
     this.pendingExtraTurn = false;
+    this.pendingEventBonusMove = null;
     this.gameOver = false;
     this.winner = null;
     this.bossActive = false;

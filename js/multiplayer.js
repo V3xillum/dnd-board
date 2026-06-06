@@ -75,6 +75,9 @@
       players: cloneSpecialSpaces(game.players),
       currentIndex: game.currentIndex,
       pendingExtraTurn: game.pendingExtraTurn,
+      pendingEventBonusMove: game.pendingEventBonusMove
+        ? { nat20: Boolean(game.pendingEventBonusMove.nat20) }
+        : null,
       gameOver: game.gameOver,
       winnerId: game.winner?.id ?? null,
       bossActive: game.bossActive,
@@ -105,6 +108,9 @@
     game.players = cloneSpecialSpaces(data.players ?? []);
     game.currentIndex = data.currentIndex ?? 0;
     game.pendingExtraTurn = Boolean(data.pendingExtraTurn);
+    game.pendingEventBonusMove = data.pendingEventBonusMove?.nat20 != null
+      ? { nat20: Boolean(data.pendingEventBonusMove.nat20) }
+      : null;
     game.gameOver = Boolean(data.gameOver);
     game.winner = data.winnerId
       ? game.players.find((p) => p.id === data.winnerId) ?? null

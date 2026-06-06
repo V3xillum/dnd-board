@@ -16,10 +16,6 @@ const GAME_SETTINGS = {
     maxHp: 6,
     maxPlayers: 8,
   },
-  movement: {
-    baseSuccessSteps: 1,
-    overshootDivisor: 2,
-  },
   boss: {
     hpPerPlayer: 3,
   },
@@ -44,8 +40,6 @@ window.FINISH_SPACE = GAME_SETTINGS.board.finishSpace;
 window.BOSS_SPACE = GAME_SETTINGS.board.bossSpace;
 window.DEFAULT_HP = GAME_SETTINGS.player.startHp;
 window.DEFAULT_MAX_HP = GAME_SETTINGS.player.maxHp;
-window.BASE_SUCCESS_STEPS = GAME_SETTINGS.movement.baseSuccessSteps;
-window.OVERSHOOT_DIVISOR = GAME_SETTINGS.movement.overshootDivisor;
 window.DC_DIFFICULTY_MAX_LEVEL = GAME_SETTINGS.difficulty.maxLevel;
 window.HEALER_SPACE = GAME_SETTINGS.board.healerSpace;
 window.PATH_RATIO = GAME_SETTINGS.boardGen.pathRatio;

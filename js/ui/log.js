@@ -81,6 +81,14 @@ function describeEvents(events) {
       case 'nat1':
         addLog(`${ev.player}: Nat 1!`, 'fail');
         break;
+      case 'event-success':
+        addLog(`${ev.player}: event geslaagd — bonus 2× D6${ev.nat20 ? ' (Nat 20: verdubbeld)' : ''}`, 'success');
+        break;
+      case 'event-bonus-move': {
+        const doubled = ev.nat20Doubled ? ` → ${ev.steps} (Nat 20 verdubbeld)` : '';
+        addLog(`${ev.player}: bonus worp ${ev.roll}${doubled}`, 'success');
+        break;
+      }
       case 'event-steps':
         addLog(`${ev.player}: ${ev.total} vakje(s) vooruit`, 'success');
         break;

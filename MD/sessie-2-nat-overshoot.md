@@ -4,9 +4,9 @@
 
 ## Doel
 
-Beweging na een **event-check** (D20) is voorspelbaar en beloont hoge rolls. Critieken (Nat 1/20) en falen gedragen zich anders dan vóór sessie 2.
+Critieken (Nat 1/20) en falen/succes bij **event-checks** (D20). Na succes geen automatische verplaatsing meer — de speler gooit **bonus 2× D6** in dezelfde beurt.
 
-**Niet van toepassing:** dobbelsteen-beweging op je normale beurt (`move()` met 2×D6, totaal 2–12) — dat systeem is ongewijzigd. Alleen **event-checks** (`resolveEvent`) gebruiken de regels hieronder.
+**Niet van toepassing:** combat (ambush/boss), normale beurt (`move()` met 2× D6). Alleen **event-checks** (`resolveEvent`).
 
 ---
 
@@ -17,7 +17,7 @@ In het event-modal (`index.html` + `ui.js`):
 | Invoer | ID | Gedrag |
 |--------|-----|--------|
 | Totaal worp | `#event-dice-input` | Geheel getal ≥ 1 (D20 + modifiers). Optioneel als Nat 1/20-checkbox aan staat. |
-| Nat 20 | `#event-nat20` | Gegarandeerd slagen; overshoot-roll = ingevuld getal, of **20** als alleen checkbox. |
+| Nat 20 | `#event-nat20` | Gegarandeerd slagen; bonus-2× D6 wordt **verdubbeld**. |
 | Nat 1 | `#event-nat1` | Kritieke mislukking; ook als totaal ≠ 1 (bijv. D20=1 + modifier). |
 
 - Minstens **één** van: getal ingevuld, Nat 20, of Nat 1 — anders geen submit.
@@ -33,7 +33,7 @@ In het event-modal (`index.html` + `ui.js`):
 1. `nextDcMod` van de speler wordt **één keer** toegepast op deze check en daarna op 0 gezet.
 2. `effectiveDc = max(1, config.dc + dcStreak + nextDcMod)` — dit is de DC waar je tegen gooit.
 3. **Nat 1?** → apart pad (zie hieronder), geen gewone succes/fail.
-4. **Succes?** `nat20` **of** `roll >= effectiveDc` → overshoot-beweging + DC-streak +1.
+4. **Succes?** `nat20` **of** `roll >= effectiveDc` → DC-streak +5, **bonus 2× D6** (`pendingEventBonusMove`).
 5. **Anders mislukt** → geen beweging, DC-streak reset, beurt voorbij.
 
 ---
@@ -51,42 +51,17 @@ Het oude gedrag (random 1–3 achteruit bij fail) is **verwijderd** uit `resolve
 
 ### Slagen
 
-Formule in `calcEventSuccessSteps(roll, effectiveDc, { nat20 })`:
-
-```
-overshootRoll = roll ?? (nat20 ? 20 : 0)
-base          = nat20 ? BASE_SUCCESS_STEPS * 2 : BASE_SUCCESS_STEPS
-overshoot     = max(0, overshootRoll - effectiveDc)
-extra         = floor(overshoot / OVERSHOOT_DIVISOR)
-totaal        = base + extra
-```
-
-**Constants** (bovenaan `game.js`, alleen in code tunen):
-
-```js
-const BASE_SUCCESS_STEPS = 1;
-const OVERSHOOT_DIVISOR = 2;  // 3 = strenger (+1 extra stap per 3 boven DC)
-```
-
-**Daarna:** `moveAfterEvent(player, totaal, …, chainEvents: true)` roept intern `applyMovementBonus()` aan (death catch-up +1, zie `MD/hp-systeem.md`). Finish-overshoot-bounce werkt zoals bij normale `move()`.
-
-**Voorbeelden** (`OVERSHOOT_DIVISOR = 2`, geen movement bonus, geen Nat 20):
-
-| Roll | effectiveDc | Overshoot | Extra | Totaal |
-|------|-------------|-----------|-------|--------|
-| 11 | 11 | 0 | 0 | **1** |
-| 13 | 11 | 2 | 1 | **2** |
-| 15 | 11 | 4 | 2 | **3** |
-| 23 | 11 | 12 | 6 | **7** |
-
-**Met Nat 20**, roll 23 vs DC 11: base **2** (dubbel) + extra 6 = **8** vakjes.
-
-Geen aparte bonussen voor “DC+5” / “DC+10” — alleen basis + overshoot-floor.
+- Geen automatische stappen (overshoot **verwijderd**).
+- `pendingEventBonusMove = { nat20 }` — speler gooit **2× D6** via sidebar (`moveAfterEventBonus`).
+- Normale bonus: worp 2–12 (+ movement bonus).
+- **Nat 20 op check:** bonus-worp **verdubbeld** (8 → 16 vakjes).
+- Daarna `move()` + `resolveSpace` — event chain via `continueAfterLand` (nieuw event op landingsvak).
+- Beurt eindigt pas na bonus-worp (of na ketting-modals).
 
 ### Event chain
 
-- **Succes:** `moveAfterEvent(..., chainEvents: true)` — nieuw event-vak opent direct de volgende check (ongewijzigd patroon).
-- **Fail / Nat 1:** geen chain, geen beweging.
+- **Succes → bonus 2× D6 →** landen op event opent volgende check (zelfde beurt).
+- **Fail / Nat 1:** geen chain, geen bonus-worp.
 
 ---
 
@@ -96,7 +71,7 @@ Geen aparte bonussen voor “DC+5” / “DC+10” — alleen basis + overshoot-
 
 **Effect:**
 
-- Verdubbelt alleen `BASE_SUCCESS_STEPS` (1→2), daarna normale overshoot op `overshootRoll`.
+- Bonus-2× D6 **verdubbeld** (`moveAfterEventBonus`: `steps * 2`).
 - +1 HP via `mutateHp(player, 1)` (death-regels uit sessie 1).
 - **Geen** DC-streak reset en **geen** `nextDcMod = -2` meer (oud gedrag verwijderd).
 - Bij succes: DC-streak **+1** zoals bij een gewone geslaagde check.
@@ -144,17 +119,17 @@ Relevante `type`-waarden in de event-array (voor log + debugging):
 | type | Wanneer |
 |------|---------|
 | `d20` | Altijd; bevat `success`, `nat20`, `nat1`, `effectiveDc`, … |
-| `event-steps` | Geslaagd; breakdown: `base`, `extra`, `overshoot`, `total`, `overshootRoll` |
+| `event-success` | Geslaagde check; bonus 2× D6 volgt |
+| `event-bonus-move` | Bonus-worp na succes (incl. Nat 20-verdubbeling) |
 | `nat20` | Nat 20 geslagen |
 | `nat1` | Nat 1 |
 | `dc-streak` / `dc-streak-reset` | Streak bijwerken |
 | `pass-turn` | Beurt voorbij (fail of Nat 1) |
-| `event-move` | Daadwerkelijke verplaatsing na succes |
+| `move` | Verplaatsing na bonus-2× D6 (zelfde als normale beurt) |
 | `hp-change` / `death` | Via `mutateHp` |
 
 **UI-resultaat** (`formatEventMoveResult`): bijv.  
-`7 vakje(s) (1 basis + 6 overshoot, roll 23 vs DC 11)`  
-Logregel via `describeEvents` → `event-steps` met dezelfde breakdown.
+`Geslaagd — gooi 2× D6 om verder te bewegen (Nat 20: worp verdubbeld!)`
 
 ---
 
@@ -162,27 +137,22 @@ Logregel via `describeEvents` → `event-steps` met dezelfde breakdown.
 
 | Bestand | Rol |
 |---------|-----|
-| `js/game.js` | `calcEventSuccessSteps`, `resolveEvent`, `nextTurn` + `skipNextTurn` op speler |
-| `js/ui.js` | Checkboxes, `advanceTurn`, modal/log-teksten |
-| `index.html` | Event-modal, legenda (overshoot, Nat 1/20) |
-| `css/styles.css` | `.event-card__nat-crits`, `#event-nat1` accent |
-
-Exports op `window`: `calcEventSuccessSteps`, `BASE_SUCCESS_STEPS`, `OVERSHOOT_DIVISOR`.
+| `js/game.js` | `resolveEvent`, `moveAfterEventBonus`, `pendingEventBonusMove` |
+| `js/game/dc.js` | `getEffectiveDc`, `applyMovementBonus` |
+| `js/ui/modals/events.js` | Modal, `needsBonusMove`, `formatEventMoveResult` |
+| `index.html` | Event-modal, spelregels |
 
 ---
 
 ## Tunen & testen
 
-- **`OVERSHOOT_DIVISOR`**: `2` → +1 stap per 2 punten boven DC; `3` merkbaar strenger.
-- **`BASE_SUCCESS_STEPS`**: standaard 1 (2 bij Nat 20 vóór overshoot).
-
 **Snel checken in het spel:**
 
-- DC 11, roll 23 → 7 vakjes (zonder catch-up bonus).
-- Roll = effectiveDc → 1 vakje.
+- Succes → modal sluit → sidebar “Bonus worp”, 2× D6.
+- Nat 20 op check → bonus-worp verdubbeld (8 → 16).
 - Fail → geen beweging, beurt voorbij.
-- Nat 20 checkbox + DC 11 → minstens 2 basis + overshoot op 20.
 - Nat 1 → −1 HP, beurt voorbij, volgende ronde beurt overslaan.
+- Bonus-worp landt op event → ketting zonder beurtwissel.
 
 ---
 

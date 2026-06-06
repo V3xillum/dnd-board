@@ -966,8 +966,17 @@ function formatEventMoveResult(result, events) {
 
   if (result.passTurn) return 'Mislukt — beurt voorbij.';
 
-  const b = result.moveBreakdown;
-  const steps = b?.total ?? result.moveSteps ?? 0;
+  if (result.needsBonusMove) {
+    let text = 'Geslaagd — gooi 2× D6 om verder te bewegen';
+    if (result.nat20) text += ' (Nat 20: worp verdubbeld!)';
+    const streakBonus = getDcBonus(game.currentPlayer);
+    if (streakBonus) text += ` · volgende check +${streakBonus} DC`;
+    const mod = getDcModifier(game.currentPlayer);
+    if (mod) text += ` · volgende check ${mod} DC`;
+    return text;
+  }
+
+  const steps = result.moveSteps ?? 0;
   let text = `${steps} vakje(s) vooruit`;
   if (result.nat20) text += ' · Kritiek succes!';
 
@@ -1177,6 +1186,18 @@ async function handleEventSubmit() {
         closeEventModal();
         updateBossPanel();
         showBossFightModal(onComplete);
+      },
+    });
+    return;
+  }
+
+  if (result.needsBonusMove) {
+    finishEventFlow({
+      chainLabel: 'Bonus worp →',
+      handler: () => {
+        closeEventModal();
+        updateTurnUI();
+        clearDiceInput();
       },
     });
     return;

@@ -99,7 +99,9 @@ els.moveBtn.addEventListener('click', async () => {
     return;
   }
 
-  const result = game.move(steps);
+  const result = game.pendingEventBonusMove
+    ? game.moveAfterEventBonus(steps)
+    : game.move(steps);
   await handleMoveResult(result);
   clearDiceInput();
 });

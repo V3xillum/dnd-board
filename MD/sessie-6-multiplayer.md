@@ -1,6 +1,6 @@
 # Sessie 6 — Echte multiplayer (iedereen speelt zelf)
 
-**Status:** nog te bouwen — plan bijgewerkt na sessie 11 (UI-split) en 11b (`game/*`-split).
+**Status:** nog te bouwen — plan bijgewerkt na sessie 11 (UI-split), 11b (`game/*`-split) en host-fallback/re-claim keuzes.
 
 **Voorganger:** [sessie-5-multiplayer.md](sessie-5-multiplayer.md) (spectator mode — ✅ geïmplementeerd).
 
@@ -8,7 +8,7 @@
 
 Upgrade van spectator mode (sessie 5) naar **echte multiplayer**: elke gast maakt **zelf** een speler aan en voert **zelf** worpen in op **eigen beurt**. Anderen kijken live mee tot het hun beurt is.
 
-De host is niet langer de enige die het bord bedient — hij is spelleider (game aanmaken, link delen, optioneel spelers verwijderen / nieuw avontuur).
+De host is niet langer de enige die het bord bedient — hij is **spelleider/DM** (game aanmaken, link delen, spelers verwijderen, nieuw avontuur). Normaal speelt iedereen zelf; de host kan **altijd** als fallback ieders beurt bedienen als iemand offline is (telefoon leeg, tab dicht, even weg).
 
 ---
 
@@ -16,12 +16,13 @@ De host is niet langer de enige die het bord bedient — hij is spelleider (game
 
 | | Sessie 5 (nu) | Sessie 6 |
 |---|---------------|----------|
-| Wie speelt | Alleen host | Iedereen met eigen speler |
-| Spelers toevoegen | Host via sidebar | Gast maakt zichzelf aan (lobby) |
-| Worpen | Host voert alles in | Alleen speler aan beurt |
-| Firebase writes | Alleen host | Speler aan beurt (+ host voor meta/lobby) |
+| Wie speelt | Alleen host | Iedereen met eigen speler; host als DM-fallback |
+| Spelers toevoegen | Host via sidebar | Gast maakt zichzelf aan (lobby) of claimt offline slot |
+| Worpen | Host voert alles in | Speler aan beurt; host mag altijd invallen |
+| Firebase writes | Alleen host | Turn-owner + host altijd (+ meta/lobby) |
 | UI | `app--spectator` voor alle guests | Turn-based invoer per client |
-| Schrijfrecht-check | `isMultiplayerHost()` | `isMyTurn()` (+ host in lobby) |
+| Schrijfrecht-check | `isMultiplayerHost()` | `isMyTurn()` **of** `isMultiplayerHost()` |
+| Reconnect | — | Claim in spelerslijst; geen aparte reclaim-link |
 
 ---
 
@@ -30,11 +31,12 @@ De host is niet langer de enige die het bord bedient — hij is spelleider (game
 ```
 1. Host opent URL        → lobby, is host + spelleider
 2. Host deelt link
-3. Gast opent URL        → lobby, kiest naam, "Meedoen"
-4. Gast krijgt playerId  → gekoppeld aan sessionId in Firebase
+3. Gast opent URL        → lobby: nieuwe speler ("Meedoen") of claim offline slot
+4. Gast krijgt playerId  → gekoppeld aan sessionId in Firebase (+ session heartbeat)
 5. Host start spel       → phase: 'playing' (min. 2 spelers?)
-6. Speler X aan beurt     → alleen X's tab heeft invoer + mag syncen
+6. Speler X aan beurt     → X's tab heeft invoer; host mag altijd invallen (DM-fallback)
 7. Anderen               → read-only + "Wacht op [naam]..."
+8. X gaat offline        → spelerslijst toont offline; host speelt verder OF iemand claimt X
 ```
 
 ---
@@ -56,7 +58,10 @@ games/{gameId}/
       playerId        ← gekoppelde Game-player.id
       name            ← display naam (kopie)
       joinedAt
+      lastSeen        ← session heartbeat (15s interval, zelfde patroon als host)
 ```
+
+**Online/offline per speler:** speler is *online* als minstens één session met die `playerId` een `lastSeen` heeft binnen 45s (`SESSION_STALE_MS`, gelijk aan host). Geen session gekoppeld → slot is *vrij* (claimbaar).
 
 **Geen apart `activePlayer`-pad nodig** — beurt zit al in `state.currentIndex` + `state.players`.
 
@@ -80,12 +85,13 @@ Voor sessie 6:
 
 ### UI-states (vervangt simpele host/guest-toggle)
 
-Sessie 5 gebruikt één class `app--spectator` voor alle guests. Sessie 6 heeft drie modi:
+Sessie 5 gebruikt één class `app--spectator` voor alle guests. Sessie 6 heeft vier modi:
 
 | Modus | Wanneer | UI |
 |-------|---------|-----|
 | **Lobby** | `phase === 'lobby'` | Lobby-overlay; geen worpen; host ziet Start |
 | **Mijn beurt** | `isMyTurn()` | Volledige sidebar-invoer (dice, HP, rest, modals) |
+| **Host (DM)** | `isHostProxy()` — host speelt voor huidige beurtspeler | Zelfde invoer als mijn beurt; status *"Je speelt als DM voor [naam]…"* |
 | **Wachten** | speler geclaimd, niet aan beurt | Dice/HP/rest **hidden**; status *"Wacht op [naam]…"* |
 | **Spectator** | geen `playerId` claim | Zelfde als sessie 5: `app--spectator`, read-only meekijken |
 
@@ -106,13 +112,13 @@ Sessie 5 gebruikt één class `app--spectator` voor alle guests. Sessie 6 heeft 
 | `js/multiplayer.js` | Serialize, host/guest, sync guards — **hoofdwijzigingen hier** |
 | `js/firebase.js` | `writeSession`, `onSessions`, `writeMeta`; `phase: 'lobby'` bij nieuwe game |
 | `js/ui/bootstrap.js` | `setMultiplayerReadOnly` → `updateInputAccess`, lobby listeners, `refreshGameUIFromRemote` |
-| `js/ui/players.js` | `updateTurnUI`, HP/rest controls, auto-open ambush/boss |
+| `js/ui/players.js` | `updateTurnUI`, HP/rest controls, auto-open ambush/boss, **claim-knop + online-status** |
 | `js/ui/flow.js` | `advanceTurn`, `continueAfterLand` — modal auto-open alleen turn-owner |
 | `js/ui/modals/core.js` | `renderSpectatorModal`, sync modal, spectator CSS classes |
 | `js/ui/modals/events.js` | Modal close → clear sync (nu host-only) |
 | `js/ui/modals/combat.js` | Combat flow + spectator-wachtteksten |
 | `index.html` | Lobby-overlay markup, multiplayer-bar |
-| `css/styles.css` | `.app--spectator`, `.app--waiting` (nieuw), lobby styles |
+| `css/styles.css` | `.app--spectator`, `.app--waiting`, `.app--host-proxy` (nieuw), lobby + claim styles |
 
 **Niet meer van toepassing:** `js/ui.js` (opgesplitst in `js/ui/*`).
 
@@ -121,6 +127,11 @@ Sessie 5 gebruikt één class `app--spectator` voor alle guests. Sessie 6 heeft 
 - Host takeover bij stale host (45s, `claimHost`)
 - Token-animatie bij remote refresh (`refreshGameUIFromRemote` in `bootstrap.js`)
 - Echo-preventie via `updatedBy` / `pendingLocalWrite`
+
+**Nieuw in sessie 6 (disconnect/re-claim):**
+- Session heartbeat per gekoppelde speler (`lastSeen` in `sessions/`)
+- Online/offline indicator + **Claim**-knop in spelerslijst
+- Host DM-fallback: host mag altijd beurt van huidige speler bedienen
 
 ---
 
@@ -132,8 +143,9 @@ Sessie 5 gebruikt één class `app--spectator` voor alle guests. Sessie 6 heeft 
 
 **UI (overlay of panel):**
 - Game ID + copy-knop (bestaat al in `#multiplayer-bar`)
-- Naam invoeren + knop **Meedoen**
-- Lijst van joined spelers (uit `sessions/`)
+- Naam invoeren + knop **Meedoen** (nieuwe speler)
+- Of: **Claim** op bestaande speler in sidebar/lijst (offline slot of host-added speler)
+- Lijst van joined spelers (uit `sessions/`) met online-status
 - Host: knop **Start avontuur** (disabled tot min. 2 spelers?)
 - Gast na join: lobby sluit, wacht op start
 
@@ -147,13 +159,15 @@ Sessie 5 gebruikt één class `app--spectator` voor alle guests. Sessie 6 heeft 
 - Host mag spelers toevoegen aan state + sessions schrijven
 - Gast mag **alleen eigen** `sessions/{sessionId}` schrijven + state update voor addPlayer (zie conflicts)
 
-### Fase 2 — Turn-based invoer
+### Fase 2 — Turn-based invoer + host DM-fallback
 
-**Doel:** alleen de speler aan beurt kan worpen doen.
+**Doel:** speler aan beurt speelt zelf; host kan **altijd** invallen (spel loopt nooit vast).
 
-**Vervang host-gating door turn-gating:**
+**Turn-gating + host-fallback:**
 
 ```javascript
+const SESSION_STALE_MS = 45_000; // zelfde drempel als host
+
 function getMyPlayerId() {
   // uit sessions/{sessionId} — lokaal gecached + Firebase listener
 }
@@ -172,12 +186,30 @@ function isHostInLobby() {
   return window.isMultiplayerHost?.() && getMetaPhase?.() === 'lobby';
 }
 
+/** Host speelt voor huidige beurtspeler (niet eigen beurt). */
+function isHostProxy() {
+  if (!window.isMultiplayerHost?.() || getMetaPhase?.() !== 'playing') return false;
+  if (isMyTurn()) return false; // eigen beurt = normaal, geen proxy-label
+  return Boolean(game.currentPlayer);
+}
+
 function canSyncGame() {
-  return isMyTurn() || isHostInLobby();
+  return isMyTurn() || isHostProxy() || isHostInLobby();
 }
 
 function canPlayInteractively() {
-  return isMyTurn() && getMetaPhase?.() === 'playing';
+  return (isMyTurn() || isHostProxy()) && getMetaPhase?.() === 'playing';
+}
+
+function isPlayerOnline(playerId, sessions) {
+  const now = Date.now();
+  return Object.values(sessions ?? {}).some(
+    (s) => s.playerId === playerId && now - (s.lastSeen ?? 0) <= SESSION_STALE_MS,
+  );
+}
+
+function isPlayerClaimable(playerId, sessions) {
+  return !isPlayerOnline(playerId, sessions);
 }
 
 function updateInputAccess() {
@@ -188,6 +220,7 @@ function updateInputAccess() {
 
   document.querySelector('.app')?.classList.toggle('app--spectator', spectate || phase === 'lobby' && !window.isMultiplayerHost?.());
   document.querySelector('.app')?.classList.toggle('app--waiting', waiting);
+  document.querySelector('.app')?.classList.toggle('app--host-proxy', isHostProxy());
 
   // Dice/HP/rest: hidden via CSS classes; modals via canPlayInteractively
   updateTurnUI();
@@ -196,10 +229,11 @@ function updateInputAccess() {
 
 **Sync-rechten (`multiplayer.js`):**
 - `syncAfterAction()` / `syncActiveModal()` / `syncLastEvent()` → guard met `canSyncGame()` i.p.v. `isHost`
-- Host **niet** meer automatisch sole writer tijdens `playing`
+- Host mag **altijd** syncen tijdens `playing` (DM-fallback); turn-owner ook
 
 **Statusbalk (`#mp-role` of apart element):**
 - *"Jij bent aan de beurt"*
+- *"Je speelt als DM voor [naam]…"* (host-fallback)
 - *"Wacht op [naam]…"*
 - *"Kies een speler om mee te doen"* (lobby, geen claim)
 - *"Je kijkt mee"* (spectator zonder claim — optioneel toestaan)
@@ -210,17 +244,17 @@ function updateInputAccess() {
 - Short/long rest (`shortRestBtn`, `longRestBtn`, D4-input)
 - Difficulty blijft **host-only** (opacity + pointer-events, zoals nu)
 
-### Fase 3 — Modals op beurt
+### Fase 3 — Modals op beurt (+ host DM-fallback)
 
-**Doel:** event/boss/ambush/path-modals: alleen speler aan beurt interactief; anderen via `renderSpectatorModal`.
+**Doel:** event/boss/ambush/path-modals: speler aan beurt **of host (DM)** interactief; anderen via `renderSpectatorModal`.
 
-- Open modal + sync: door **turn-owner** (niet alleen host)
+- Open modal + sync: door **`canPlayInteractively()`** client (turn-owner of host-proxy)
 - `renderSpectatorModal` voor clients waar `!canPlayInteractively()`
 - Guard in `core.js`: `if (canPlayInteractively()) return;` i.p.v. `if (isMultiplayerHost()) return;`
 - Spectator-wachtteksten aanpassen: *"Host beslist…"* → *"[naam] beslist…"* of generiek *"Speler aan beurt…"*
 - Bij verlies van beurt (`updateInputAccess` → `!canPlayInteractively()`): interactieve modal lokaal sluiten — vangnet naast `activeModal: null` (zie edge case mid-modal)
 
-**Kritiek: modal auto-open alleen op turn-owner device**
+**Kritiek: modal auto-open alleen op interactieve client**
 
 Nu opent `advanceTurn()` (`flow.js`) en `updateTurnUI()` (`players.js`) ambush/boss modals **lokaal op elke client** als `isMultiplayerHost()`. Dat moet worden:
 
@@ -238,14 +272,51 @@ Remote clients krijgen de modal via `activeModal` sync → `renderSpectatorModal
 
 Blijven bij host (`meta.hostSessionId`):
 - Speler **verwijderen** (andere spelers)
-- **Nieuw avontuur** / reset
+- **Nieuw avontuur** / reset (zie keuze hieronder)
 - **Start avontuur** vanuit lobby
 - **Difficulty** wijzigen
 - Optioneel: spel beëindigen
 
+**Nieuw avontuur — claim-keuze (vastgelegd):**
+- Game state reset (nieuw bord), `phase` terug naar `'lobby'`
+- **Sessions blijven gekoppeld** aan dezelfde `playerId`s — spelers hoeven niet opnieuw te claimen als hun tab nog open is
+- Offline spelers (stale session) tonen **Claim** in lijst tot iemand terugkomt
+
 Niet host-only:
-- Eigen worp op eigen beurt
-- Eigen HP handmatig — **alleen aan beurt** (aanbevolen; anders chaos bij meerdere spelers)
+- Worpen op **eigen beurt** (`isMyTurn()`)
+- Worpen voor **andere speler** als host DM-fallback (`isHostProxy()`)
+- HP/rest handmatig — **alleen** via `canPlayInteractively()` (eigen beurt of host-proxy)
+
+### Fase 5 — Disconnect & re-claim
+
+**Doel:** speler gaat weg → spel gaat door; zelfde of nieuwe gast kan poppetje overnemen.
+
+**Session heartbeat:**
+- Elke client met `playerId`-claim stuurt `lastSeen` elke 15s naar `sessions/{sessionId}` (zelfde interval als host)
+- Bij tab sluiten stopt heartbeat → na 45s `isPlayerOnline()` = false
+
+**Spelerslijst (`renderPlayers` in `players.js`):**
+
+| Speler | Indicator | Actie (niet-eigen speler) |
+|--------|-----------|---------------------------|
+| Online | 🟢 of "online" | — |
+| Offline / geen session | ⚪ "offline" | **Claim** (gast/spectator) |
+| Jij | 🟢 "jij" | — |
+
+- **Claim** roept `claimPlayer(playerId)` → schrijft `sessions/{sessionId}` met bestaande `playerId` + `name` uit game state
+- Geen dubbele claim: als speler online is, Claim-knop disabled/verborgen
+- Oude stale session blijft in Firebase tot cleanup (optioneel: overschrijven bij nieuwe claim opzelfde `playerId` — laatste claim wint)
+
+**Drie lagen (werken samen, geen aparte reclaim-link nodig):**
+
+```
+Normaal     → speler speelt eigen beurt (isMyTurn)
+Iemand weg  → host speelt verder (isHostProxy) — spel stopt niet
+Terugkeer  → zelfde persoon: refresh (sessionId in sessionStorage) OF Claim in lijst
+Overname    → andere gast claimt offline poppetje via lijst
+```
+
+**Geen `?claim=playerId` deep link** — claim via spelerslijst is voldoende; deep link bewust buiten scope.
 
 ---
 
@@ -260,7 +331,7 @@ Expliciete inventaris — elke plek moet aangepast worden:
 | `multiplayer.js` | `applyRemoteState` | `renderSpectatorModal` als `!isHost` | als `!canPlayInteractively()` |
 | `ui/modals/core.js` | `renderSpectatorModal` | return als host | return als `canPlayInteractively()` |
 | `ui/modals/core.js` | `showNewAdventureConfirm` | block `app--spectator` | block non-host |
-| `ui/modals/events.js` | modal close | clear sync als host | clear sync als turn-owner |
+| `ui/modals/events.js` | modal close | clear sync als host | clear sync als `canPlayInteractively()` |
 | `ui/players.js` | `updateTurnUI` | auto-open ambush/boss als host | als `canPlayInteractively()` |
 | `ui/flow.js` | `advanceTurn` | auto-open modals altijd lokaal | als `canPlayInteractively()` |
 | `ui/bootstrap.js` | `resyncActiveModalIfOpen` | sync als host | als `canSyncGame()` |
@@ -274,14 +345,18 @@ Expliciete inventaris — elke plek moet aangepast worden:
 **Probleem:** meerdere clients schrijven naar `state/` — wie wint?
 
 **Aanpak voor avondje D&D (simpel, geen CRDT):**
-1. **Alleen speler aan beurt mag `state` en `activeModal` schrijven** tijdens `playing`
+1. **Speler aan beurt óf host mag `state` en `activeModal` schrijven** tijdens `playing`
 2. **Host mag schrijven** in lobby + host-only acties (reset, speler verwijderen)
 3. Clients valideren lokaal vóór write: `canSyncGame()`
 4. Firebase Rules (optioneel later): `.write` alleen met custom token — voor nu vertrouwen + client-side guard (zelfde als sessie 5)
 
-**Race:** twee tabs, zelfde speler (duplicate session) → voorkomen: één `playerId` per `sessionId`, geen dubbele claim op dezelfde `playerId`.
+**Race:** twee tabs, zelfde speler → voorkomen: één actieve session per `playerId` (laatste claim wint; oude session wordt orphan).
+
+**Race:** host-proxy en turn-owner tegelijk → acceptabel voor avondje-spel: host wint praktisch als hij klikt; turn-owner heeft voorrang als online. Geen lock-mechanisme nodig.
 
 **Join + addPlayer:** gast schrijft session + state in één logische actie; host valideert unieke naam. Bij conflict: tweede write verliest (Firebase last-write-wins) — acceptable voor avondje-spel.
+
+**Re-claim:** `claimPlayer(playerId)` schrijft alleen eigen `sessions/{sessionId}`; geen `state`-mutatie. Host-proxy blijft werken tot nieuwe claim online is.
 
 ---
 
@@ -289,11 +364,14 @@ Expliciete inventaris — elke plek moet aangepast worden:
 
 ### `js/multiplayer.js`
 - `getMyPlayerId()` / `getMySession()` / `getMetaPhase()` — lees `sessions/{sessionId}` + meta
-- `joinGame(name)` — lobby join
+- `joinGame(name)` — lobby join (nieuwe speler)
+- `claimPlayer(playerId)` — re-claim bestaand poppetje
 - `startGame()` — host only, `phase → playing`
-- `isMyTurn()`, `canSyncGame()`, `canPlayInteractively()` — export op `window`
+- `isMyTurn()`, `isHostProxy()`, `canSyncGame()`, `canPlayInteractively()` — export op `window`
+- `isPlayerOnline()` / `isPlayerClaimable()` — helper voor spelerslijst
+- Session heartbeat: `touchSessionPresence()` elke 15s voor eigen session
 - Pas `syncAfterAction`, `syncActiveModal`, `syncLastEvent` aan: guard met `canSyncGame()`
-- Listener op `sessions/` voor lobby-lijst
+- Listener op `sessions/` voor lobby-lijst + online-status
 - Pas echo-preventie aan: skip eigen writes, apply remote van andere spelers
 - Vervang `setMultiplayerReadOnly(!isHost)` door `updateInputAccess()`
 
@@ -305,23 +383,28 @@ Expliciete inventaris — elke plek moet aangepast worden:
 ### `js/ui/players.js`
 - `updateTurnUI` — auto-open ambush/boss alleen bij `canPlayInteractively()`
 - HP/rest controls respecteren waiting-state (hidden via CSS)
+- Spelerslijst: online/offline indicator + **Claim**-knop voor claimbare spelers
+- Claim-knop listener → `window.claimPlayer?.(playerId)`
 
 ### `js/ui/flow.js`
-- `advanceTurn` — modal auto-open alleen turn-owner
+- `advanceTurn` — modal auto-open alleen op `canPlayInteractively()` client
 - Verwijder duplicate `refreshGameUIFromRemote` (niet geëxporteerd, bootstrap-versie telt)
 
 ### `js/ui/modals/core.js` + `events.js` + `combat.js`
 - Spectator guard → `canPlayInteractively()`
-- Modal close / clear sync → turn-owner
-- Wachtteksten host-neutral
+- Modal close / clear sync → `canPlayInteractively()` (turn-owner of host-proxy)
+- Wachtteksten host-neutral (*"[naam] beslist…"* / *"Speler aan beurt…"*)
 
 ### `index.html` + `css/styles.css`
 - Lobby-overlay markup
 - `.app--waiting` styles (dice/hp/rest hidden, statusregel zichtbaar)
-- Statusregels voor beurt / wachten / lobby
+- `.app--host-proxy` — optioneel visuele hint (statusregel volstaat)
+- `.btn-claim` — claim-knop in spelerslijst
+- Statusregels voor beurt / wachten / DM-fallback / lobby
 
 ### `js/firebase.js` (klein)
 - `writeSession`, `onSessions`, `writeMeta` helpers
+- `touchSessionPresence(gameId, sessionId)` — update `lastSeen`
 - Nieuwe game: `phase: 'lobby'` i.p.v. default `'playing'`
 
 ---
@@ -349,6 +432,12 @@ Geen wijziging t.o.v. sessie 5 — `serializeGame` / `deserializeGame` in `multi
 | 2 spelers, 1 tab each | Beurt wisselt invoer tussen tabs |
 | Beurt wissel mid-modal | Zie detail hieronder — `activeModal: null` sluit modals op alle clients; nieuwe turn-owner opent fris |
 | A doet short rest | Alleen A's tab: D4 invoer + sync; B wacht |
+| Speler sluit tab | Na 45s offline in lijst; host kan beurt spelen (DM-fallback) |
+| Speler komt terug | Refresh → zelfde sessionId; of **Claim** in spelerslijst |
+| Gast claimt offline poppetje | Nieuwe tab krijgt invoer op beurt van die speler; host-proxy stopt voor die speler |
+| Beurt van offline speler | Host ziet DM-fallback-invoer; spel loopt door |
+| Host speelt terwijl speler online | Beide *kunnen* syncen — avondje-spel vertrouwen; normaal speelt speler zelf |
+| Nieuw avontuur | State reset + lobby; sessions blijven aan playerIds gekoppeld |
 
 ### Beurt wissel mid-modal (detail)
 
@@ -368,9 +457,11 @@ Geen wijziging t.o.v. sessie 5 — `serializeGame` / `deserializeGame` in `multi
 
 - Async spelen (dagen later verder) — sessie 7?
 - Firebase Auth / invite codes
+- Reclaim deep links (`?claim=playerId`) — claim via spelerslijst volstaat
 - Chat
 - Board seed kiezen
 - Volledige log-history op Firebase
+- Session cleanup job (orphan sessions mogen blijven staan)
 
 ---
 
@@ -390,10 +481,13 @@ Geen wijziging t.o.v. sessie 5 — `serializeGame` / `deserializeGame` in `multi
 - [ ] Nieuwe game start in `phase: 'lobby'`
 - [ ] Gast kan naam invoeren en speler aanmaken in lobby
 - [ ] Host start spel; minstens 2 spelers kunnen om beurt spelen op **eigen device**
-- [ ] Alleen speler aan beurt heeft actieve invoer (dobbelsteen, HP, rest, modals)
+- [ ] Speler aan beurt heeft actieve invoer (dobbelsteen, HP, rest, modals)
+- [ ] Host kan **altijd** beurt bedienen als DM-fallback (`isHostProxy`)
 - [ ] Wachtende speler ziet hidden controls + status *"Wacht op [naam]…"*
 - [ ] Andere spelers zien live bord + modals + log (spectator mode)
-- [ ] Beurt wissel werkt cross-device zonder host als proxy
-- [ ] Modal auto-open alleen op turn-owner device (geen dubbele modals)
+- [ ] Beurt wissel werkt cross-device; host vangt offline speler op
+- [ ] Modal auto-open alleen op `canPlayInteractively()` client (geen dubbele modals)
 - [ ] Alle `isMultiplayerHost`-sync guards gemigreerd naar `canSyncGame` / `canPlayInteractively`
-- [ ] Host kan nieuw avontuur starten; speler-claim blijft behouden of wordt gereset (**documenteer keuze**)
+- [ ] Spelerslijst toont online/offline; **Claim** voor offline slots
+- [ ] Session heartbeat (`lastSeen`) per gekoppelde speler
+- [ ] Nieuw avontuur: state reset + lobby; **sessions blijven gekoppeld** aan playerIds

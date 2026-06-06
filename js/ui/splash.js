@@ -4,6 +4,8 @@
  */
 const splashCache = new Map();
 let lastSpectatorSplashKey = null;
+let lastSpectatorBossSplashDoneKey = null;
+let spectatorBossSplashInProgressKey = null;
 
 function getSplashSettings() {
   return window.GAME_SETTINGS?.splash ?? {};
@@ -148,6 +150,23 @@ function clearModalSplashClasses() {
   els.eventModal?.classList.remove('event-modal--over-splash');
 }
 
+function spectatorBossSplashKey(activeModal) {
+  if (!activeModal) return null;
+  const { spaceNum, config } = activeModal;
+  return `boss-splash|${spaceNum ?? ''}|${config?.name ?? ''}`;
+}
+
+function shouldPlaySpectatorBossSplash(activeModal) {
+  if (!activeModal || activeModal.type !== 'boss' || activeModal.phase !== 'input') return false;
+  const combatPhase = activeModal.combatPhase ?? 'player-roll';
+  return combatPhase === 'player-roll';
+}
+
+function resetSpectatorBossSplashState() {
+  lastSpectatorBossSplashDoneKey = null;
+  spectatorBossSplashInProgressKey = null;
+}
+
 function syncSpectatorSplash(url, modalKey) {
   const key = `${modalKey}|${url ?? ''}`;
   if (key === lastSpectatorSplashKey) return;
@@ -182,5 +201,8 @@ window.showSplashLayer = showSplashLayer;
 window.hideSplashLayer = hideSplashLayer;
 window.clearModalSplashClasses = clearModalSplashClasses;
 window.syncSpectatorSplash = syncSpectatorSplash;
+window.spectatorBossSplashKey = spectatorBossSplashKey;
+window.shouldPlaySpectatorBossSplash = shouldPlaySpectatorBossSplash;
+window.resetSpectatorBossSplashState = resetSpectatorBossSplashState;
 window.playSplashHold = playSplashHold;
 window.playSplashThen = playSplashThen;

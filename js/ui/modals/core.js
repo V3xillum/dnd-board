@@ -308,13 +308,108 @@ function populateSpectatorCombatModal(type, config, spaceNum) {
   }
 }
 
+function renderSpectatorCombatModal(activeModal) {
+  const { type, phase, config, spaceNum, outcome } = activeModal;
+  if (!config) return;
+
+  if (type === 'boss' && phase === 'input') {
+    els.eventModal.classList.add('event-modal--over-splash');
+  } else if (type === 'boss-minion' || type === 'ambush') {
+    hideSplashLayer?.();
+    els.eventModal.classList.remove('event-modal--over-splash');
+  }
+
+  populateSpectatorCombatModal(type, config, spaceNum);
+  els.eventModal.classList.add('event-modal--spectator');
+  resetCombatModalPhases();
+  els.eventRollArea.classList.add('is-hidden');
+  els.eventNat20.disabled = true;
+  els.eventNat1.disabled = true;
+  els.eventDiceInput.disabled = true;
+
+  const combatPhase = activeModal.combatPhase ?? 'player-roll';
+  const isCombat = type === 'ambush' || type === 'boss' || type === 'boss-minion';
+
+  if (phase === 'input') {
+    els.eventCheck.classList.remove('is-hidden');
+    els.eventResult.classList.remove('hidden');
+    els.eventResult.className = 'event-card__result';
+    if (isCombat && combatPhase === 'enemy-hit' && activeModal.enemyRoll) {
+      const bonus = activeModal.enemyRoll.attackBonus ?? config.attackBonus ?? 3;
+      if (els.eventEnemyRollLabel) {
+        els.eventEnemyRollLabel.textContent = `Vijand-aanval (+${bonus} to hit)`;
+      }
+      els.eventEnemyRollDisplay.textContent = buildEnemyRollDisplay(activeModal.enemyRoll);
+      els.eventEnemyRoll.classList.remove('hidden');
+      els.eventResult.innerHTML = '<p class="spectator-wait">Host beslist hit of miss (vijand)…</p>';
+    } else if (isCombat && combatPhase === 'special-save') {
+      els.eventSpecialSave.classList.remove('hidden');
+      const special = activeModal.specialAttack ?? config.specialAttack;
+      els.eventSpecialSaveTitle.textContent = `⚡ ${special?.name ?? 'Special attack'}!`;
+      els.eventSpecialSaveFlavor.textContent =
+        `${special?.saveAbility ?? 'Save'} save vs DC ${special?.dc ?? '?'}`;
+      els.eventSpecialSaveInput.disabled = true;
+      els.eventSpecialSaveSubmit.classList.add('hidden');
+      els.eventResult.innerHTML = '<p class="spectator-wait">Speler rolt saving throw…</p>';
+    } else if (isCombat && combatPhase === 'player-hit') {
+      els.eventResult.innerHTML = '<p class="spectator-wait">Host beslist hit of miss (speler)…</p>';
+    } else {
+      els.eventResult.innerHTML = '<p class="spectator-wait">Host voert het gevecht uit…</p>';
+    }
+  } else if (phase === 'outcome' && outcome) {
+    if (outcome.headerMode === 'outcome') {
+      showEventOutcomeInHeader(outcome.success, config);
+    } else {
+      els.eventTitle.textContent = outcome.title ?? config.name;
+      els.eventTitle.className = outcome.titleClass ?? 'event-card__title';
+      els.eventFlavor.textContent = outcome.flavor ?? '';
+      els.eventFlavor.className = outcome.flavorClass ?? 'event-card__flavor';
+    }
+    els.eventCheck.classList.add('is-hidden');
+    els.eventResult.classList.remove('hidden');
+    els.eventResult.className = outcome.resultClassName ?? 'event-card__result';
+    els.eventResult.innerHTML = outcome.resultHtml ?? '';
+  }
+
+  els.eventModal.classList.remove('hidden');
+  playSpectatorModalEnter(
+    els.eventModal,
+    type === 'ambush' || type === 'boss' || type === 'boss-minion'
+      ? 'combat'
+      : getEventModalEnterTier(config),
+    activeModal,
+  );
+  syncModalScrollLock();
+}
+
 function renderSpectatorModal(activeModal) {
   if (window.isMultiplayerHost?.()) return;
 
-  closeSpectatorModals();
-  if (!activeModal) return;
+  if (!activeModal) {
+    closeSpectatorModals();
+    resetSpectatorBossSplashState?.();
+    return;
+  }
 
   const { type, phase, config, spaceNum, outcome } = activeModal;
+
+  if (shouldPlaySpectatorBossSplash?.(activeModal)) {
+    const splashKey = spectatorBossSplashKey?.(activeModal);
+    if (splashKey && splashKey === spectatorBossSplashInProgressKey) return;
+    if (splashKey && splashKey !== lastSpectatorBossSplashDoneKey) {
+      spectatorBossSplashInProgressKey = splashKey;
+      closeSpectatorModals();
+      const bossUrl = getBossSplashUrl?.(config);
+      playSplashThen(bossUrl, () => {
+        lastSpectatorBossSplashDoneKey = splashKey;
+        spectatorBossSplashInProgressKey = null;
+        renderSpectatorCombatModal(activeModal);
+      });
+      return;
+    }
+  }
+
+  closeSpectatorModals();
 
   if (type === 'mystery') {
     els.mysteryModal.classList.add('mystery-modal--spectator');
@@ -440,76 +535,7 @@ function renderSpectatorModal(activeModal) {
 
   if (!config) return;
 
-  if (type === 'boss' && phase === 'input') {
-    const bossUrl = getBossSplashUrl?.(config);
-    syncSpectatorSplash?.(bossUrl, `boss-fight|${spaceNum}|${config?.name ?? ''}`);
-    els.eventModal.classList.add('event-modal--over-splash');
-  } else if (type === 'boss-minion' || type === 'ambush') {
-    syncSpectatorSplash?.(null, `${type}|${spaceNum}`);
-    els.eventModal.classList.remove('event-modal--over-splash');
-  }
-
-  populateSpectatorCombatModal(type, config, spaceNum);
-  els.eventModal.classList.add('event-modal--spectator');
-  resetCombatModalPhases();
-  els.eventRollArea.classList.add('is-hidden');
-  els.eventNat20.disabled = true;
-  els.eventNat1.disabled = true;
-  els.eventDiceInput.disabled = true;
-
-  const combatPhase = activeModal.combatPhase ?? 'player-roll';
-  const isCombat = type === 'ambush' || type === 'boss' || type === 'boss-minion';
-
-  if (phase === 'input') {
-    els.eventCheck.classList.remove('is-hidden');
-    els.eventResult.classList.remove('hidden');
-    els.eventResult.className = 'event-card__result';
-    if (isCombat && combatPhase === 'enemy-hit' && activeModal.enemyRoll) {
-      const bonus = activeModal.enemyRoll.attackBonus ?? config.attackBonus ?? 3;
-      if (els.eventEnemyRollLabel) {
-        els.eventEnemyRollLabel.textContent = `Vijand-aanval (+${bonus} to hit)`;
-      }
-      els.eventEnemyRollDisplay.textContent = buildEnemyRollDisplay(activeModal.enemyRoll);
-      els.eventEnemyRoll.classList.remove('hidden');
-      els.eventResult.innerHTML = '<p class="spectator-wait">Host beslist hit of miss (vijand)…</p>';
-    } else if (isCombat && combatPhase === 'special-save') {
-      els.eventSpecialSave.classList.remove('hidden');
-      const special = activeModal.specialAttack ?? config.specialAttack;
-      els.eventSpecialSaveTitle.textContent = `⚡ ${special?.name ?? 'Special attack'}!`;
-      els.eventSpecialSaveFlavor.textContent =
-        `${special?.saveAbility ?? 'Save'} save vs DC ${special?.dc ?? '?'}`;
-      els.eventSpecialSaveInput.disabled = true;
-      els.eventSpecialSaveSubmit.classList.add('hidden');
-      els.eventResult.innerHTML = '<p class="spectator-wait">Speler rolt saving throw…</p>';
-    } else if (isCombat && combatPhase === 'player-hit') {
-      els.eventResult.innerHTML = '<p class="spectator-wait">Host beslist hit of miss (speler)…</p>';
-    } else {
-      els.eventResult.innerHTML = '<p class="spectator-wait">Host voert het gevecht uit…</p>';
-    }
-  } else if (phase === 'outcome' && outcome) {
-    if (outcome.headerMode === 'outcome') {
-      showEventOutcomeInHeader(outcome.success, config);
-    } else {
-      els.eventTitle.textContent = outcome.title ?? config.name;
-      els.eventTitle.className = outcome.titleClass ?? 'event-card__title';
-      els.eventFlavor.textContent = outcome.flavor ?? '';
-      els.eventFlavor.className = outcome.flavorClass ?? 'event-card__flavor';
-    }
-    els.eventCheck.classList.add('is-hidden');
-    els.eventResult.classList.remove('hidden');
-    els.eventResult.className = outcome.resultClassName ?? 'event-card__result';
-    els.eventResult.innerHTML = outcome.resultHtml ?? '';
-  }
-
-  els.eventModal.classList.remove('hidden');
-  playSpectatorModalEnter(
-    els.eventModal,
-    type === 'ambush' || type === 'boss' || type === 'boss-minion'
-      ? 'combat'
-      : getEventModalEnterTier(config),
-    activeModal,
-  );
-  syncModalScrollLock();
+  renderSpectatorCombatModal(activeModal);
 }
 
 function removeCombatHpBars() {

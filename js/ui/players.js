@@ -14,7 +14,7 @@ function renderPlayers() {
       <span class="player-dot" style="background:${p.color}"></span>
       <span class="player-info">
         <strong>${p.name}</strong>
-        <small>Vak ${p.position} · ${formatPlayerHp(p)}${formatPlayerDcHint(p)}${formatPlayerMovementHint(p)}${formatPlayerDmgHint(p)}</small>
+        <small>Vak ${p.position} · ${formatPlayerHp(p)}${formatPlayerDcHint(p)}${formatPlayerDmgHint(p)}</small>
       </span>
       <button class="btn-remove" title="Verwijder speler" data-id="${p.id}">×</button>
     `;
@@ -72,13 +72,11 @@ function setEventResultClass(success, events) {
 function buildResultHpHtml(events, player) {
   const deathEv = getDeathFromEvents(events);
   if (deathEv) {
-    const bonusNote =
-      deathEv.movementBonus > 0 ? ` · +${deathEv.movementBonus} beweging (catch-up)` : '';
     return `
       <div class="result-death">
         <span class="result-death__icon" aria-hidden="true">💀</span>
         <p class="result-death__title">Je bent uitgevallen!</p>
-        <p class="result-death__detail">Terug naar start · ${window.DEFAULT_HP} HP${bonusNote}</p>
+        <p class="result-death__detail">Terug naar start · ${window.DEFAULT_HP} HP · D4 second chance volgende beurt</p>
       </div>
     `;
   }
@@ -106,11 +104,6 @@ function buildResultHpHtml(events, player) {
       <span class="result-hp__hearts" aria-hidden="true">${formatPlayerHp(player)}</span>
     </p>
   `;
-}
-
-function formatPlayerMovementHint(player) {
-  const bonus = player.movementBonus ?? 0;
-  return bonus > 0 ? ` · +${bonus} beweging` : '';
 }
 
 function formatPlayerDmgHint(player) {
@@ -375,6 +368,25 @@ function bossHpBarHtml() {
   `;
 }
 
+function updateDeathReturnControls({ inputLocked = false } = {}) {
+  const cp = game.currentPlayer;
+  const needsRoll = Boolean(cp && !game.gameOver && game.needsDeathReturnRoll(cp));
+
+  if (els.deathReturnControls) {
+    els.deathReturnControls.classList.toggle('death-return-controls--hidden', !needsRoll);
+  }
+  if (els.diceControls) {
+    els.diceControls.classList.toggle('dice-controls--hidden', needsRoll);
+  }
+  if (els.restControls) {
+    els.restControls.classList.toggle('rest-controls--hidden', needsRoll);
+  }
+
+  const blocked = inputLocked || !needsRoll;
+  if (els.deathReturnBtn) els.deathReturnBtn.disabled = blocked;
+  if (els.deathReturnD4Input) els.deathReturnD4Input.disabled = blocked;
+}
+
 function updateTurnUI() {
   const cp = game.currentPlayer;
   updateBossPanel();
@@ -386,6 +398,7 @@ function updateTurnUI() {
     els.diceInput.disabled = true;
     updateHpControls();
     updateRestControls();
+    updateDeathReturnControls();
     return;
   }
 
@@ -395,11 +408,14 @@ function updateTurnUI() {
     els.diceInput.disabled = false;
     updateHpControls();
     updateRestControls();
+    updateDeathReturnControls();
     return;
   }
 
   let turnText = `${cp.name} is aan de beurt`;
-  if (game.pendingEventBonusMove) {
+  if (game.needsDeathReturnRoll(cp)) {
+    turnText += ' — D4 second chance';
+  } else if (game.pendingEventBonusMove) {
     turnText += game.pendingEventBonusMove.nat20
       ? ' — bonus 2× D6 (Nat 20: verdubbeld!)'
       : ' — bonus 2× D6 na event';
@@ -422,7 +438,8 @@ function updateTurnUI() {
   const modalNeedsInput =
     document.body.classList.contains('modal-open')
     && (activeAmbush !== null || activeBossMinion !== null || activeBoss !== null || activeEvent !== null);
-  const inputLocked = tokensAnimating || inAmbush || onBossArena || modalNeedsInput;
+  const needsDeathReturn = game.needsDeathReturnRoll(cp);
+  const inputLocked = tokensAnimating || inAmbush || onBossArena || modalNeedsInput || needsDeathReturn;
   const bonusMoveActive = Boolean(game.pendingEventBonusMove);
   els.moveBtn.disabled = inputLocked;
   els.diceInput.disabled = inputLocked;
@@ -431,6 +448,7 @@ function updateTurnUI() {
   }
   updateHpControls();
   updateRestControls({ inputLocked, bonusMoveActive });
+  updateDeathReturnControls({ inputLocked: tokensAnimating || modalNeedsInput });
 
   if (window.isMultiplayerHost?.() && inAmbush && activeAmbush === null
       && els.eventModal.classList.contains('hidden')) {

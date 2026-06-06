@@ -15,3 +15,4 @@ var syncedActiveModal = null;
 var pathModalCallback = null;
 var pathModalSpaceNum = null;
 var pathModalSkipMysteryReset = false;
+var pathModalSkipRestSideEffects = false;

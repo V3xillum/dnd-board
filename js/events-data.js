@@ -1638,3 +1638,45 @@ window.getDefaultBoss = getDefaultBoss;
 window.pickRandomBoss = pickRandomBoss;
 window.rebuildBoard = rebuildBoard;
 window.buildSpecialSpaces = buildSpecialSpaces;
+
+/** Second chance (D4 na death) — flavor voor path-modal */
+const DEATH_RETURN_OUTCOMES = {
+  none: {
+    icon: '🪦',
+    name: 'Modder en teleurstelling',
+    flavor: 'Je krabbelt overeind alsof de grond je terug wil. Geen hand reikt naar je toe, geen zegen, geen shortcut — alleen het startvak, modder op je knieën en het besef dat het avontuur opnieuw begint.',
+    closeLabel: 'Opnieuw beginnen',
+  },
+  teleportPlayer: {
+    icon: '🤝',
+    name: 'De peloton wacht niet',
+    flavor: 'Voordat je ademloos bent, grijpt iemand je bij de schouder. Geen tijd voor woorden — je wordt meegetrokken naar waar de rest van het gezelschap staat. Iemand heeft je opgemerkt.',
+    closeLabel: 'Mee het avontuur in',
+  },
+  teleportHealer: {
+    icon: '🩹',
+    name: 'Afgevoerd naar de cleric',
+    flavor: 'Je bent te zwaar gewond om zelf verder te gaan. Twee armen — of pure wilskracht van het lot — slepen je naar het genezerhutje. De cleric heeft geen tijd voor magie: alleen een pleister, een stevige duw en het besef dat je nog leeft.',
+    closeLabel: 'Verder, pijnlijk maar levend',
+  },
+  teleportPit: {
+    icon: '⚔️',
+    name: 'Recht de put in',
+    flavor: 'Je landt midden in het lawaai — zwaarden, gegrom, bondgenoten die al bloed verliezen. Niemand vraagt of je klaar bent. Je bent terug, en het gevecht wacht niet op een introductie.',
+    closeLabel: 'In de strijd',
+  },
+  maxHp: {
+    icon: '❤️',
+    name: 'De dood kijkt even weg',
+    flavor: 'Voor één ademhaling lijkt de wereld stil te staan. Wonden sluiten, kleur keert terug in je wangen — alsof iemand boven je een boek even dichtslaat en opnieuw opent op een beter hoofdstuk.',
+    closeLabel: 'Hersteld — verder',
+  },
+  dmg: {
+    icon: '🔥',
+    name: 'Woede als wapen',
+    flavor: 'De pijn blijft, maar ergens onder het oppervlak smeedt iets nieuws: koude, heldere woede. Je volgende slag zal harder zijn — niet omdat je sterker bent, maar omdat je het niet nog een keer kunt verdragen.',
+    closeLabel: 'Woede omarmen',
+  },
+};
+
+window.DEATH_RETURN_OUTCOMES = DEATH_RETURN_OUTCOMES;

@@ -7,11 +7,6 @@
   const { difficulty } = window.GAME_SETTINGS;
   const DC_DIFFICULTY_MAX_LEVEL = difficulty.maxLevel;
 
-  function applyMovementBonus(player, steps) {
-    if (steps <= 0) return steps;
-    return steps + (player.movementBonus ?? 0);
-  }
-
   function getDcBonus(player) {
     return player?.dcStreak ?? 0;
   }
@@ -35,7 +30,6 @@
     return Math.max(1, total);
   }
 
-  window.applyMovementBonus = applyMovementBonus;
   window.getDcBonus = getDcBonus;
   window.getDcModifier = getDcModifier;
   window.getDifficultyDcBonus = getDifficultyDcBonus;

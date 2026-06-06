@@ -63,8 +63,9 @@ let lastSpectatorModalAnimKey = null;
 
 function spectatorModalAnimKey(activeModal) {
   if (!activeModal) return null;
-  const { type, phase, spaceNum } = activeModal;
-  return `${type}|${phase ?? ''}|${spaceNum ?? ''}`;
+  const { type, phase, spaceNum, outcome } = activeModal;
+  const roll = outcome?.roll ?? '';
+  return `${type}|${phase ?? ''}|${spaceNum ?? ''}|${roll}`;
 }
 
 function playSpectatorModalEnter(modalEl, tier, activeModal) {
@@ -379,24 +380,41 @@ function renderSpectatorModal(activeModal) {
     return;
   }
 
-  if (type === 'path' || type === 'healer') {
-    els.pathIcon.textContent = config?.icon || (type === 'healer' ? '✨' : '🚶');
-    els.pathSpace.textContent = `Vak ${spaceNum ?? '?'}`;
+  if (type === 'path' || type === 'healer' || type === 'death-return') {
+    els.pathIcon.textContent = config?.icon || (type === 'healer' ? '✨' : type === 'death-return' ? '🎲' : '🚶');
+    const badgeRoll = type === 'death-return' && activeModal?.outcome?.roll != null
+      ? `D4: ${activeModal.outcome.roll} · `
+      : '';
+    els.pathSpace.textContent = type === 'death-return'
+      ? `${badgeRoll}vak ${spaceNum ?? '?'}`
+      : `Vak ${spaceNum ?? '?'}`;
     els.pathTitle.textContent = config?.name || '';
     els.pathFlavor.textContent = config?.flavor || '';
     if (els.pathTag) {
-      els.pathTag.textContent = type === 'healer' ? 'Genezer' : 'Rustig pad';
+      if (type === 'death-return') {
+        els.pathTag.textContent = activeModal?.outcome?.tag ?? 'Second chance';
+      } else {
+        els.pathTag.textContent = type === 'healer' ? 'Genezer' : 'Rustig pad';
+      }
     }
     if (els.pathNote) {
-      const healInfo = activeModal?.outcome?.healInfo;
-      els.pathNote.textContent = type === 'healer'
-        ? (healInfo?.healed
-          ? `Hersteld: ${healInfo.from} → ${healInfo.to} HP`
-          : 'Al vol HP')
-        : 'Geen ability check — even ademhalen en doorlopen.';
+      if (type === 'death-return') {
+        els.pathNote.textContent = activeModal?.outcome?.note ?? '';
+      } else {
+        const healInfo = activeModal?.outcome?.healInfo;
+        els.pathNote.textContent = type === 'healer'
+          ? (healInfo?.healed
+            ? `Hersteld: ${healInfo.from} → ${healInfo.to} HP`
+            : 'Al vol HP')
+          : 'Geen ability check — even ademhalen en doorlopen.';
+      }
     }
     els.pathModal.classList.add('path-modal--spectator');
     els.pathModal.classList.remove('hidden');
+    if (els.pathClose && type === 'death-return') {
+      els.pathClose.textContent = activeModal?.outcome?.closeLabel ?? 'Verder';
+      els.pathClose.disabled = true;
+    }
     playSpectatorModalEnter(els.pathModal, 'calm', activeModal);
     syncModalScrollLock();
     return;

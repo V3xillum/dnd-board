@@ -52,6 +52,15 @@
             <button type="button" id="hp-plus-btn" class="btn btn--hp" title="1 HP genezen" aria-label="HP verhogen">+</button>
           </div>
         </div>
+        <div id="death-return-controls" class="death-return-controls death-return-controls--hidden">
+          <p class="death-return-controls__prompt">Je bent terug op start — gooi een <strong>D4</strong> voor je second chance.</p>
+          <label class="death-return-controls__d4" for="death-return-d4-input">
+            D4 worp
+            <input type="number" id="death-return-d4-input" min="1" max="4" placeholder="1–4" inputmode="numeric">
+          </label>
+          <button type="button" id="death-return-btn" class="btn btn--primary">Second chance</button>
+          <p class="death-return-controls__hint">1: niets · 2: catch-up · 3: max HP · 4: +1 schade</p>
+        </div>
         <div class="dice-controls">
           <label class="dice-label" for="dice-input">
             Dobbelsteenworp (2× D6)
@@ -348,12 +357,21 @@
         </section>
 
         <section class="rules-section">
-          <h3 class="rules-section__title">HP, death &amp; catch-up</h3>
+          <h3 class="rules-section__title">HP &amp; death</h3>
           <ul>
-            <li>Bij <strong>0 HP</strong>: terug naar start (vak 0), HP terug naar <strong>3</strong>, <strong>+1 catch-up bonus</strong> op vooruit-beweging (stapelt per death).</li>
-            <li>Catch-up bonus telt mee bij normale 2× D6 én bij bonus-worp na een geslaagde event-check.</li>
-            <li>Bonus verdwijnt bij win op vak 63 <strong>of</strong> als je voorbij 63 schiet en terugkaatst (overshoot).</li>
+            <li>Bij <strong>0 HP</strong>: terug naar start (vak 0), HP terug naar <strong>3</strong>.</li>
             <li><strong>Overshoot:</strong> ga je voorbij vak 63, dan kaats je terug (<code>63 − overshoot</code>) — geen win.</li>
+          </ul>
+        </section>
+
+        <section class="rules-section">
+          <h3 class="rules-section__title">Second chance (D4 na death)</h3>
+          <p>Je eerste beurt terug op start: gooi een <strong>D4</strong> vóór je normale 2× D6. Je krijgt een kaart met flavor-tekst en het resultaat — net als een rustig pad.</p>
+          <ul>
+            <li><strong>1:</strong> geen effect — gewoon opnieuw beginnen.</li>
+            <li><strong>2:</strong> teleport naar het <strong>laagste vak</strong> van een medespeler. Staat die speler op <strong>vak 56 of hoger</strong>, of speel je solo? Dan word je <strong>zwaar gewond naar de genezer (vak 56)</strong> gebracht — <em>zonder</em> heal of DC-reset. Staat er een actieve put, dan spring je meteen in het gevecht.</li>
+            <li><strong>3:</strong> terug naar <strong>max HP</strong> (6), start op vak 0.</li>
+            <li><strong>4:</strong> permanente <strong>+1 schade-bonus</strong>, start op vak 0.</li>
           </ul>
         </section>
 

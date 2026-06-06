@@ -93,6 +93,11 @@ function clearDiceInput() {
 }
 
 els.moveBtn.addEventListener('click', async () => {
+  if (game.needsDeathReturnRoll(game.currentPlayer)) {
+    addLog('Gooi eerst je D4 second chance.', 'warn');
+    return;
+  }
+
   const steps = parse2d6Total(els.diceInput.value);
   if (steps === null) {
     addLog('Vul het totaal van 2× D6 in (2–12).', 'warn');
@@ -113,6 +118,10 @@ els.diceInput.addEventListener('keydown', (e) => {
 function handleShortRest() {
   const player = game.currentPlayer;
   if (!player || game.gameOver) return;
+  if (game.needsDeathReturnRoll(player)) {
+    addLog('Gooi eerst je D4 second chance.', 'warn');
+    return;
+  }
 
   const roll = parseDiceRoll(els.shortRestD4Input.value, 1, 4);
   if (roll === null) {
@@ -136,6 +145,10 @@ function handleShortRest() {
 function handleLongRest() {
   const player = game.currentPlayer;
   if (!player || game.gameOver) return;
+  if (game.needsDeathReturnRoll(player)) {
+    addLog('Gooi eerst je D4 second chance.', 'warn');
+    return;
+  }
 
   const result = game.takeLongRest(player);
   if (!result.valid) {
@@ -153,6 +166,44 @@ els.shortRestBtn?.addEventListener('click', handleShortRest);
 els.longRestBtn?.addEventListener('click', handleLongRest);
 els.shortRestD4Input?.addEventListener('keydown', (e) => {
   if (e.key === 'Enter') handleShortRest();
+});
+
+async function handleDeathReturnRoll() {
+  const player = game.currentPlayer;
+  if (!player || game.gameOver) return;
+
+  const roll = parseDiceRoll(els.deathReturnD4Input?.value, 1, 4);
+  if (roll === null) {
+    addLog('Vul een D4-worp in (1–4).', 'warn');
+    return;
+  }
+
+  const result = game.resolveDeathReturnRoll(player, roll);
+  if (!result.valid) {
+    addLog('Second chance is nu niet mogelijk.', 'warn');
+    return;
+  }
+
+  describeEvents(result.events);
+  await syncTokensAfterEvents(result.events);
+  renderBoard();
+  renderPlayers();
+  updateTurnUI();
+  if (els.deathReturnD4Input) els.deathReturnD4Input.value = '';
+
+  showDeathReturnModal(result, () => {
+    if (result.needsAmbush) {
+      continueAfterLand(result);
+    } else {
+      window.syncAfterAction?.();
+      els.diceInput?.focus();
+    }
+  });
+}
+
+els.deathReturnBtn?.addEventListener('click', handleDeathReturnRoll);
+els.deathReturnD4Input?.addEventListener('keydown', (e) => {
+  if (e.key === 'Enter') handleDeathReturnRoll();
 });
 
 els.hpMinusBtn.addEventListener('click', () => adjustCurrentPlayerHp(-1));
@@ -234,6 +285,8 @@ window.setMultiplayerReadOnly = (readOnly) => {
     if (els.shortRestBtn) els.shortRestBtn.disabled = true;
     if (els.longRestBtn) els.longRestBtn.disabled = true;
     if (els.shortRestD4Input) els.shortRestD4Input.disabled = true;
+    if (els.deathReturnBtn) els.deathReturnBtn.disabled = true;
+    if (els.deathReturnD4Input) els.deathReturnD4Input.disabled = true;
   }
 };
 

@@ -158,6 +158,17 @@ function buildMovementsFromEvents(events) {
       return;
     }
 
+    if (ev.type === 'death-return-teleport' && ev.from !== ev.to) {
+      movements.push({
+        playerName: name,
+        from: ev.from,
+        to: ev.to,
+        forward: true,
+        teleport: true,
+      });
+      return;
+    }
+
     if (ev.type === 'boss-retreat' && ev.from !== ev.to) {
       movements.push({ playerName: name, from: ev.from, to: ev.to, forward: false });
       return;
@@ -236,6 +247,23 @@ async function animateTokenDeath(playerId, fromSpace) {
   token.style.display = 'none';
 }
 
+async function animateTokenTeleport(playerId, from, to) {
+  const player = game.players.find((p) => p.id === playerId);
+  if (!player) return;
+
+  const token = ensureTokenElement(player);
+  if (!token) return;
+
+  token.classList.add('token--moving', 'token--teleport');
+  token.classList.remove('token--waiting');
+  token.style.display = '';
+  positionTokenElement(token, from > 0 ? from : to, 0, 1, false);
+  await waitMs(60);
+  positionTokenElement(token, to, 0, 1, true);
+  await waitMs(220);
+  token.classList.remove('token--moving', 'token--teleport');
+}
+
 async function animateMovements(movements, idKey = 'playerName') {
   if (prefersReducedMotion() || !movements?.length) return;
 
@@ -252,6 +280,8 @@ async function animateMovements(movements, idKey = 'playerName') {
 
       if (move.death) {
         await animateTokenDeath(player.id, move.fromSpace);
+      } else if (move.teleport) {
+        await animateTokenTeleport(player.id, move.from, move.to);
       } else {
         await animateTokenAlongPath(player.id, move.from, move.to, move.forward);
       }

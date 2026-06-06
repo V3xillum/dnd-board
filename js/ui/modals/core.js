@@ -175,6 +175,7 @@ function serializeModalConfig(config) {
   if (config.tier != null) out.tier = config.tier;
   if (config.bossHp != null) out.bossHp = config.bossHp;
   if (config.bossMaxHp != null) out.bossMaxHp = config.bossMaxHp;
+  if (config.splash != null) out.splash = config.splash;
   if (Array.isArray(config.minions) && config.minions.length > 0) {
     out.minions = config.minions.map((m) => ({
       name: m.name ?? null,
@@ -230,15 +231,17 @@ function syncModalOutcome(type, spaceNum, config, outcome) {
 
 function closeSpectatorModals() {
   lastSpectatorModalAnimKey = null;
+  hideSplashLayer?.();
+  clearModalSplashClasses?.();
   els.eventModal.classList.add('hidden');
-  els.eventModal.classList.remove('event-modal--spectator');
+  els.eventModal.classList.remove('event-modal--spectator', 'event-modal--over-splash');
   els.pathModal.classList.add('hidden');
   els.pathModal.classList.remove('path-modal--spectator');
   els.mysteryModal.classList.add('hidden');
   els.mysteryModal.classList.remove('mystery-modal--spectator');
   els.mysteryCard?.classList.remove('event-card--jackpot');
   els.bossRevealModal.classList.add('hidden');
-  els.bossRevealModal.classList.remove('boss-reveal-modal--spectator');
+  els.bossRevealModal.classList.remove('boss-reveal-modal--spectator', 'event-modal--over-splash');
   els.bossRevealCard?.classList.remove('event-card--epic');
   els.winModal.classList.add('hidden');
   els.winModal.classList.remove('win-modal--spectator');
@@ -350,12 +353,14 @@ function renderSpectatorModal(activeModal) {
 
   if (type === 'boss-reveal') {
     els.bossRevealModal.classList.add('boss-reveal-modal--spectator');
-    els.bossRevealModal.classList.remove('hidden');
     els.bossRevealIcon.textContent = config?.icon || '⚔️';
     els.bossRevealSpace.textContent = `Vak ${spaceNum ?? '?'}`;
     els.bossRevealTitle.textContent = '⚔️ De eindbaas wacht';
 
     if (phase === 'input') {
+      syncSpectatorSplash?.(null, 'boss-reveal-input');
+      els.bossRevealModal.classList.remove('event-modal--over-splash');
+      els.bossRevealModal.classList.remove('hidden');
       els.bossRevealFlavor.textContent = config?.flavor
         || 'Gooi een D12 — het lot bepaalt hoe zwaar dit gevecht wordt.';
       els.bossRevealRollArea.classList.remove('hidden');
@@ -364,6 +369,9 @@ function renderSpectatorModal(activeModal) {
       els.bossRevealAction.classList.add('hidden');
       els.bossRevealDiceInput.disabled = true;
     } else if (phase === 'outcome' && outcome) {
+      syncSpectatorSplash?.(null, `boss-reveal-outcome|${spaceNum}`);
+      els.bossRevealModal.classList.remove('event-modal--over-splash');
+      els.bossRevealModal.classList.remove('hidden');
       els.bossRevealFlavor.textContent = 'Het lot is beslist:';
       els.bossRevealRollArea.classList.add('hidden');
       els.bossRevealResultArea.classList.remove('hidden');
@@ -431,6 +439,15 @@ function renderSpectatorModal(activeModal) {
   }
 
   if (!config) return;
+
+  if (type === 'boss' && phase === 'input') {
+    const bossUrl = getBossSplashUrl?.(config);
+    syncSpectatorSplash?.(bossUrl, `boss-fight|${spaceNum}|${config?.name ?? ''}`);
+    els.eventModal.classList.add('event-modal--over-splash');
+  } else if (type === 'boss-minion' || type === 'ambush') {
+    syncSpectatorSplash?.(null, `${type}|${spaceNum}`);
+    els.eventModal.classList.remove('event-modal--over-splash');
+  }
 
   populateSpectatorCombatModal(type, config, spaceNum);
   els.eventModal.classList.add('event-modal--spectator');

@@ -34,6 +34,7 @@ Dit bestand is bedoeld voor **mens én agent**: waar zit wat, in welke volgorde 
 | `js/ui/state.js` | ~18 | Gedeelde mutable UI-state (combat flow, modals, tokensAnimating) |
 | `js/ui/log.js` | ~340 | Event-log: `describeEvents`, `addLog`, `prependLogEntry` |
 | `js/ui/board.js` | ~130 | `renderBoard`, mystery cell FX |
+| `js/ui/splash.js` | ~175 | Boss splash preload, layer, `playSplashThen` |
 | `js/ui/tokens.js` | ~413 | Token layer, animatie, `snapshotTokenPositions` |
 | `js/ui/players.js` | ~444 | Player list, combat rail, HP, turn UI, difficulty |
 | `js/ui/modals/core.js` | ~490 | Scroll lock, enter animaties, spectator sync, serialize |
@@ -58,6 +59,7 @@ firebase.js (module)
 → ui/state.js
 → ui/log.js
 → ui/board.js
+→ ui/splash.js
 → ui/tokens.js
 → ui/players.js
 → ui/modals/core.js

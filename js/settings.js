@@ -30,6 +30,13 @@ const GAME_SETTINGS = {
     playerColors: ['#e74c3c', '#3498db', '#2ecc71', '#f39c12', '#9b59b6', '#1abc9c', '#e67e22', '#34495e'],
     mysteryAnimMs: { reveal: 720, reset: 580 },
   },
+  splash: {
+    holdMs: 700,
+    maxWaitMs: 5000,
+    fileExtension: 'png',
+    bossBasePath: 'assets/splash/bosses/',
+    bossDefault: 'assets/splash/bosses/_default.png',
+  },
 };
 
 window.GAME_SETTINGS = GAME_SETTINGS;

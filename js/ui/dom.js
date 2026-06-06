@@ -27,6 +27,8 @@ const els = {
   hpDisplay: document.getElementById('hp-display'),
   hpMinusBtn: document.getElementById('hp-minus-btn'),
   hpPlusBtn: document.getElementById('hp-plus-btn'),
+  splashLayer: document.getElementById('splash-layer'),
+  splashLayerImg: document.getElementById('splash-layer-img'),
   pathModal: document.getElementById('path-modal'),
   pathIcon: document.getElementById('path-icon'),
   pathSpace: document.getElementById('path-space'),

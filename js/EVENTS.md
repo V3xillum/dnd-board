@@ -56,18 +56,16 @@ const EVENT_POOL_RAW = {
       },
     ],
   },
-  boss: {
-    Combat: [
-      {
-        name: GUARDIAN_EVENT_NAME, // of een vaste string
-        icon: '🛡️',
-        dc: 14,
-        flavor: '…',
-        successText: '…',
-        failText: '…',
-      },
-    ],
-  },
+  boss: [
+    {
+      name: GUARDIAN_EVENT_NAME, // of een vaste string
+      icon: '🛡️',
+      dc: 14,
+      flavor: '…',
+      successText: '…',
+      failText: '…',
+    },
+  ],
 };
 
 const EVENT_POOL = flattenEventPool(EVENT_POOL_RAW);
@@ -76,8 +74,8 @@ const EVENT_POOL = flattenEventPool(EVENT_POOL_RAW);
 **Belangrijk:**
 
 - **`category`** = top-level key (`trap`, `combat`, `ambush`, `boss`, …)
-- **`ability`** = key onder die category (`Acrobatics`, `Combat`, …)
-- Zet **`category` en `ability` niet** op het event-object zelf — `flattenEventPool()` voegt die toe
+- **`ability`** = key onder die category (`Acrobatics`, `Combat`, …) — **niet** voor `boss` (platte array)
+- Zet **`category` (en `ability` waar van toepassing) niet** op het event-object zelf — `flattenEventPool()` voegt die toe
 - Abilities met spaties of `OR` (bijv. `"Athletics OR Acrobatics"`) als quoted key schrijven
 
 De engine (`game.js`, bordgeneratie, UI) gebruikt de platte **`EVENT_POOL`**. Die hoef je niet handmatig aan te passen.
@@ -149,10 +147,10 @@ Zelfde velden als een normaal event, plus `ambushHp`, `attackBonus` en `dmg`. Pl
 
 ## Nieuwe eindbaas
 
-Plaats onder `EVENT_POOL_RAW.boss.<ability>` — **geen** `ambushHp`:
+Voeg toe aan de platte array `EVENT_POOL_RAW.boss` — **geen** `ambushHp`, geen ability-bucket:
 
 ```javascript
-// EVENT_POOL_RAW.boss.Intimidation
+// EVENT_POOL_RAW.boss[]
 {
   name: 'Ancient Red Dragon',
   icon: '🐲',

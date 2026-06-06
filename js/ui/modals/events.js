@@ -68,6 +68,8 @@ function populateEventModal(config, spaceNum) {
 
 function closeEventModal() {
   els.eventModal.classList.add('hidden');
+  els.eventModal.classList.remove('event-modal--over-splash');
+  hideSplashLayer?.();
   syncModalScrollLock();
   resetCombatModalPhases();
   activeEvent = null;
@@ -382,13 +384,7 @@ function showBossFightModal(onComplete) {
   }
 }
 
-function showBossModal(onComplete) {
-  if (!game.bossActive || !game.bossConfig) {
-    onComplete?.();
-    return;
-  }
-
-  closeBossRevealModal();
+function openBossFightModalUi(onComplete) {
   activeBoss = createCombatFlowState(
     onComplete,
     game.bossConfig,
@@ -400,6 +396,7 @@ function showBossModal(onComplete) {
 
   els.eventModal.classList.remove('hidden');
   els.eventModal.classList.remove('event-modal--spectator');
+  els.eventModal.classList.add('event-modal--over-splash');
   syncModalScrollLock();
   populateBossModal();
   updateBossPanel();
@@ -407,8 +404,18 @@ function showBossModal(onComplete) {
     submitLabel: 'Aanvallen',
   });
   playModalCardEnter(els.eventModal, 'combat');
-
   setTimeout(() => els.eventDiceInput.focus(), 100);
+}
+
+function showBossModal(onComplete) {
+  if (!game.bossActive || !game.bossConfig) {
+    onComplete?.();
+    return;
+  }
+
+  closeBossRevealModal();
+  const bossUrl = getBossSplashUrl(game.bossConfig);
+  playSplashThen(bossUrl, () => openBossFightModalUi(onComplete));
 }
 
 function finishBossFlow(onClose) {
@@ -813,8 +820,9 @@ function buildBossRevealHtml(reveal) {
 function closeBossRevealModal() {
   if (els.bossRevealModal.classList.contains('hidden')) return;
   els.bossRevealModal.classList.add('hidden');
-  els.bossRevealModal.classList.remove('boss-reveal-modal--spectator');
+  els.bossRevealModal.classList.remove('boss-reveal-modal--spectator', 'event-modal--over-splash');
   els.bossRevealCard?.classList.remove('event-card--epic');
+  hideSplashLayer?.();
   syncModalScrollLock();
   activeBossReveal = null;
   if (window.isMultiplayerHost?.() && syncedActiveModal?.type === 'boss-reveal') {
@@ -972,11 +980,8 @@ function handleMysteryAction() {
   }
 }
 
-function showBossRevealRevealPhase(reveal) {
+function openBossRevealOutcomeUi(reveal) {
   if (!activeBossReveal) return;
-  activeBossReveal.phase = 'reveal';
-  activeBossReveal.reveal = reveal;
-
   els.bossRevealFlavor.textContent = 'Het lot is beslist:';
   els.bossRevealRollArea.classList.add('hidden');
   els.bossRevealResultArea.classList.remove('hidden');
@@ -986,6 +991,9 @@ function showBossRevealRevealPhase(reveal) {
   els.bossRevealAction.textContent = 'Gevecht beginnen';
   els.bossRevealResultContent.innerHTML = buildBossRevealHtml(reveal);
   els.bossRevealCard?.classList.toggle('event-card--epic', reveal.tier === 'epic');
+
+  els.bossRevealModal.classList.remove('hidden');
+  syncModalScrollLock();
 
   const cfg = reveal.config ?? {};
   syncModalOutcome('boss-reveal', activeBossReveal.spaceNum, {
@@ -1005,6 +1013,13 @@ function showBossRevealRevealPhase(reveal) {
     actionLabel: els.bossRevealAction.textContent,
   });
   playModalCardEnter(els.bossRevealModal, 'combat');
+}
+
+function showBossRevealRevealPhase(reveal) {
+  if (!activeBossReveal) return;
+  activeBossReveal.phase = 'reveal';
+  activeBossReveal.reveal = reveal;
+  openBossRevealOutcomeUi(reveal);
 }
 
 function showBossRevealModal(spaceNum, onComplete) {

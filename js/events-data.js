@@ -1196,7 +1196,7 @@ const EVENT_POOL_RAW = {
       {
         name: "Drie paden",
         icon: "🛣️",
-        dc: 0,
+        dc: 14,
         flavor: "Een splitsing zonder bordje. Links open terrein — snel maar zichtbaar. Rechts langs een beekje — veilig maar omslachtig. Midden een donker woud dat niets prijsgeeft.",
         successText: "Je leest het terrein en de lichtkant van de bomen en kiest de route die meewerkt. Je keuze levert tijdwinst op.",
         failText: "Je keuze had logica maar miste context. Een obstakel dat je niet kon weten kost je tijd en een omweg.",
